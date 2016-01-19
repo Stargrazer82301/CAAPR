@@ -23,8 +23,7 @@ $RECYCLE.BIN/
 *.pyc
 
 # Sub-repositories
-/CAAPR_Old
-/CAAPR_Sandbox
+/Old
 
 # Image files
 *.png
