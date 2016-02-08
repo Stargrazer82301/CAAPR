@@ -4,6 +4,7 @@ import sys
 sys.path.insert(0, '../')
 import gc
 import pdb
+import shutil
 import numpy as np
 import multiprocessing as mp
 #import matplotlib.pyplot as plt
@@ -15,28 +16,36 @@ import multiprocessing as mp
 # Import ChrisFuncs and CAAPR submodules
 import ChrisFuncs
 import CAAPR_IO
+import CAAPR_Pipeline
 
 
 
-def CAAPR(band_table_path='CAAPR_Band_Table.csv',
-          source_table_path='CAAPR_Source_Table.csv',
+def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
+          sources_table_path = 'CAAPR_Source_Table.csv',
+          output_dir_path = 'CAAPR_Output',
+          temp_dir_path = 'CAAPR_Temp',
+          n_cores = mp.cpu_count()-2,
           ):
 
-    # Read in source tables
-    band_table = np.genfromtxt(band_table_path, names=True, delimiter=',', dtype=None)
-    source_table = np.genfromtxt(source_table_path, names=True, delimiter=',', dtype=None)
+    # Read in source table and band table CSVs, and convert into dictionaries
+    sources_dict = CAAPR_IO.SourcesDictFromCSV(sources_table_path)
+    bands_dict = CAAPR_IO.BandsDictFromCSV(bands_table_path)
 
-    # Commence multiprocesing
-    output_list = []
-    pool = mp.Pool()
-    for i in range(0, len(source_table.shape)):
-        source_dict = CAAPR_IO.MakeSourceDict(source_table, i)
-        output_list.append( pool.apply_async( CAAPR.Pipeline, args=(source_dict,) ) )
-    pool.close()
-    pool.join()
+    # Prepare output directory
+    if os.path.exists(output_dir_path):
+        print 'Warning: Output directory already exists; some files may be overridden'
+    else:
+        os.mkdir(output_dir_path)
 
-    # Extract results
-    output_list = [output.get() for output in output_list]
+    # Prepare temp directory, deleting any pre-existing directory at the specified location
+    if os.path.exists(temp_dir_path):
+        shutil.rmtree(temp_dir_path)
+    os.mkdir(temp_dir_path)
+
+    # Loop over each source
+    for source in sources_dict.keys():
+        source_dict = sources_dict[source]
+        CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, output_dir_path, temp_dir_path, n_cores)
 
 
 

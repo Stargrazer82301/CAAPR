@@ -24,6 +24,12 @@ $RECYCLE.BIN/
 
 # Sub-repositories
 /Old
+/CAAPR_Output
+/CAAPR_Temp
+
+# Data tables & FITS files
+*.csv
+*.fits
 
 # Image files
 *.png
