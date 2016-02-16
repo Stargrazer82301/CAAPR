@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+# -*- coding: utf8 -*-
+# *****************************************************************
+# **       PTS -- Python Toolkit for working with SKIRT          **
+# **       © Astronomical Observatory, Ghent University          **
+# *****************************************************************
+
+## \package do.testcases Perform all or part of the standard SKIRT test suite.
+#
+# This script performs all or part of the standard SKIRT test suite in directory \c ~/SKIRTtests using the
+# SKIRT executable in directory \c ~/SKIRT/release.
+#
+# When invoked without command line arguments, the script performs all test cases in the suite.
+# Provide the name of a subsuite as the first argument to restrict execution to that subsuite.
+#
+
+# -----------------------------------------------------------------
+
+# Import standard modules
+import os.path
+import sys
+import argparse
+
+# Import the relevant PTS class
+from pts.skirttestsuite import SkirtTestSuite
+
+# -----------------------------------------------------------------
+
+# Create the command-line parser
+parser = argparse.ArgumentParser()
+parser.add_argument('subsuite', type=str, help='a name identifying the subsuite', nargs='?', default=None)
+parser.add_argument('-p', '--parallel', action='store_true', help='execute the test cases in parallel mode')
+
+# Parse the command line arguments
+args = parser.parse_args()
+subsuite = args.subsuite
+parallel = args.parallel
+
+# Create the full path to the SKIRTtests directory
+suitename = "SKIRTtests"
+suitepath = os.path.join(os.getenv("HOME"), suitename)
+
+# Check whether a development SKIRT repository is present, otherwise use the standard SKIRT path
+devskirtpath = os.path.join(os.getenv("HOME"), "Development", "SKIRT", "release", "SKIRTmain", "skirt")
+skirtpath = devskirtpath if os.path.isfile(devskirtpath) else ""
+
+# Create the test suite instance
+suite = SkirtTestSuite(suitepath=suitepath, subsuite=subsuite, parallel=parallel, skirtpath=skirtpath)
+
+# Perform the test suite
+suite.perform(sleepsecs=10)
+
+# -----------------------------------------------------------------
