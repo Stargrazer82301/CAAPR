@@ -4,7 +4,9 @@ import sys
 sys.path.insert(0, '../')
 import gc
 import pdb
+import time
 import csv
+import psutil
 import numpy as np
 import astropy.io.fits
 import astropy.wcs
@@ -15,17 +17,24 @@ import ChrisFuncs
 # Dunction that uses band table CSV file to create a dictionary of band values
 def SourcesDictFromCSV(sources_table_path):
 
-    # Initially read in CSV file as a numpy structured array
-    sources_table = np.genfromtxt(sources_table_path, names=True, delimiter=',', dtype=None)
-
-    # Loop over each row of the bands table, using band name as the the key for this 1st-level entry
+    # Initially read in CSV file as a numpy structured array, and prepare output dictionary
+    sources_table = np.genfromtxt(sources_table_path, names=True, delimiter=',', dtype=None, comments='#')
     sources_dict = {}
-    for row in range(0, sources_table.shape[0]):
-        sources_dict[ sources_table['name'][row] ] = {}
 
-        # Loop over each field in the current row
+    # Deal with special case of CSV having only 1 line (where looping through lines doesn't work), otherwise do things properly
+    if sources_table.shape==():
+        sources_dict[ sources_table['name'].tolist() ] = {}
         for field in sources_table.dtype.names:
-            sources_dict[ sources_table['name'][row] ][field] = sources_table[field][row]
+            sources_dict[ sources_table['name'].tolist() ][field] = sources_table[field].tolist()
+    else:
+
+        # Loop over each row of the bands table, using band name as the the key for this 1st-level entry
+        for row in range(0, sources_table.shape[0]):
+            sources_dict[ sources_table['name'][row] ] = {}
+
+            # Loop over each field in the current row
+            for field in sources_table.dtype.names:
+                sources_dict[ sources_table['name'][row] ][field] = sources_table[field][row]
 
     # Return dictionary
     return sources_dict
@@ -35,17 +44,24 @@ def SourcesDictFromCSV(sources_table_path):
 # Dunction that uses band table CSV file to create a dictionary of band values
 def BandsDictFromCSV(bands_table_path):
 
-    # Initially read in CSV file as a numpy structured array
-    bands_table = np.genfromtxt(bands_table_path, names=True, delimiter=',', dtype=None)
-
-    # Loop over each row of the bands table, using band name as the the key for this 1st-level entry
+    # Initially read in CSV file as a numpy structured array, and prepare output dictionary
+    bands_table = np.genfromtxt(bands_table_path, names=True, delimiter=',', dtype=None, comments='#')
     bands_dict = {}
-    for row in range(0, bands_table.shape[0]):
-        bands_dict[ bands_table['band_name'][row] ] = {}
 
-        # Loop over each field in the current row
+    # Deal with special case of CSV having only 1 line (where looping through lines doesn't work), otherwise do things properly
+    if bands_table.shape==():
+        bands_dict[ bands_table['band_name'].tolist() ] = {}
         for field in bands_table.dtype.names:
-            bands_dict[ bands_table['band_name'][row] ][field] = bands_table[field][row]
+            bands_dict[ bands_table['band_name'].tolist() ][field] = bands_table[field].tolist()
+    else:
+
+        # Loop over each row of the bands table, using band name as the the key for this 1st-level entry
+        for row in range(0, bands_table.shape[0]):
+            bands_dict[ bands_table['band_name'][row] ] = {}
+
+            # Loop over each field in the current row
+            for field in bands_table.dtype.names:
+                bands_dict[ bands_table['band_name'][row] ][field] = bands_table[field][row]
 
     # Return dictionary
     return bands_dict
@@ -62,7 +78,7 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         os.mkdir( os.path.join( temp_dir_path, 'Cutouts', source_dict['name'] ) )
 
     # Using standard filename format, construct full file path, and work out whether the file extension is .fits or .fits.gz
-    in_fitspath = os.path.join( band_dict['band_path'], source_dict['name']+'_'+band_dict['band_name'] )
+    in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
     if os.path.exists(in_fitspath+'.fits'):
         in_fitspath = in_fitspath+'.fits'
     elif os.path.exists(in_fitspath+'.fits.gz'):
@@ -79,7 +95,6 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
             in_fitspath_error = in_fitspath_error+'.fits.gz'
         else:
             raise ValueError('No appropriately-named error file found in target directroy (please ensure that error filesnames are in \"[NAME]_[BAND]_Error.fits\" format.')
-
     """
     # Open FITS file in question (it is assumed that only the zeroth extension is of any interest)
     in_fitsdata = astropy.io.fits.open(in_fitspath)
@@ -98,7 +113,6 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         in_wcs_error = astropy.wcs.WCS(in_header_error)
         pix_size_error = in_wcs_error.wcs.cdelt
     """
-
     # Check if Montage is installed
     try:
         import montage_wrapper
@@ -124,10 +138,31 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         if band_dict['use_error_map']==True:
             ChrisFuncs.FitsCutout(in_fitspath_error, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath_error)
 
-    # Return the path of the newly-created cutout
-    return os.path.split(out_fitspath)[0]
+    # Return the directory of the newly-created cutout
+    out_fitsdir = os.path.split(out_fitspath)[0]
+    return out_fitsdir
 
 
 
+# Define function that checks whether a decent amount of RAM is free
+def MemCheck(in_fitspath_size, verbose=False):
 
+    # Assess how much RAM is free
+    mem_usage = float(psutil.virtual_memory()[2])
+    mem_free = float(psutil.virtual_memory()[4])
+
+    # Return wait if less than 20% of RAM is free
+    if mem_usage>=75.0:
+        mem_wait = True
+        return mem_wait
+        """
+    # Also, return wait if the amount of RAM free is more than 32 times the size of the current file (this mainly matters for convoluton)
+    elif (32.0*float(in_fitspath_size))>mem_free:
+        mem_wait = True
+        return mem_wait
+        """
+    # Otherwise, return no wait
+    else:
+        mem_wait = False
+        return mem_wait
 

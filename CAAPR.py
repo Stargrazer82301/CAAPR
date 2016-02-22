@@ -24,7 +24,9 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
           sources_table_path = 'CAAPR_Source_Table.csv',
           output_dir_path = 'CAAPR_Output',
           temp_dir_path = 'CAAPR_Temp',
-          n_cores = mp.cpu_count()-2,
+          parallel = True,
+          n_cores = mp.cpu_count(),
+          verbose = True
           ):
 
     # Read in source table and band table CSVs, and convert into dictionaries
@@ -45,7 +47,7 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
     # Loop over each source
     for source in sources_dict.keys():
         source_dict = sources_dict[source]
-        CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, output_dir_path, temp_dir_path, n_cores)
+        CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, output_dir_path, temp_dir_path, parallel, n_cores, verbose)
 
 
 
@@ -54,8 +56,9 @@ if __name__ == "__main__":
 
     # Run function
     testing = True
+    parallel = True
     if testing:
-        CAAPR()
+        CAAPR(parallel=parallel)
 
         # Jubilate
         print 'All done!'
