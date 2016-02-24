@@ -22,7 +22,7 @@ import CAAPR_IO
 
 
 # The aperture-fitting sub-pipeline
-def PipelineAperture(source_dict, band_dict, output_dir_path, temp_dir_path, verbose):
+def PipelineAperture(source_dict, band_dict, output_dir_path, temp_dir_path, thumbnails, verbose):
     source_id = source_dict['name']+'_'+band_dict['band_name']
 
 
@@ -44,16 +44,8 @@ def PipelineAperture(source_dict, band_dict, output_dir_path, temp_dir_path, ver
         #raise ValueError('No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.')
     else:
 
-        # Before processing, check enough RAM is free
-        in_fitspath_size = float(os.stat(in_fitspath).st_size)
-        mem_wait = True
-        while mem_wait:
-            mem_wait = CAAPR_IO.MemCheck(in_fitspath_size, verbose=verbose)
-            if mem_wait:
-                print '['+source_id+'] Waiting for some RAM to free up before commencing processing.'
-                time.sleep(10.0+(5.0*np.random.rand()))
-            elif not mem_wait:
-                break
+        # Carry out small random wait, to stop RAM checks from syncing up
+        time.sleep(5.0*np.random.rand())
 
         # Read in FITS file in question
         in_fitsdata = astropy.io.fits.open(in_fitspath)
@@ -61,6 +53,7 @@ def PipelineAperture(source_dict, band_dict, output_dir_path, temp_dir_path, ver
         in_header = in_fitsdata[0].header
         in_fitsdata.close()
         in_wcs = astropy.wcs.WCS(in_header)
+        in_fitspath_size = float(os.stat(in_fitspath).st_size)
 
         # Create the pod (Photometry Organisation Dictionary), which will bundle all the photometry data for this source & band into one dictionary to be passed between functions
         pod = {'in_fitspath':in_fitspath,
@@ -76,33 +69,63 @@ def PipelineAperture(source_dict, band_dict, output_dir_path, temp_dir_path, ver
                'id':source_id,
                'verbose':verbose}
 
+
+
         # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
+        CAAPR_IO.MemCheck(pod)
         pod = CAAPR_Pipeline.MapPrelim(pod)
         if pod['within_bounds']==False:
             return pod
 
+
+
         # If star-removal is required, run pod through AstroMagic
         if band_dict['remove_stars']==True:
+            CAAPR_IO.MemCheck(pod)
             CAAPR_Pipeline.AstroMagic(pod)
 
+
+
         # Run pod through function that determines aperture shape, to provide preliminary estimate to facilitate removal of large-scale sky
+        CAAPR_IO.MemCheck(pod)
         pod = ApertureShape(pod)
 
+
+
         # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter
+        CAAPR_IO.MemCheck(pod)
         pod = CAAPR_Pipeline.PolySub(pod)
+
+
 
         # If sky polynomial removed, run pod through function that determines aperture shape, to provide final estiamte
         if pod['sky_poly']!=False:
+            CAAPR_IO.MemCheck(pod)
             pod = ApertureShape(pod)
 
+
+
         # Run pod through function that determines aperture size
+        CAAPR_IO.MemCheck(pod)
         pod = ApertureSize(pod)
 
-        # Now return final aperture informaton to main pipeline
+
+
+        # If thumbnail images have been requested, save a copy of the current image (ie, with any star and/or background subtaction)
+        if thumbnails==True:
+            thumbnail_hdu = astropy.io.fits.PrimaryHDU(data=pod['cutout'], header=pod['in_header'])
+            thumbnail_hdulist = astropy.io.fits.HDUList([thumbnail_hdu])
+            thumbnail_hdulist.writeto(os.path.join(temp_dir_path,'Thumbnail_Maps',source_id+'.fits'), clobber=True)
+
+
+
+        # Now return final aperture informaton to main pipeline, and clean up garbage
         output_dict = {'band_name':band_dict['band_name'],
                        'opt_semimaj_arcsec':pod['opt_semimaj_arcsec'],
                        'opt_axial_ratio':pod['opt_axial_ratio'],
                        'opt_angle':pod['opt_angle']}
+        gc.collect()
+        del(pod)
         return output_dict
 
 
@@ -147,7 +170,7 @@ def ApertureShape(pod, verbose=False):
     else:
         opt_axial_ratio = 1.0
         opt_angle = 0.0
-    if verbose: print '['+pod['id']+'] Ellipse angle: '+str(opt_angle)[:6]+'; Ellipse axial ratio: '+str(opt_axial_ratio)[:6]
+    if verbose: print '['+pod['id']+'] Ellipse angle: '+str(opt_angle)[:6]+'; Ellipse axial ratio: '+str(opt_axial_ratio)[:6]+'.'
 
     # Clean garbage, record results to pod, and return
     gc.collect()
@@ -186,27 +209,30 @@ def ApertureSize(pod, verbose=False):
 
 
 
-    # Assuming enough RAM is free, smooth image prior to finding source size (in a way that manages NaNs and replaces them at the end)
-    mem_wait = True
-    while mem_wait:
-        mem_wait = CAAPR_IO.MemCheck(pod['in_fitspath_size'], verbose=verbose)
-        if mem_wait:
-            print '['+pod['id']+'] Waiting for some RAM to free up before commencing processing.'
-            time.sleep(10.0+(5.0*np.random.rand()))
-        elif not mem_wait:
-            break
+    # Construct kernel with FWHM equal to 3 beam-widths, by which to smooth map
     if verbose: print '['+pod['id']+'] Convolving map to lower resolution for radial analysis.'
     pix_size = pod['pix_size']
     res_in = band_dict['beam_width']
     res_out = 3.0*band_dict['beam_width']#36.0
     kernel_fwhm = np.sqrt( (res_out/pix_size)**2.0 - (res_in/pix_size)**2.0 )
-    kernel = astropy.convolution.kernels.Gaussian2DKernel(kernel_fwhm)
-    #kernel = astropy.convolution.AiryDisk2DKernel(kernel_fwhm)
-    cutout_conv = astropy.convolution.convolve_fft(pod['cutout'], kernel, interpolate_nan=True, normalize_kernel=True, ignore_edge_zeros=False)
-    cutout_conv[ np.where( np.isnan(pod['cutout'])==True ) ] = np.NaN
-    pod['cutout'] = cutout_conv
 
-    # Prepare arrays of transposed coordinates, to allow for rapid radial evaluating
+    # If map contains no NaN pixels, smooth it the quick Scipy way
+    cutout_unconv = pod['cutout'].copy()
+    if np.where(np.isnan(pod['cutout'])==True)[0].shape[0]==0:
+        pod['cutout'] = scipy.ndimage.filters.gaussian_filter(pod['cutout'], kernel_fwhm)
+
+    # Else if map contains NaNs, do it the robust (but very-very slow, very-very memory intensive) Astropy way, checking for free RAM before proceeding
+    else:
+        CAAPR_IO.MemCheck(pod, thresh_factor=15.0)
+        kernel = astropy.convolution.kernels.Gaussian2DKernel(kernel_fwhm)
+        #kernel = astropy.convolution.AiryDisk2DKernel(kernel_fwhm)
+        pod['cutout'] = astropy.convolution.convolve_fft(pod['cutout'], kernel, interpolate_nan=True, normalize_kernel=True, ignore_edge_zeros=False)
+        pod['cutout'][ np.where( np.isnan(pod['cutout'])==True ) ] = np.NaN
+
+
+
+    # Prepare arrays of transposed coordinates, to allow for rapid radial evaluating (after performing a memory check)
+    CAAPR_IO.MemCheck(pod)
     if verbose: print '['+pod['id']+'] Constructing arrays of transposed radial coordinates.'
     coords_trans = ChrisFuncs.Photom.AnnulusQuickPrepare(pod['cutout'], pod['opt_angle'], pod['centre_i'], pod['centre_j'])
     i_trans, j_trans = coords_trans[0], coords_trans[1]
@@ -270,6 +296,8 @@ def ApertureSize(pod, verbose=False):
     adj_ax_ratio = adj_semimaj_arcsec / adj_semimin_arcsec
 
     # Clean garbage, record results to pod, and return
+    pod['cutout'] = cutout_unconv
+    del(cutout_unconv)
     gc.collect()
     pod['opt_semimaj_arcsec'] = adj_semimaj_arcsec
     pod['opt_semimaj_pix'] = adj_semimaj_arcsec / pod['pix_size']
@@ -282,7 +310,7 @@ def ApertureSize(pod, verbose=False):
 
 # Define function that combines a set of apertures for a given source into
 def CombineAperture(aperture_output_list, source_dict, verbose=False):
-    if verbose: print '['+source_dict['name']+'] Combining apertures from all bands to generate final aperture.'
+    if verbose: print '['+source_dict['name']+'] Combining individual apertures from all bands to generate final aperture.'
 
 
 

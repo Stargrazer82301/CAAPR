@@ -7,6 +7,7 @@ import pdb
 import time
 import warnings
 import numbers
+import random
 import numpy as np
 import scipy.ndimage
 import multiprocessing as mp
@@ -28,7 +29,7 @@ import CAAPR_Aperture
 
 
 # The main pipeline; the cutout-production, aperture-fitting, and actual photometry parts of the CAAPR process are called in here, as sub-pipelines
-def PipelineMain(source_dict, bands_dict, output_dir_path, temp_dir_path, parallel, n_cores, verbose):
+def PipelineMain(source_dict, bands_dict, output_dir_path, temp_dir_path, fit_apertures, aperture_table_path, parallel, n_cores, thumbnails, verbose):
 
 
 
@@ -50,30 +51,41 @@ def PipelineMain(source_dict, bands_dict, output_dir_path, temp_dir_path, parall
 
 
 
-    # Commence aperture-fitting sub-pipeline, processing multiple sources in parallel (unless parallelisation is disabled)
-    aperture_start = time.time()
-    aperture_output_list = []
-    if parallel==True:
-        pool = mp.Pool(processes=n_cores)
-        for band in bands_dict.keys():
-            aperture_output_list.append( pool.apply_async( CAAPR_Aperture.PipelineAperture, args=(source_dict, bands_dict[band], output_dir_path, temp_dir_path, verbose) ) )
-        pool.close()
-        pool.join()
-        aperture_list = [output.get() for output in aperture_output_list if output.successful()==True]
-        aperture_list = [aperture for aperture in aperture_list if aperture!=None]
+    # If aperture file not provided, commence aperture-fitting sub-pipeline
+    if fit_apertures==True:
 
-    # If parallelisation is disabled, process one-at-a-time
-    elif parallel==False:
-        for band in bands_dict.keys():
-            aperture_output_list.append( CAAPR_Aperture.PipelineAperture(source_dict, bands_dict[band], output_dir_path, temp_dir_path, verbose) )
-            aperture_list = [output for output in aperture_output_list if output!=None]
+        # In standard operation, process multiple sources in parallel
+        aperture_start = time.time()
+        aperture_output_list = []
+        if parallel==True:
+            bands_dict_keys = bands_dict.keys()
+            random.shuffle(bands_dict_keys)
+            pool = mp.Pool(processes=n_cores)
+            for band in bands_dict_keys:
+                aperture_output_list.append( pool.apply_async( CAAPR_Aperture.PipelineAperture, args=(source_dict, bands_dict[band], output_dir_path, temp_dir_path, thumbnails, verbose) ) )
+            pool.close()
+            pool.join()
+            aperture_list = [output.get() for output in aperture_output_list if output.successful()==True]
+            aperture_list = [aperture for aperture in aperture_list if aperture!=None]
 
-    # Combine all fitted aperture to produce amalgam aperture
-    aperture_combined = CAAPR_Aperture.CombineAperture(aperture_list, source_dict, verbose)
+        # If parallelisation is disabled, process sources one-at-a-time
+        elif parallel==False:
+            for band in bands_dict.keys():
+                aperture_output_list.append( CAAPR_Aperture.PipelineAperture(source_dict, bands_dict[band], output_dir_path, temp_dir_path, thumbnails, verbose) )
+                aperture_list = [output for output in aperture_output_list if output!=None]
 
+        # Combine all fitted apertures to produce amalgam aperture
+        aperture_combined = CAAPR_Aperture.CombineAperture(aperture_list, source_dict, verbose)
+        if verbose: print '['+source_dict['name']+'] Time taken performing aperture fitting: '+str(time.time()-aperture_start)
 
-    if verbose: print '['+source_dict['name']+'] Time taken performing aperture fitting: '+str(time.time()-aperture_start)
-    pdb.set_trace()
+        # Record aperture properties to file
+        aperture_string = str([ source_dict['name'], aperture_combined[0], aperture_combined[1], aperture_combined[2] ])#'name','semimaj_arcsec,axial_ratio,pos_angle\n'
+        aperture_string = aperture_string.replace('[','').replace(']','').replace(' ','').replace('\'','')+'\n'
+        aperture_table_file = open( aperture_table_path, 'a')
+        aperture_table_file.write(aperture_string)
+        aperture_table_file.close()
+
+        # Create thumbnail image
 
 
 
@@ -237,6 +249,9 @@ def PolySub(pod, poly_order=5, cutoff_sigma=2.0):
     poly_full = congrid.congrid(poly_fit, (pod['cutout'].shape[0], pod['cutout'].shape[1]), minusone=True)
 
 
+
+    # Do a memory check before continuing
+    CAAPR_IO.MemCheck(pod)
 
     # Establish background variation before application of filter
     clip_in = ChrisFuncs.SigmaClip(pod['cutout'], tolerance=0.005, median=True, sigma_thresh=2.0)

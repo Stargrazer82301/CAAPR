@@ -144,25 +144,46 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
 
 
 
-# Define function that checks whether a decent amount of RAM is free
-def MemCheck(in_fitspath_size, verbose=False):
+# Define function that checks whether a decent amount of RAM is free before allowing things to progress
+def MemCheck(pod, thresh_fraction=0.8, thresh_factor=10.0, return_status=False):
 
-    # Assess how much RAM is free
-    mem_usage = float(psutil.virtual_memory()[2])
-    mem_free = float(psutil.virtual_memory()[4])
-
-    # Return wait if less than 20% of RAM is free
-    if mem_usage>=75.0:
-        mem_wait = True
-        return mem_wait
-        """
-    # Also, return wait if the amount of RAM free is more than 32 times the size of the current file (this mainly matters for convoluton)
-    elif (32.0*float(in_fitspath_size))>mem_free:
-        mem_wait = True
-        return mem_wait
-        """
-    # Otherwise, return no wait
-    else:
+    # Start infinite loop
+    wait_initial = True
+    wait_count = 0
+    while True:
         mem_wait = False
-        return mem_wait
+
+        # Assess how much RAM is free
+        mem_stats = psutil.virtual_memory()
+        mem_usage = 1.0-(float(mem_stats[1])/float(mem_stats[0]))
+
+        # Require wait if less than 20% of RAM is free
+        if thresh_fraction!=None:
+            if mem_usage>=float(thresh_fraction):
+                mem_wait = True
+
+        # Also, require wait if the amount of RAM free is more than some multiple the size of the current file
+        mem_free = float(psutil.virtual_memory()[4])
+        if thresh_factor!=None:
+            if ( float(thresh_factor) * float(pod['in_fitspath_size']) )>mem_free:
+                if pod['in_fitspath_size']!=None:
+                    mem_wait = True
+
+        # If process has waited loads of times, progress regardless
+        if wait_count>=20:
+            mem_wait = False
+
+        # If required, conduct wait for a semi-random period of time; otherwise, break
+        if mem_wait==True:
+            if wait_initial:
+                if pod['verbose']: print '['+pod['id']+'] Waiting for necessary RAM to free up before continuing processing.'
+                wait_initial = False
+            wait_count += 1
+            time.sleep(5.0+(10.0*np.random.rand()))
+        else:
+            break
+
+        # Return memory status
+        if return_status:
+            return mem_stats
 

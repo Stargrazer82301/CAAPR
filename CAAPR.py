@@ -5,6 +5,7 @@ sys.path.insert(0, '../')
 import gc
 import pdb
 import shutil
+import time
 import numpy as np
 import multiprocessing as mp
 #import matplotlib.pyplot as plt
@@ -24,8 +25,11 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
           sources_table_path = 'CAAPR_Source_Table.csv',
           output_dir_path = 'CAAPR_Output',
           temp_dir_path = 'CAAPR_Temp',
+          fit_apertures = True,
+          aperture_table_path = None,
           parallel = True,
-          n_cores = mp.cpu_count(),
+          n_cores = mp.cpu_count()-2,
+          thumbnails = True,
           verbose = True
           ):
 
@@ -43,11 +47,22 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
     if os.path.exists(temp_dir_path):
         shutil.rmtree(temp_dir_path)
     os.mkdir(temp_dir_path)
+    if thumbnails==True:
+        os.mkdir( os.path.join(temp_dir_path,'Thumbnail_Maps') )
+
+    # Prepare CSV file to store aperture dimensions for each source
+    timestamp = str(time.time()).replace('.','')
+    if aperture_table_path==None:
+        aperture_table_path = os.path.join(output_dir_path,'CAAPR_Aperture_Table_'+timestamp+'.csv')
+    aperture_table_header = 'name,semimaj_arcsec,axial_ratio,pos_angle\n'
+    aperture_table_file = open( aperture_table_path, 'a')
+    aperture_table_file.write(aperture_table_header)
+    aperture_table_file.close()
 
     # Loop over each source
     for source in sources_dict.keys():
         source_dict = sources_dict[source]
-        CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, output_dir_path, temp_dir_path, parallel, n_cores, verbose)
+        CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, output_dir_path, temp_dir_path, fit_apertures, aperture_table_path, parallel, n_cores, thumbnails, verbose)
 
 
 
