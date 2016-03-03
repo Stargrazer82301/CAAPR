@@ -75,14 +75,19 @@ def BandsDictFromCSV(bands_table_path):
 # Function that produces a cutout of a given source in a given band
 def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
 
-    # make sure appropriate cutout sub-directories exist in temp directory
+    # Determine whether the user is specificing a directroy full of FITS files in this band (in which case use standardised filename format), or just a single FITS file
+    if os.path.isdir(band_dict['band_dir']):
+        in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
+    elif os.path.isfile(band_dict['band_dir']):
+        in_fitspath = os.path.join( band_dict['band_dir'] )
+
+    # Make sure appropriate cutout sub-directories exist in temp directory
     if not os.path.exists( os.path.join( temp_dir_path, 'Cutouts' ) ):
         os.mkdir( os.path.join( temp_dir_path, 'Cutouts' ) )
     if not os.path.exists( os.path.join( temp_dir_path, 'Cutouts', source_dict['name'] ) ):
         os.mkdir( os.path.join( temp_dir_path, 'Cutouts', source_dict['name'] ) )
 
-    # Using standard filename format, construct full file path, and work out whether the file extension is .fits or .fits.gz
-    in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
+    # Work out whether the file extension is .fits or .fits.gz
     if os.path.exists(in_fitspath+'.fits'):
         in_fitspath = in_fitspath+'.fits'
     elif os.path.exists(in_fitspath+'.fits.gz'):

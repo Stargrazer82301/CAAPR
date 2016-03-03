@@ -51,6 +51,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
 
 
+    # Report to user that they're being a little bit odd
     if kwargs_dict['fit_apertures']==False and kwargs_dict['do_photom']==False:
         print '['+source_dict['name']+'] So you don\'t want aperture fitting, nor do you want actual photometry to happen? Erm, okay.'
 
