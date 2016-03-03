@@ -29,7 +29,7 @@ import CAAPR_Aperture
 
 
 # The main pipeline; the cutout-production, aperture-fitting, and actual photometry parts of the CAAPR process are called in here, as sub-pipelines
-def PipelineMain(source_dict, bands_dict, output_dir_path, temp_dir_path, fit_apertures, aperture_table_path, parallel, n_cores, thumbnails, verbose):
+def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
 
 
@@ -44,48 +44,63 @@ def PipelineMain(source_dict, bands_dict, output_dir_path, temp_dir_path, fit_ap
         if bands_dict[band]['make_cutout']==True:
             raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
         if bands_dict[band]['make_cutout']>0:
-            band_cutout_dir = CAAPR_IO.Cutout(source_dict, bands_dict[band], output_dir_path, temp_dir_path)
+            band_cutout_dir = CAAPR_IO.Cutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
 
             # Update current row of bands table to reflect the path of the freshly-made cutout
             bands_dict[band]['band_dir'] = band_cutout_dir
 
 
 
+    if kwargs_dict['fit_apertures']==False and kwargs_dict['do_photom']==False:
+        print '['+source_dict['name']+'] So you don\'t want aperture fitting, nor do you want actual photometry to happen? Erm, okay.'
+
+
+
     # If aperture file not provided, commence aperture-fitting sub-pipeline
-    if fit_apertures==True:
+    if kwargs_dict['fit_apertures']==True:
 
         # In standard operation, process multiple sources in parallel
         aperture_start = time.time()
         aperture_output_list = []
-        if parallel==True:
+        if kwargs_dict['parallel']==True:
             bands_dict_keys = bands_dict.keys()
             random.shuffle(bands_dict_keys)
-            pool = mp.Pool(processes=n_cores)
+            pool = mp.Pool(processes=kwargs_dict['n_cores'])
             for band in bands_dict_keys:
-                aperture_output_list.append( pool.apply_async( CAAPR_Aperture.PipelineAperture, args=(source_dict, bands_dict[band], output_dir_path, temp_dir_path, thumbnails, verbose) ) )
+                aperture_output_list.append( pool.apply_async( CAAPR_Aperture.PipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
             pool.join()
             aperture_list = [output.get() for output in aperture_output_list if output.successful()==True]
             aperture_list = [aperture for aperture in aperture_list if aperture!=None]
 
         # If parallelisation is disabled, process sources one-at-a-time
-        elif parallel==False:
+        elif kwargs_dict['parallel']==False:
             for band in bands_dict.keys():
-                aperture_output_list.append( CAAPR_Aperture.PipelineAperture(source_dict, bands_dict[band], output_dir_path, temp_dir_path, thumbnails, verbose) )
+                aperture_output_list.append( CAAPR_Aperture.PipelineAperture(source_dict, bands_dict[band], kwargs_dict) )
                 aperture_list = [output for output in aperture_output_list if output!=None]
 
         # Combine all fitted apertures to produce amalgam aperture
-        aperture_combined = CAAPR_Aperture.CombineAperture(aperture_list, source_dict, verbose)
-        if verbose: print '['+source_dict['name']+'] Time taken performing aperture fitting: '+str(time.time()-aperture_start)
+        aperture_combined = CAAPR_Aperture.CombineAperture(aperture_list, source_dict, kwargs_dict)
+        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Time taken performing aperture fitting: '+str(time.time()-aperture_start)[:7]+' seconds.'
 
         # Record aperture properties to file
         aperture_string = str([ source_dict['name'], aperture_combined[0], aperture_combined[1], aperture_combined[2] ])#'name','semimaj_arcsec,axial_ratio,pos_angle\n'
         aperture_string = aperture_string.replace('[','').replace(']','').replace(' ','').replace('\'','')+'\n'
-        aperture_table_file = open( aperture_table_path, 'a')
+        aperture_table_file = open( kwargs_dict['aperture_table_path'], 'a')
         aperture_table_file.write(aperture_string)
         aperture_table_file.close()
 
-        # Create thumbnail image
+        # Create grid of thumbnail images (with console output disabled)
+        CAAPR_IO.ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined)
+
+
+
+    # Commence actual photometry sub-pipeline
+    if kwargs_dict['do_photom']==True:
+
+        # Handle problem where
+        if kwargs_dict['aperture_table_path']==False and kwargs_dict['fit_apertures']==False:
+            raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
 
 
 
