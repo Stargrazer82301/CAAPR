@@ -34,7 +34,7 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
           expansion_factor = 1.25,
           do_photom = True,
           parallel = True,
-          n_cores = mp.cpu_count()-2,
+          n_cores = mp.cpu_count()-4,
           thumbnails = True,
           verbose = True
           ):
@@ -59,6 +59,7 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
     os.mkdir(temp_dir_path)
     if thumbnails==True:
         os.mkdir( os.path.join(temp_dir_path,'Processed_Maps') )
+    os.mkdir(os.path.join(temp_dir_path, 'AstroMagic'))
 
     # Prepare CSV file to store aperture dimensions for each source
     timestamp = str(time.time()).replace('.','')
