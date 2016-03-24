@@ -8,6 +8,7 @@ import time
 import csv
 import shutil
 import psutil
+import multiprocessing as mp
 import numpy as np
 import matplotlib.pyplot as plt
 import astropy.io.fits
@@ -197,7 +198,7 @@ def MemCheck(pod, thresh_fraction=0.75, thresh_factor=15.0, swap_thresh_fraction
                 if pod['verbose']: print '['+pod['id']+'] Waiting for necessary RAM to free up before continuing processing.'
                 wait_initial = False
             wait_count += 1
-            time.sleep(5.0+(10.0*np.random.rand()))
+            time.sleep(5.0+(15.0*np.random.rand()))
         else:
             break
 
@@ -211,6 +212,7 @@ def MemCheck(pod, thresh_fraction=0.75, thresh_factor=15.0, swap_thresh_fraction
 def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined):
     import warnings
     warnings.filterwarnings('ignore')
+    if kwargs_dict['verbose']: print '['+source_dict['name']+'] Producing image grid of aperture thumbnails.'
 
     # Define sub-function to find all possible factors for given value
     def Factors(value):
@@ -225,7 +227,6 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
     # Find how many thumnails need tiling
     list_files = np.array( os.listdir( os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps') ) )
     thumb_files = sum( [ '.fits' in list_file for list_file in list_files ] )
-
 
     # Find grid dimensions that closely match the golden ratio for the number of images being plotted
     phi = (1.0+5.0**0.5)/2.0
@@ -269,21 +270,48 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
     y_title = y_dim - (0.65 * y_margin) #1.0 - ( y_fig_margin + y_fig_subdim + ( np.floor(float(counter)/x_grid) * y_fig_subdim ) + ( np.floor(float(counter)/x_grid) * y_fig_margin ) )
     plt.figtext(x_title/x_dim, y_title/y_dim, source_dict['name'], size=30, color='black', weight='bold', horizontalalignment='left', verticalalignment='top', figure=fig)
 
-    # Begin loop
+
+
+    # Begin preliminary loop, to produce cutouts for thumbnails
+    thumb_pool = mp.Pool()
+    for band_name in bands_list:
+
+        # Check whether cutout exists,
+        img_input = os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits')
+        if not os.path.exists(img_input):
+            continue
+
+        # Calculate desired size of thumbnail, based on fitted apertures, and size of map
+        thumb_rad = np.ceil( 1.1 * aperture_combined[0] * bands_dict[band_name]['annulus_outer'] )
+        img_header = astropy.io.fits.getheader(img_input)
+        img_wcs = astropy.wcs.WCS(img_header)
+        img_pix_arcsec = np.max(3600.0*img_wcs.wcs.cdelt)
+        img_naxis_pix = np.max([img_header['NAXIS1'],img_header['NAXIS1']])
+        img_naxis_arcsec = float(img_naxis_pix) * float(img_pix_arcsec)
+        img_rad_arcsec = img_naxis_arcsec / 2.0
+        if thumb_rad>img_rad_arcsec:
+            thumb_rad = img_rad_arcsec
+
+        # Produce cutouts, and end loop
+        thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, thumb_rad,) )
+    thumb_pool.close()
+    thumb_pool.join()
+
+
+
+    # Begin main thumbnail plotting loop
     for band_name in bands_list:
         for w in range(0, thumb_files):
             if aperture_list[w]['band_name']==band_name:
                 b = w
                 break
             continue
-        thumb_rad = aperture_combined[0] * bands_dict[band_name]['annulus_outer']
 
-        # Assuming cutout exists, appropriately-sized cutoutin current band
+        # Check whether cutout exists,
         img_input = os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits')
         if not os.path.exists(img_input):
             continue
         img_output = os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'_Thumbnail.fits')
-        ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], np.ceil(thumb_rad*1.1), exten=0, outfile=img_output )
 
         # Calculate subplot coordinates
         x_min = x_fig_margin + ( np.mod(float(counter), x_grid) * x_fig_subdim ) + ( np.mod(float(counter), x_grid) * x_fig_margin )
@@ -291,38 +319,58 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         dx = x_fig_subdim
         dy = y_fig_subdim
 
-        # Disable console output whilst plotting images
+        # Disable console output and warnings whilst plotting images
         try:
-            sys.stdout = open(os.devnull, "w")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                sys.stdout = open(os.devnull, "w")
 
-            # Create and format image
-            vars()['subfig'+str(b)] = aplpy.FITSFigure(img_output, figure=fig, subplot=[x_min, y_min, dx, dy])
-            vars()['subfig'+str(b)].show_colorscale(cmap=bands_dict[band_name]['colour_map'], stretch='arcsinh', pmin=7.5, pmax=99.5)
-            vars()['subfig'+str(b)].set_nan_color('black')
-            vars()['subfig'+str(b)].axis_labels.hide()
-            vars()['subfig'+str(b)].tick_labels.hide()
-            vars()['subfig'+str(b)].ticks.hide()
+                # Create and format image
+                vars()['subfig'+str(b)] = aplpy.FITSFigure(img_output, figure=fig, subplot=[x_min, y_min, dx, dy])
+                vars()['subfig'+str(b)].show_colorscale(cmap=bands_dict[band_name]['colour_map'], stretch='arcsinh', pmin=7.5, pmax=99.5)
+                vars()['subfig'+str(b)].set_nan_color('black')
+                vars()['subfig'+str(b)].axis_labels.hide()
+                vars()['subfig'+str(b)].tick_labels.hide()
+                vars()['subfig'+str(b)].ticks.hide()
 
-            # Plot band-specific aperture
-            line_width = 4.0
-            band_ap_semimaj = (2.0*aperture_list[b]['opt_semimaj_arcsec'])/3600.0
-            band_ap_axial_ratio = aperture_list[b]['opt_axial_ratio']
-            band_ap_angle = aperture_list[b]['opt_angle']
-            vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ap_semimaj, band_ap_semimaj/band_ap_axial_ratio, angle=band_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/2.0, linestyle='dotted')
+                # Extract band-specific aperture dimensions
+                band_ap_angle = aperture_list[b]['opt_angle']
+                band_ap_axial_ratio = aperture_list[b]['opt_axial_ratio']
+                band_ap_semimaj = (aperture_list[b]['opt_semimaj_arcsec'])/3600.0
+                band_ap_semimin = band_ap_semimaj / band_ap_axial_ratio
+                band_beam_width = bands_dict[band_name]['beam_arcsec'] / 3600.0
+                band_ap_semimaj = ( band_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
+                band_ap_semimin = ( band_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
 
-            # Plot combined aperture and sky annulus
-            comb_ap_semimaj = (2.0 * aperture_combined[0])/3600.0
-            vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], comb_ap_semimaj, comb_ap_semimaj/aperture_combined[1], angle=aperture_combined[2], edgecolor='#00FF40', facecolor='none', linewidth=line_width)
-            comb_ann_inner_semimaj = (aperture_combined[0] * 2.0 * bands_dict[band_name]['annulus_inner'])/3600.0
-            comb_ann_outer_semimaj = (aperture_combined[0] * 2.0 * bands_dict[band_name]['annulus_outer'])/3600.0
-            vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], comb_ann_inner_semimaj, comb_ann_inner_semimaj/aperture_combined[1], angle=aperture_combined[2], edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
-            vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], comb_ann_outer_semimaj, comb_ann_outer_semimaj/aperture_combined[1], angle=aperture_combined[2], edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
+                # Plot band-specific aperture (if one was provided)
+                line_width = 4.0
+                if bands_dict[band_name]['consider_aperture']==True:
+                    vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*band_ap_semimaj, 2.0*band_ap_semimin, angle=band_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/2.0, linestyle='dotted')
 
-            # Plot label
-            vars()['subfig'+str(b)].add_label(0.035, 0.92, bands_dict[band_name]['band_name'], relative=True, size=20, color='white', horizontalalignment='left')
+                # Extract combined aperture dimensions ()
+                comb_ap_angle = aperture_combined[2]
+                comb_ap_axial_ratio = aperture_combined[1]
+                comb_ap_semimaj = aperture_combined[0]/3600.0
+                print comb_ap_semimaj
+                comb_ap_semimin = comb_ap_semimaj / comb_ap_axial_ratio
+                comb_ap_semimaj = ( comb_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
+                print comb_ap_semimaj
+                comb_ap_semimin = ( comb_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
 
-        # Restore console output
-            sys.stdout = sys.__stdout__
+                # Plot combined aperture
+                vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*comb_ap_semimaj, 2.0*comb_ap_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width)
+
+                # Plot combined background annulus
+                band_ann_inner_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_inner']
+                band_ann_outer_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_outer']
+                vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_inner_semimaj, band_ann_inner_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
+                vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_outer_semimaj, band_ann_outer_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
+
+                # Plot label
+                vars()['subfig'+str(b)].add_label(0.035, 0.92, bands_dict[band_name]['band_name'], relative=True, size=20, color='white', horizontalalignment='left')
+
+                # Restore console output
+                sys.stdout = sys.__stdout__
         except:
             sys.stdout = sys.__stdout__
             pdb.set_trace()
@@ -335,10 +383,24 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
             column_counter = 0
 
     # Save figure, and remove temporary files
-    fig.savefig( os.path.join(kwargs_dict['output_dir_path'],'Aperture_Fitting_Thumbnails',source_dict['name']+'_Thumbnail_Grid.png'), facecolor='white', dpi=75.0)
-    pdb.set_trace()
-    if kwargs_dict['do_photom']==False:
-        shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps'))
+    fig.savefig( os.path.join(kwargs_dict['output_dir_path'],'Aperture_Fitting_Thumbnails',source_dict['name']+'_Thumbnail_Grid.png'), facecolor='white', dpi=150.0)
+    [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '_Thumbnail.fits' in processed_map]
+    gc.collect()
 
 
 
+# Define function for producing an appropriately-sized cutout in current band (with console output disabled), with an equinox header keyword to make APLpy *shut up*
+def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, thumb_rad):
+    img_output = os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_dict['band_name']+'_Thumbnail.fits')
+    try:
+        sys.stdout = open(os.devnull, "w")
+        ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, outfile=img_output )
+        cutout_data, cutout_header = astropy.io.fits.getdata(img_output, header=True)
+        del cutout_header['RADESYS']
+        cutout_header['EQUINOX'] = 2000.0
+        cutout_header['EPOCH'] = 2000.00
+        astropy.io.fits.writeto(img_output, cutout_data, header=cutout_header, clobber=True)
+        sys.stdout = sys.__stdout__
+    except:
+        sys.stdout = sys.__stdout__
+        pdb.set_trace()

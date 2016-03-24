@@ -30,9 +30,9 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
           output_dir_path = 'CAAPR_Output',
           temp_dir_path = 'CAAPR_Temp',
           fit_apertures = True,
-          aperture_table_path = None,
+          aperture_table_path = None,#'CAAPR_Aperture_Table.csv',
           expansion_factor = 1.25,
-          do_photom = True,
+          do_photom = False,
           parallel = True,
           n_cores = mp.cpu_count()-4,
           thumbnails = True,
@@ -61,14 +61,14 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
         os.mkdir( os.path.join(temp_dir_path,'Processed_Maps') )
     os.mkdir(os.path.join(temp_dir_path, 'AstroMagic'))
 
-    # Prepare CSV file to store aperture dimensions for each source
+    # If no aperture table file provided, create and prepare CSV file to store aperture dimensions for each source
     timestamp = str(time.time()).replace('.','')
     if aperture_table_path==None:
         aperture_table_path = os.path.join(output_dir_path,'CAAPR_Aperture_Table_'+timestamp+'.csv')
-    aperture_table_header = 'name,semimaj_arcsec,axial_ratio,pos_angle\n'
-    aperture_table_file = open( aperture_table_path, 'a')
-    aperture_table_file.write(aperture_table_header)
-    aperture_table_file.close()
+        aperture_table_header = 'name,semimaj_arcsec,axial_ratio,pos_angle\n'
+        aperture_table_file = open( aperture_table_path, 'a')
+        aperture_table_file.write(aperture_table_header)
+        aperture_table_file.close()
 
     # Create dictionary of kwarg values
     kwargs_dict = {'sources_table_path':sources_table_path,
@@ -96,7 +96,7 @@ if __name__ == "__main__":
 
     # Run function
     testing = True
-    parallel = True
+    parallel = False
     if testing:
         CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', parallel=parallel)
 

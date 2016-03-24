@@ -94,7 +94,7 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
             if band_dict['remove_stars']==True:
                 if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
                 CAAPR_IO.MemCheck(pod)
-                pod = CAAPR_AstroMagic.Magic(pod)
+                pod = CAAPR_AstroMagic.Magic(pod, source_dict)
 
 
 
