@@ -10,6 +10,9 @@
 
 # -----------------------------------------------------------------
 
+# Ensure Python 3 compatibility
+from __future__ import absolute_import, division, print_function
+
 # Import standard modules
 import os
 
@@ -22,7 +25,7 @@ class JobScript(object):
     """
 
     def __init__(self, path, arguments, cluster, skirt_path, mpi_command, modules, walltime, nodes, ppn, name=None,
-                 mail=False, full_node=False):
+                 mail=False, full_node=False, bind_to_cores=False, threads_per_core=1):
 
         """
         The constructor takes the following arguments:
@@ -41,6 +44,8 @@ class JobScript(object):
             potentially increasing communication time and being affected by interference of other programs (from
             other HPC users). Do not set this flag if you don't care about the reproducibility of your simulation
             in terms of computation time.
+        :param bind_to_cores: force process binding to cores
+        :param threads_per_core: the number of hyperthreads per core
         :return:
         """
 
@@ -69,8 +74,8 @@ class JobScript(object):
         hybrid_processes = 1
         if arguments.parallel.threads > 1:
 
-            # The number of processes per node = [processors per node] / [threads (processors) per process]
-            hybrid_processes = ppn / arguments.parallel.threads
+            # The number of processes per node = [processors per node] //(integer division) [threads (processors) per process]
+            hybrid_processes = ppn // arguments.parallel.threads
 
             # For hybrid (or threads) mode we always request the full node.
             # Therefore, we determine the number of cores on the node.
@@ -115,7 +120,8 @@ class JobScript(object):
         if arguments.parallel.threads > 1 or full_node: mpi_command += " --hybrid " + str(hybrid_processes)
 
         # Write the command string to the job script
-        self.script.write(arguments.to_command(skirt_path, mpi_command, scheduler=True, to_string=True) + "\n")
+        command = arguments.to_command(skirt_path, mpi_command, scheduler=True, bind_to_cores=bind_to_cores, threads_per_core=threads_per_core, to_string=True)
+        self.script.write(command + "\n")
 
         # Close the script file
         self.close()

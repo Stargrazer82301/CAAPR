@@ -708,6 +708,32 @@ class SkiFile:
         # Invalid component id
         else: raise ValueError("Invalid component identifier (should be integer or string)")
 
+    ## This functino returns all properties of the stellar component with the specified id
+    def get_stellar_component_properties(self, component_id):
+
+        # Get the stellar component
+        stellar_component = self.get_stellar_component(component_id)
+
+        properties = dict()
+
+        def add_properties(element, dictionary):
+            for key, value in element.items(): properties[key] = value
+
+        def add_children(element, dictionary):
+
+            dictionary["children"] = dict()
+            for child in element.getchildren():
+
+                dictionary["children"][child.tag] = dict()
+
+                add_properties(child, dictionary["children"][child.tag])
+                add_children(child, dictionary["children"][child.tag])
+
+        add_properties(stellar_component, properties)
+        add_children(stellar_component, properties)
+
+        return properties
+
     ## This functions returns the normalization of the stellar component with the specified id
     def get_stellar_component_normalization(self, component_id):
 
@@ -747,6 +773,15 @@ class SkiFile:
 
             # Return the luminosity and the wavelength as quantities
             return luminosity, wavelength
+
+    ## For oligochromatic simulations
+    def set_stellar_component_luminosities(self, component_id, luminosities):
+
+        # Get the stellar component normalization of the component
+        component = self.get_stellar_component(component_id)
+
+        # Set the 'luminosities' attribute
+        component.set("luminosities", " ".join(map(str, luminosities)))
 
     ## This function sets the luminosity of the stellar component with the specified id,
     #  - if filter_or_wavelength is None, the specified luminosity [as Astropy quantity] is interpreted as a bolometric luminosity
@@ -890,6 +925,36 @@ class SkiFile:
         # Return the geometry element of the stellar component
         return get_unique_element(stellar_component, "geometry")
 
+    ## This function rotates the geometry of the specified stellar component
+    def rotate_stellar_component(self, component_id, alpha, beta, gamma):
+
+        # alpha: 0 to 360 degrees
+        # beta: 0 to 180 degrees
+        # gamma: 0 to 360 degrees
+
+        # Get the geomery of the stellar component
+        geometry = self.get_stellar_component_geometry(component_id)
+
+        # Get the parent
+        parent = geometry.getparent()
+
+        # Remove the old geometry
+        parent.remove(geometry)
+
+        # Create the new rotated geometry
+        attrs = {"euleralpha": str_from_angle(alpha), "eulerbeta": str_from_angle(beta), "eulergamma": str_from_angle(gamma)}
+        new_geometry = parent.makeelement("RotateGeometryDecorator", attrs)
+
+        attrs = {"type": "Geometry"}
+        geometry_of_new_geometry = new_geometry.makeelement("geometry", attrs)
+        new_geometry.append(geometry_of_new_geometry)
+
+        # Add the original geometry that has to be rotated
+        geometry_of_new_geometry.append(geometry)
+
+        # Add the new geometry to the parent
+        parent.append(new_geometry)
+
     ## This function sets the geometry of the specified stellar component to a FITS file
     def set_stellar_component_fits_geometry(self, component_id, filename, pixelscale, position_angle, inclination, x_size, y_size, x_center, y_center, scale_height):
 
@@ -903,10 +968,58 @@ class SkiFile:
         parent.remove(geometry)
 
         # Create and add the new geometry
-        attrs = {"filename": filename, "pixelScale": str(pixelscale), "positionAngle": str(position_angle.to("deg")) + " deg",
-                 "inclination": str(inclination.to("deg")) + " deg", "xelements": str(x_size), "yelements": str(y_size),
+        attrs = {"filename": filename, "pixelScale": str(pixelscale), "positionAngle": str_from_angle(position_angle),
+                 "inclination": str_from_angle(inclination), "xelements": str(x_size), "yelements": str(y_size),
                  "xcenter": str(x_center), "ycenter": str(y_center), "axialScale": str(scale_height)}
         parent.append(parent.makeelement("ReadFitsGeometry", attrs))
+
+    ## This function sets the geometry of the specified stellar component.
+    def set_stellar_component_geometry(self, component_id, model):
+
+        from astropy.coordinates import Angle
+        from ...modeling.basics.models import SersicModel, ExponentialDiskModel
+
+        # Rotation:
+        #  alpha: 0 to 360 degrees
+        #  beta: 0 to 180 degrees
+        #  gamma: 0 to 360 degrees
+
+        # Sersic model
+        if isinstance(model, SersicModel):
+
+            # Set the Sersic geometry (with flattening)
+            self.set_stellar_component_sersic_geometry(component_id, model.index, model.effective_radius, z_flattening=model.flattening)
+
+            # Rotate the Sersic geometry with the tilt angle
+            alpha = Angle(0.0, "deg")
+            beta = model.tilt
+            gamma = Angle(0.0, "deg")
+            if beta < Angle(0.0, "deg"): # beta must be between 0 and 180 degrees, if beta is negative, rotate over z axis with 180 degrees first
+                alpha = - Angle(180, "deg")
+                beta = - beta
+            self.rotate_stellar_component(component_id, alpha, beta, gamma)
+
+        # Exponential Disk
+        elif isinstance(model, ExponentialDiskModel):
+
+            # Set the exponential disk geometry
+            radial_scale = model.radial_scale
+            axial_scale = model.axial_scale
+            radial_truncation = model.radial_truncation
+            axial_truncation = model.axial_truncation
+            inner_radius = model.inner_radius
+            self.set_stellar_component_expdisk_geometry(component_id, radial_scale, axial_scale, radial_truncation, axial_truncation, inner_radius)
+
+            # Rotate the exponential disk geometry with the tilt angle
+            alpha = Angle(0.0, "deg")
+            beta = model.tilt
+            gamma = Angle(0.0, "deg")
+            if beta < Angle(0.0, "deg"): # beta must be between 0 and 180 degrees, if beta is negative, rotate over z axis with 180 degrees first
+                alpha = - Angle(180, "deg")
+                beta = - beta
+            self.rotate_stellar_component(component_id, alpha, beta, gamma)
+
+        else: raise ValueError("Other models other than Sersic and ExponentialDisk are not supported yet")
 
     ## This function sets the geometry of the specified stellar component to a Sersic profile with an specific y and z flattening
     def set_stellar_component_sersic_geometry(self, component_id, index, radius, y_flattening=1, z_flattening=1):
@@ -924,15 +1037,17 @@ class SkiFile:
         attrs = {"yFlattening": str(y_flattening), "zFlattening": str(z_flattening)}
         new_geometry = parent.makeelement("TriaxialGeometryDecorator", attrs)
 
-        attrs = {"type": "Geometry"}
+        attrs = {"type": "SpheGeometry"}
         geometry_of_new_geometry = new_geometry.makeelement("geometry", attrs)
+        new_geometry.append(geometry_of_new_geometry)
 
         # Add sersic profile to the geometry
         attrs = {"index": str(index), "radius": str(radius)}
-        geometry_of_new_geometry.append(geometry_of_new_geometry.makeelement("SersicGeometry", attrs))
+        sersic_geometry = geometry_of_new_geometry.makeelement("SersicGeometry", attrs)
+        geometry_of_new_geometry.append(sersic_geometry)
 
         # Add the new geometry
-        parent.append(geometry)
+        parent.append(new_geometry)
 
     ## This function sets the geometry of the specified stellar component to an exponential disk profile
     def set_stellar_component_expdisk_geometry(self, component_id, radial_scale, axial_scale, radial_truncation=0, axial_truncation=0, inner_radius=0):
@@ -948,7 +1063,10 @@ class SkiFile:
 
         # Create and add the new exponential disk geometry
         attrs = {"radialScale": str(radial_scale), "axialScale": str(axial_scale), "radialTrunc": str(radial_truncation), "axialTrunc": str(axial_truncation), "innerRadius": str(inner_radius)}
-        parent.append(parent.makeelement("ExpDiskGeometry", attrs))
+        new_geometry = parent.makeelement("ExpDiskGeometry", attrs)
+
+        # Add the new geometry
+        parent.append(new_geometry)
 
     ## This function returns the SED template of the specified stellar component
     def get_stellar_component_sed(self, component_id):
@@ -1189,6 +1307,47 @@ class SkiFile:
         for name in self.get_instrument_names():
             self.remove_instrument(name)
 
+    ## This function adds an instrument
+    def add_instrument(self, name, instrument):
+
+        from ...modeling.basics.instruments import SEDInstrument, SimpleInstrument, FullInstrument
+
+        distance = instrument.distance
+        inclination = instrument.inclination
+        azimuth = instrument.azimuth
+        position_angle = instrument.position_angle
+
+        if isinstance(instrument, SEDInstrument):
+
+            # Add the SED instrument to the ski file
+            self.add_sed_instrument(name, distance, inclination, azimuth, position_angle)
+
+        elif isinstance(instrument, SimpleInstrument):
+
+            field_x = instrument.field_x
+            field_y = instrument.field_y
+            pixels_x = instrument.pixels_x
+            pixels_y = instrument.pixels_y
+            center_x = instrument.center_x
+            center_y = instrument.center_y
+
+            # Add the simple instrument to the ski file
+            self.add_simple_instrument(name, distance, inclination, azimuth, position_angle, field_x, field_y, pixels_x, pixels_y, center_x, center_y)
+
+        elif isinstance(instrument, FullInstrument):
+
+            field_x = instrument.field_x
+            field_y = instrument.field_y
+            pixels_x = instrument.pixels_x
+            pixels_y = instrument.pixels_y
+            center_x = instrument.center_x
+            center_y = instrument.center_y
+
+            # Add the full instrument to the ski file
+            self.add_full_instrument(name, distance, inclination, azimuth, position_angle, field_x, field_y, pixels_x, pixels_y, center_x, center_y)
+
+        else: raise ValueError("Instruments other than SimpleInstrument, SEDInstrument and FullInstrument are not yet supported")
+
     ## This function adds a FullInstrument to the instrument system
     def add_full_instrument(self, name, distance, inclination, azimuth, position_angle, field_x, field_y,
                             pixels_x, pixels_y, center_x, center_y, scattering_levels=0):
@@ -1197,8 +1356,8 @@ class SkiFile:
         instruments = self.get_instruments(as_list=False)
 
         # Make and add the new FullInstrument
-        attrs = {"instrumentName": name, "distance": str(distance), "inclination": str(inclination),
-                 "azimuth": str(azimuth), "positionAngle": str(position_angle), "fieldOfViewX": str(field_x),
+        attrs = {"instrumentName": name, "distance": str(distance), "inclination": str_from_angle(inclination),
+                 "azimuth": str_from_angle(azimuth), "positionAngle": str_from_angle(position_angle), "fieldOfViewX": str(field_x),
                  "fieldOfViewY": str(field_y), "pixelsX": str(pixels_x), "pixelsY": str(pixels_y),
                  "centerX": str(center_x), "centerY": str(center_y), "scatteringLevels": str(scattering_levels)}
         instruments.append(instruments.makeelement("FullInstrument", attrs))
@@ -1211,8 +1370,8 @@ class SkiFile:
         instruments = self.get_instruments(as_list=False)
 
         # Make and add the new SimpleInstrument
-        attrs = {"instrumentName": name, "distance": str(distance), "inclination": str(inclination),
-                 "azimuth": str(azimuth), "positionAngle": str(position_angle), "fieldOfViewX": str(field_x),
+        attrs = {"instrumentName": name, "distance": str(distance), "inclination": str_from_angle(inclination),
+                 "azimuth": str_from_angle(azimuth), "positionAngle": str_from_angle(position_angle), "fieldOfViewX": str(field_x),
                  "fieldOfViewY": str(field_y), "pixelsX": str(pixels_x), "pixelsY": str(pixels_y),
                  "centerX": str(center_x), "centerY": str(center_y)}
         instruments.append(instruments.makeelement("SimpleInstrument", attrs))
@@ -1224,8 +1383,8 @@ class SkiFile:
         instruments = self.get_instruments(as_list=False)
 
         # Make and add the new SEDInstrument
-        attrs = {"instrumentName": name, "distance": str(distance), "inclination": str(inclination),
-                 "azimuth": str(azimuth), "positionAngle": str(position_angle)}
+        attrs = {"instrumentName": name, "distance": str(distance), "inclination": str_from_angle(inclination),
+                 "azimuth": str_from_angle(azimuth), "positionAngle": str_from_angle(position_angle)}
         instruments.append(instruments.makeelement("SEDInstrument", attrs))
 
     ## This function returns the instrument with the specified name
@@ -1489,5 +1648,12 @@ def set_quantity(element, name, value, default_unit=None):
 
 def recursive_dict(element):
     return element.tag, dict(map(recursive_dict, element)) or element.text
+
+# -----------------------------------------------------------------
+
+def str_from_angle(angle):
+
+    try: return str(angle.to("deg").value) + " deg"
+    except AttributeError: return str(angle)
 
 # -----------------------------------------------------------------

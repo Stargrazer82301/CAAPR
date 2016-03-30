@@ -64,6 +64,42 @@ skirt_run_dir = os.path.join(skirt_root_dir, "run") if skirt_path is not None el
 
 # -----------------------------------------------------------------
 
+def skirt_is_present():
+
+    """
+    This function ...
+    :return:
+    """
+
+    return skirt_path is not None
+
+# -----------------------------------------------------------------
+
+def qmake_path():
+
+    """
+    This function ...
+    :return:
+    """
+
+    try: output = subprocess.check_output(["which", "qmake"]).split("\n")[0]
+    except subprocess.CalledProcessError: return None
+
+    return output
+
+# -----------------------------------------------------------------
+
+def qmake_is_present():
+
+    """
+    This function ...
+    :return:
+    """
+
+    return qmake_path() is not None
+
+# -----------------------------------------------------------------
+
 def pts_installation_is_conform():
 
     """
@@ -73,6 +109,17 @@ def pts_installation_is_conform():
 
     pts_root_dir_name = filesystem.name(pts_root_dir)
     return pts_root_dir_name == "PTS"
+
+# -----------------------------------------------------------------
+
+def skirt_installation_is_conform():
+
+    """
+    This function ...
+    """
+
+    skirt_root_dir_name = filesystem.name(skirt_root_dir)
+    return skirt_root_dir_name == "SKIRT"
 
 # -----------------------------------------------------------------
 
@@ -473,6 +520,8 @@ def find_matches(scripts, name):
 
     """
     This function ...
+    :param scripts:
+    :param name:
     :return:
     """
 
@@ -499,6 +548,7 @@ def find_matching_script(script_name):
 
     """
     This function ...
+    :param script_name:
     :return:
     """
 

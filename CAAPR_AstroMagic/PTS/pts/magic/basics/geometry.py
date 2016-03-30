@@ -49,6 +49,30 @@ class Composite(object):
 
     # -----------------------------------------------------------------
 
+    @property
+    def x(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.base.x
+
+    # -----------------------------------------------------------------
+
+    @property
+    def y(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.base.y
+
+    # -----------------------------------------------------------------
+
     def to_mask(self, x_size, y_size):
 
         """
@@ -80,6 +104,130 @@ class Composite(object):
         else: suffix = ""
 
         pass
+
+    # -----------------------------------------------------------------
+
+    def __add__(self, extent):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return Composite(self.base + extent, self.exclude + extent, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def __iadd__(self, extent):
+
+        """
+        This function ...
+        :return:
+        """
+
+        self.base += extent
+        self.exclude += extent
+
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __sub__(self, extent):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return Composite(self.base - extent, self.exclude - extent, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def __isub__(self, extent):
+
+        """
+        This function ...
+        :return:
+        """
+
+        self.base -= extent
+        self.exclude -= extent
+
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __mul__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return Composite(self.base * value, self.exclude * value, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def __imul__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        self.base *= value
+        self.exclude *= value
+
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __div__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return Composite(self.base / value, self.exclude / value, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def __idiv__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        self.base /= value
+        self.exclude /= value
+
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __truediv__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.__div__(value)
+
+    # -----------------------------------------------------------------
+
+    def __itruediv__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        self.__idiv__(value)
+
+        return self
 
 # -----------------------------------------------------------------
 
@@ -181,6 +329,21 @@ class Coordinate(Position):
 
     # -----------------------------------------------------------------
 
+    def __iadd__(self, extent):
+
+        """
+        This function ...
+        :param extent:
+        :return:
+        """
+
+        self.x += extent.x
+        self.y += extent.y
+
+        return self
+
+    # -----------------------------------------------------------------
+
     def __sub__(self, extent):
 
         """
@@ -190,6 +353,93 @@ class Coordinate(Position):
         """
 
         return Coordinate(self.x - extent.x, self.y - extent.y, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def __isub__(self, extent):
+
+        """
+        This function ...
+        :param extent:
+        :return:
+        """
+
+        self.x -= extent.x
+        self.y -= extent.y
+
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __mul__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return Coordinate(self.x, self.y, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def __imul__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __div__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return Coordinate(self.x, self.y, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def __idiv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __truediv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.__div__(value)
+
+    # -----------------------------------------------------------------
+
+    def __itruediv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.__idiv__(value)
 
 # -----------------------------------------------------------------
 
@@ -213,6 +463,30 @@ class Line(object):
 
         # Set meta information
         self.meta = meta if meta is not None else dict()
+
+    # -----------------------------------------------------------------
+
+    @property
+    def x(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return 0.5 * (self.start.x + self.end.x)
+
+    # -----------------------------------------------------------------
+
+    @property
+    def y(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return 0.5 * (self.start.y + self.end.y)
 
     # -----------------------------------------------------------------
 
@@ -361,6 +635,20 @@ class Line(object):
 
     # -----------------------------------------------------------------
 
+    def __iadd__(self, extent):
+
+        """
+        This function ...
+        :return:
+        """
+
+        self.start += extent
+        self.end += extent
+
+        return self
+
+    # -----------------------------------------------------------------
+
     def __sub__(self, extent):
 
         """
@@ -370,6 +658,21 @@ class Line(object):
         """
 
         return Line(self.start - extent, self.end - extent, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def __isub__(self, extent):
+
+        """
+        This function ...
+        :param extent:
+        :return:
+        """
+
+        self.start -= extent
+        self.end -= extent
+
+        return self
 
 # -----------------------------------------------------------------
 
@@ -418,6 +721,76 @@ class Circle(object):
         """
 
         return math.pi * self.radius**2
+
+    # -----------------------------------------------------------------
+
+    def __mul__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return Circle(self.center, self.radius * value, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def __imul__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        self.radius *= value
+
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __div__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return Circle(self.center, self.radius / value, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def __idiv__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        self.radius /= value
+
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __truediv__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.__div__(value)
+
+    # -----------------------------------------------------------------
+
+    def __itruediv__(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.__idiv__(value)
 
     # -----------------------------------------------------------------
 
@@ -624,6 +997,20 @@ class Ellipse(object):
 
     # -----------------------------------------------------------------
 
+    def __imul__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        self.radius *= value
+
+        return self
+
+    # -----------------------------------------------------------------
+
     def __div__(self, value):
 
         """
@@ -636,6 +1023,20 @@ class Ellipse(object):
 
     # -----------------------------------------------------------------
 
+    def __idiv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        self.radius /= value
+
+        return self
+
+    # -----------------------------------------------------------------
+
     def __truediv__(self, value):
 
         """
@@ -645,6 +1046,20 @@ class Ellipse(object):
         """
 
         return Ellipse(self.center, self.radius / value, self.angle)
+
+    # -----------------------------------------------------------------
+
+    def __itruediv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        self.radius /= value
+
+        return self
 
     # -----------------------------------------------------------------
 

@@ -39,9 +39,6 @@ class Region(list):
         # Call the constructor of the base class
         super(Region, self).__init__()
 
-        # List of shapes to exclude
-        self.exclude = []
-
     # -----------------------------------------------------------------
 
     @classmethod
@@ -61,8 +58,11 @@ class Region(list):
         region = cls()
 
         # Open the region file with pyregion and check if its in image coordinates
-        _region = pyregion.open(path)
-        if not _region.check_imagecoord(): raise ValueError("Region is not in image coordinates")
+        try:
+            _region = pyregion.open(path)
+            if not _region.check_imagecoord(): raise ValueError("Region is not in image coordinates")
+        except ValueError: # If a ValueError comes out, assume the region file is empty (no shapes)
+            _region = []
 
         # Loop over all shapes in the region
         for shape in _region:
@@ -272,6 +272,37 @@ class Region(list):
         """
 
         return [shape for shape in self if isinstance(shape, Ellipse)]
+
+    # -----------------------------------------------------------------
+
+    def cropped(self, x_min, x_max, y_min, y_max):
+
+        """
+        This function ...
+        :param x_min:
+        :param x_max:
+        :param y_min:
+        :param y_max:
+        :return:
+        """
+
+        # Create a new region
+        region = Region()
+
+        # Loop over all shapes
+        for shape in self:
+
+            # Ignore shapes that fall outside of the crop region
+            if shape.x < x_min or shape.x > x_max or shape.y < y_min or shape.y > y_max: continue
+
+            # Create a new shape that has its coordinates shifted
+            new_shape = shape - Extent(x_min, y_min)
+
+            # Add the new shape to the new region
+            region.append(new_shape)
+
+        # Return the new region
+        return region
 
     # -----------------------------------------------------------------
 

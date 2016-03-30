@@ -32,6 +32,17 @@ def cwd():
 
 # -----------------------------------------------------------------
 
+def home():
+
+    """
+    This function returns the full path to the home directory
+    :return:
+    """
+
+    return os.path.expanduser('~')
+
+# -----------------------------------------------------------------
+
 def absolute(path):
 
     """
@@ -169,6 +180,19 @@ def create_temporary_directory(prefix=None):
 
 # -----------------------------------------------------------------
 
+def clear_directory(path):
+
+    """
+    This function ...
+    :param path:
+    :return:
+    """
+
+    for file_path in files_in_path(path): remove_file(file_path)
+    for directory_path in directories_in_path(path): remove_directory(directory_path)
+
+# -----------------------------------------------------------------
+
 def remove_directory(path):
 
     """
@@ -194,7 +218,7 @@ def remove_file(path):
 # -----------------------------------------------------------------
 
 def files_in_path(path=None, recursive=False, ignore_hidden=True, extension=None, contains=None, not_contains=None,
-                  extensions=False, returns="path"):
+                  extensions=False, returns="path", exact_name=None, startswith=None, endswith=None):
 
     """
     This function ...
@@ -206,6 +230,9 @@ def files_in_path(path=None, recursive=False, ignore_hidden=True, extension=None
     :param not_contains:
     :param extensions:
     :param returns: a string ("path", "name", or "directory") OR a list [], with elements equal to "path", "name" or "directory" (e.g. [path, name] or [name, directory])
+    :param exact_name:
+    :param startswith:
+    :param endswith:
     :return:
     """
 
@@ -247,6 +274,13 @@ def files_in_path(path=None, recursive=False, ignore_hidden=True, extension=None
         # Ignore filenames that do contain a certain string that it should not contain, if specified
         if not_contains is not None and not_contains in item_name: continue
 
+        # Ignore filenames that do not match the exact filename, if specified
+        if exact_name is not None and exact_name != item_name: continue
+
+        # Ignore filenames that do not start or end with the specified strings
+        if startswith is not None and not item_name.startswith(startswith): continue
+        if endswith is not None and not item_name.endswith(endswith): continue
+
         # Check if the current item is a file; if not skip it
         if not os.path.isfile(item_path): continue
 
@@ -276,7 +310,7 @@ def files_in_path(path=None, recursive=False, ignore_hidden=True, extension=None
 
 # -----------------------------------------------------------------
 
-def directories_in_path(path=None, recursive=False, ignore_hidden=True, contains=None, not_contains=None, returns="path"):
+def directories_in_path(path=None, recursive=False, ignore_hidden=True, contains=None, not_contains=None, returns="path", exact_name=None, startswith=None, endswith=None):
 
     """
     This function ...
@@ -286,6 +320,9 @@ def directories_in_path(path=None, recursive=False, ignore_hidden=True, contains
     :param contains:
     :param not_contains:
     :param returns: a string ("path", "name", or "directory") OR a list [], with elements equal to "path", "name" or "directory" (e.g. [path, name] or [name, directory])
+    :param exact_name:
+    :param startswith:
+    :param endswith:
     :return:
     """
 
@@ -319,6 +356,13 @@ def directories_in_path(path=None, recursive=False, ignore_hidden=True, contains
 
         # Ignore names that do contain a certain string that it should not contain, if specified
         if not_contains is not None and not_contains in item: continue
+
+        # If the directory name does not match the exact name, skip it
+        if exact_name is not None and exact_name != item: continue
+
+        # Ignore directory names that do not start or end with the specified strings
+        if startswith is not None and not item.startswith(startswith): continue
+        if endswith is not None and not item.endswith(endswith): continue
 
         # Check if the current item is a directory; if not skip it
         if not os.path.isdir(item_path): continue

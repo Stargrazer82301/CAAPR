@@ -51,6 +51,17 @@ fwhms = {"GALEX FUV": 4.48 * Unit("arcsec"),
 
 # -----------------------------------------------------------------
 
+#fwhms_from_finding = {"2MASS H": 4.640929858306589 * Unit("arcsec"),
+#                      "2MASS J": 4.580828087551186 * Unit("arcsec"),
+#                      "2MASS Ks": 4.662813601376219 * Unit("arcsec"),
+#                      "SDSS g": 2.015917936060279 * Unit("arcsec"),
+#                      "SDSS i": 1.85631074608032 * Unit("arcsec"),
+#                      "SDSS r": 2.026862297071852 * Unit("arcsec"),
+#                      "SDSS u": 2.327165667182196 * Unit("arcsec"),
+#                      "SDSS z": 1.841443699129355 * Unit("arcsec")}
+
+# -----------------------------------------------------------------
+
 # The total H-alpha flux (reference: FAR-ULTRAVIOLET AND Ha IMAGING OF NEARBY SPIRAL GALAXIES: THE OB STELLAR,
 # POPULATION IN THE DIFFUSE IONIZED GAS (Hoopes et. al 2001)
 halpha_flux = 7.8e40 * Unit("erg/s")
@@ -85,6 +96,10 @@ class DataInitializer(PreparationComponent):
 
         # The reference image frame
         self.reference = None
+
+        # The galactic and stellar catalogs
+        self.galactic_catalog = None
+        self.stellar_catalog = None
 
     # -----------------------------------------------------------------
 
@@ -174,6 +189,10 @@ class DataInitializer(PreparationComponent):
         # Run the catalog importer
         self.catalog_importer.run(self.reference)
 
+        # Get the galactic and stellar catalogs
+        self.galactic_catalog = self.catalog_importer.galactic_catalog
+        self.stellar_catalog = self.catalog_importer.stellar_catalog
+
     # -----------------------------------------------------------------
 
     def check_images(self):
@@ -182,6 +201,9 @@ class DataInitializer(PreparationComponent):
         This function ...
         :return:
         """
+
+        # Inform the user
+        log.info("Checking the input images ...")
 
         # Loop over all subdirectories of the data directory
         for path in filesystem.directories_in_path(self.data_path, not_contains="bad", returns="path"):
@@ -201,11 +223,9 @@ class DataInitializer(PreparationComponent):
                 # Debugging
                 log.debug("Checking " + image_path + " ...")
 
-                # Determine the name used to identify this image for the preparation routines
-                prep_name = self.prep_names[image_name]
-
                 # Determine the output path for this image
-                output_path = self.prep_paths[image_name]
+                prep_name = self.prep_names[image_name]
+                output_path = self.prep_paths[prep_name]
 
                 # Check whether this image already has an initialized image
                 final_path = filesystem.join(output_path, "initialized.fits")
@@ -226,14 +246,14 @@ class DataInitializer(PreparationComponent):
         # Loop over all image paths
         for image_path in self.paths:
 
-            # Name
+            # Get the name of the image
             image_name = filesystem.strip_extension(filesystem.name(image_path))
 
             # Determine the name used to identify this image for the preparation routines
             prep_name = self.prep_names[image_name]
 
             # Determine the output path for this image
-            output_path = self.prep_paths[image_name]
+            output_path = self.prep_paths[prep_name]
 
             # Set the path to the region of bad pixels
             bad_region_path = filesystem.join(self.data_path, "bad", prep_name + ".reg")
@@ -250,35 +270,90 @@ class DataInitializer(PreparationComponent):
             importer = ImageImporter()
             importer.run(image_path, bad_region_path, fwhm=fwhm)
 
-            # Add the image that has to be processed to the list
-            #self.images.append(importer.image)
-
+            # Get the imported image
             image = importer.image
+
+            # Get the mask of bad pixels
+            bad_mask = image.masks.bad if "bad" in image.masks else None
 
             # -----------------------------------------------------------------
 
+            # Remove frames other than the primary and errors frame
+            for frame_name in image.frames:
+                if frame_name == "primary" or frame_name == "errors": continue
+                image.remove_frame(frame_name)
+
+            # -----------------------------------------------------------------
+
+            #sources_output_path = filesystem.join(output_path, "sources")
+
+            # Already done ...
+            #if filesystem.is_directory(sources_output_path):
+
+            #    if prep_name in fwhms: fwhm = fwhms[prep_name]
+            #    else: fwhm = fwhms_from_finding[prep_name]
+
+            #    # Normalize the Halpah image to the published flux
+            #    if "Halpha" in prep_name:
+
+            #        image.frames.primary.normalize(halpha_flux.to("erg/s").value)
+            #        image.unit = "erg/s"
+
+            #    # Set the FWHM
+            #    image.fwhm = fwhm
+
+            #    # Determine the path to the initialized image
+            #    path = filesystem.join(output_path, "initialized.fits")
+
+            #    # Save the image
+            #    image.save(path)
+
+            #    # Clear the importer
+            #    importer.clear()
+
+            # Still to be done
+            #else:
+
+            # Normalize the Halpha image to the published flux
+            if "Halpha" in prep_name:
+
+                image.frames.primary.normalize(halpha_flux.to("erg/s").value)
+                image.unit = "erg/s"
+
+            # Don't look for stars in the Halpha image
+            if "Halpha" in prep_name: self.source_finder.config.find_stars = False
+            else: self.source_finder.config.find_stars = True  # still up to the SourceFinder to decide whether stars should be found (based on the filter)
+
+            # Fix: don't look for other sources in the IRAC images
+            if "IRAC" in prep_name: self.source_finder.config.find_other_sources = False
+            else: self.source_finder.config.find_other_sources = True
+
             # Run the source finder on this image
-            self.source_finder.run(image.frames.primary, self.catalog_importer.galactic_catalog, self.catalog_importer.stellar_catalog)
+            self.source_finder.run(image.frames.primary, self.galactic_catalog, self.stellar_catalog, bad_mask=bad_mask)
+
+            # Determine the path to the "sources" directory within the output path for this image
+            sources_output_path = filesystem.join(output_path, "sources")
+            filesystem.create_directory(sources_output_path)
 
             # Save the galaxy region
             galaxy_region = self.source_finder.galaxy_region
-            path = filesystem.join(output_path, "galaxies.reg")
-            galaxy_region.save(path)
+            galaxy_region_path = filesystem.join(sources_output_path, "galaxies.reg")
+            galaxy_region.save(galaxy_region_path)
 
             # Save the star region
             star_region = self.source_finder.star_region
-            path = filesystem.join(output_path, "stars.reg")
-            if star_region is not None: star_region.save(path)
+            star_region_path = filesystem.join(sources_output_path, "stars.reg")
+            if star_region is not None: star_region.save(star_region_path)
 
             # Save the saturation region
             saturation_region = self.source_finder.saturation_region
-            path = filesystem.join(output_path, "saturation.reg")
-            if saturation_region is not None: saturation_region.save(path)
+            saturation_region_path = filesystem.join(sources_output_path, "saturation.reg")
+            if saturation_region is not None: saturation_region.save(saturation_region_path)
 
             # Save the region of other sources
             other_region = self.source_finder.other_region
-            path = filesystem.join(output_path, "other_sources.reg")
-            other_region.save(path)
+            path = filesystem.join(sources_output_path, "other_sources.reg")
+            if other_region is not None: other_region.save(path)
 
             # -----------------------------------------------------------------
 
@@ -292,10 +367,10 @@ class DataInitializer(PreparationComponent):
             if self.source_finder.star_segments is not None: segments.add_frame(self.source_finder.star_segments, "stars")
 
             # Add the segmentation map of the other sources
-            segments.add_frame(self.source_finder.other_segments, "other_sources")
+            if self.source_finder.other_segments is not None: segments.add_frame(self.source_finder.other_segments, "other_sources")
 
             # Save the FITS file with the segmentation maps
-            path = filesystem.join(output_path, "segments.fits")
+            path = filesystem.join(sources_output_path, "segments.fits")
             segments.save(path)
 
             # -----------------------------------------------------------------
@@ -306,7 +381,7 @@ class DataInitializer(PreparationComponent):
             # -----------------------------------------------------------------
 
             # Determine the path to the initialized image
-            path = filesystem.join(self.prep_paths[image.name], "initialized.fits")
+            path = filesystem.join(output_path, "initialized.fits")
 
             # Save the image
             image.save(path)

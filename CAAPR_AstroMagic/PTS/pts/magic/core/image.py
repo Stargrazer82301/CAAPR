@@ -13,13 +13,14 @@
 from __future__ import absolute_import, division, print_function
 
 # Import standard modules
+import copy
 import numpy as np
 import matplotlib.pyplot as plt
 
 # Import astronomical modules
 import aplpy
 from astropy.io import fits
-from astropy import units as u
+from astropy.units import Unit
 
 # Import the relevant PTS classes and modules
 from ..basics.layers import Layers
@@ -271,18 +272,25 @@ class Image(object):
 
         plane_index = 0
 
-        header = None
+        # Create a header from the wcs
+        if self.wcs is not None: header = self.wcs.to_header() # Create a header from the coordinate system
+        else: header = fits.Header() # Construct a new header
+
+        # Get the names of the frames
+        frame_names = self.frames.keys()
+
+        # Sort the frame names so that 'primary' is always first
+        if "primary" in frame_names:
+            frame_names.remove("primary")
+            frame_names.insert(0, "primary")
 
         # Export all frames to the specified file
-        for frame_name in self.frames:
+        for frame_name in frame_names:
 
             # Inform the user that this frame will be saved to the image file
             log.info("Exporting the " + frame_name + " frame to " + path)
 
-            if header is None: header = self.frames[frame_name].header
-
-            # Check if the coordinate system of this frame matches that of the other frames
-            #if header != self.frames[frame_name].header: raise ValueError("The WCS of the different frames does not match")
+            # Check if the coordinate system of this frame matches that of the other frames ?
 
             # Add this frame to the data cube, if its coordinates match those of the primary frame
             datacube.append(self.frames[frame_name])
@@ -342,6 +350,19 @@ class Image(object):
 
         # Inform the user that the file has been created
         log.info("File " + path + " created")
+
+    # -----------------------------------------------------------------
+
+    def apply_mask(self, mask, fill=0.0):
+
+        """
+        This function ..
+        :param mask:
+        :param fill:
+        """
+
+        # Replace the masked pixels in all frames by the fill value
+        for frame_name in self.frames: self.frames[frame_name][mask] = fill
 
     # -----------------------------------------------------------------
 
@@ -416,6 +437,9 @@ class Image(object):
         :param unit:
         :return:
         """
+
+        # Convert string units to Astropy unit objects
+        if isinstance(unit, basestring): unit = Unit(unit)
 
         # Loop over all frames
         for frame_name in self.frames:
@@ -496,6 +520,9 @@ class Image(object):
         This function ...
         :param unit:
         """
+
+        # Make an Astropy Unit instance
+        if isinstance(unit, basestring): unit = Unit(unit)
 
         # Inform the user
         log.info("Converting the unit of the image from " + str(self.unit) + " to " + str(unit) + " ...")
@@ -582,19 +609,28 @@ class Image(object):
         for frame_name in self.frames:
 
             # Inform the user
-            log.info("Cropping the " + frame_name + " frame")
+            log.info("Cropping the " + frame_name + " frame ...")
 
-            # Rebin this frame
+            # Crop this frame
             self.frames[frame_name] = self.frames[frame_name].crop(x_min, x_max, y_min, y_max)
 
         # Loop over all masks
         for mask_name in self.masks:
 
             # Inform the user
-            log.info("Cropping the " + mask_name + " mask")
+            log.info("Cropping the " + mask_name + " mask ...")
 
-            # Rebin this mask
+            # Crop this mask
             self.masks[mask_name] = self.masks[mask_name][y_min:y_max, x_min:x_max]
+
+        # Loop over all regions
+        for region_name in self.regions:
+
+            # Inform the user
+            log.info("Cropping the " + region_name + " region ...")
+
+            # Crop the region
+            self.regions[region_name] = self.regions[region_name].cropped(x_min, x_max, y_min, y_max)
 
     # -----------------------------------------------------------------
 
@@ -730,6 +766,37 @@ class Image(object):
 
     # -----------------------------------------------------------------
 
+    def __mul__(self, factor):
+
+        """
+        This function ...
+        :param factor:
+        :return:
+        """
+
+        # Create a new image
+        image = Image(self.name)
+
+        # Set attributes
+        image.name = self.name
+        image.path = self.path
+        image.original_header = self.original_header
+        image.metadata = self.metadata
+
+        # Loop over the frames
+        for frame_name in self.frames: image.add_frame(self.frames[frame_name] * factor, frame_name)
+
+        # Loop over the masks
+        for mask_name in self.masks: image.add_mask(self.masks[mask_name] * factor, mask_name)
+
+        # Loop over the regions
+        for region_name in self.regions: image.add_region(copy.deepcopy(self.regions[region_name]), region_name)
+
+        # Return the new image
+        return image
+
+    # -----------------------------------------------------------------
+
     def __imul__(self, factor):
 
         """
@@ -738,7 +805,7 @@ class Image(object):
         :return:
         """
 
-        # Loop over all currently selected frames
+        # Loop over all frames
         for frame_name in self.frames:
 
             # Inform the user
@@ -873,6 +940,9 @@ class Image(object):
         # Obtain the units of this image
         unit = headers.get_unit(self.original_header)
 
+        # Obtain the FWHM of this image
+        fwhm = headers.get_fwhm(self.original_header)
+
         # Get the magnitude zero-point
         zero_point = headers.get_zero_point(self.original_header)
 
@@ -906,7 +976,7 @@ class Image(object):
                             log.warning("Rebinning the " + name + " frame (plane " + str(i) + ") of " + filename + " to match the shape of this image")
 
                             # Check if the unit is a surface brightness unit
-                            if unit != u.Unit("MJy/sr"): raise ValueError("Cannot rebin since unit " + str(unit) + " is not recognized as a surface brightness unit")
+                            if unit != Unit("MJy/sr"): raise ValueError("Cannot rebin since unit " + str(unit) + " is not recognized as a surface brightness unit")
 
                             # Change the data and the WCS
                             hdu.data[i] = transformations.align_and_rebin(hdu.data[i], flattened_header, self.wcs.to_header())
@@ -925,7 +995,8 @@ class Image(object):
                                   unit=unit,
                                   zero_point=zero_point,
                                   filter=filter,
-                                  sky_subtracted=subtracted)
+                                  sky_subtracted=subtracted,
+                                  fwhm=fwhm)
                     self.add_frame(frame, name)
 
                 elif plane_type == "mask":
@@ -957,7 +1028,7 @@ class Image(object):
                         log.warning("Rebinning the " + name + " frame (plane 0) of " + filename + " to match the shape of this image")
 
                         # Check if the unit is a surface brightness unit
-                        if unit != u.Unit("MJy/sr"): raise ValueError("Cannot rebin since unit " + str(unit) + " is not recognized as a surface brightness unit")
+                        if unit != Unit("MJy/sr"): raise ValueError("Cannot rebin since unit " + str(unit) + " is not recognized as a surface brightness unit")
 
                         # Change the data and the WCS
                         hdu.data = transformations.align_and_rebin(hdu.data, flattened_header, self.wcs.to_header())
@@ -975,7 +1046,8 @@ class Image(object):
                               unit=unit,
                               zero_point=zero_point,
                               filter=filter,
-                              sky_subtracted=sky_subtracted)
+                              sky_subtracted=sky_subtracted,
+                              fwhm=fwhm)
                 # Add the primary image frame
                 self.add_frame(frame, name)
 
@@ -1024,6 +1096,58 @@ class Image(object):
 
     # -----------------------------------------------------------------
 
+    def remove_frames_except(self, names):
+
+        """
+        This function ...
+        :param names:
+        :return:
+        """
+
+        if isinstance(names, basestring): names = []
+
+        # Loop over all frames
+        for frame_name in list(self.frames.keys()):
+
+            # Don't remove the frame with the specified name
+            if frame_name in names: continue
+
+            # Remove all other frames
+            self.remove_frame(frame_name)
+
+    # -----------------------------------------------------------------
+
+    def remove_frame(self, name):
+
+        """
+        This function ...
+        :param name:
+        :return:
+        """
+
+        # Inform the user
+        log.info("Removing the '" + name + "' frame ...")
+
+        # Check whether a frame with this name exists
+        if name not in self.frames: raise RuntimeError("A frame with this name does not exist")
+
+        # Delete the frame
+        del self.frames[name]
+
+    # -----------------------------------------------------------------
+
+    def remove_all_frames(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Loop over all frames
+        for frame_name in list(self.frames.keys()): self.remove_frame(frame_name)
+
+    # -----------------------------------------------------------------
+
     def add_region(self, region, name, overwrite=False):
 
         """
@@ -1042,6 +1166,58 @@ class Image(object):
 
         # Add the region to the set of regions
         self.regions[name] = region
+
+    # -----------------------------------------------------------------
+
+    def remove_regions_except(self, names):
+
+        """
+        This function ...
+        :param names:
+        :return:
+        """
+
+        if isinstance(names, basestring): names = [names]
+
+        # Loop over all regions
+        for region_name in list(self.regions.keys()):
+
+            # Don't remove the region with the specified name
+            if region_name in names: continue
+
+            # Remove all other regions
+            self.remove_region(region_name)
+
+    # -----------------------------------------------------------------
+
+    def remove_region(self, name):
+
+        """
+        This function ...
+        :param name:
+        :return:
+        """
+
+        # Inform the user
+        log.info("Removing the '" + name + "' region ...")
+
+        # Check whether a region with this name exists
+        if name not in self.regions: raise RuntimeError("A region with this name does not exist")
+
+        # Delete the region
+        del self.regions[name]
+
+    # -----------------------------------------------------------------
+
+    def remove_all_regions(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Loop over all regions
+        for region_name in list(self.regions.keys()): self.remove_region(region_name)
 
     # -----------------------------------------------------------------
 
@@ -1066,5 +1242,57 @@ class Image(object):
 
         # Add the mask to the set of masks
         self.masks[name] = mask
+
+    # -----------------------------------------------------------------
+
+    def remove_masks_except(self, names):
+
+        """
+        This function ...
+        :param names:
+        :return:
+        """
+
+        if isinstance(names, basestring): names = [names]
+
+        # Loop over all masks
+        for mask_name in list(self.masks.keys()):
+
+            # Don't remove the mask with the specified name
+            if mask_name in names: continue
+
+            # Remove all other masks
+            self.remove_mask(mask_name)
+
+    # -----------------------------------------------------------------
+
+    def remove_mask(self, name):
+
+        """
+        This function ...
+        :param name:
+        :return:
+        """
+
+        # Inform the user
+        log.info("Removing the '" + name + "' mask ...")
+
+        # Check whether a mask with this name exists
+        if name not in self.masks: raise RuntimeError("A mask with this name does not exist")
+
+        # Delete the mask
+        del self.masks[name]
+
+    # -----------------------------------------------------------------
+
+    def remove_all_masks(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Loop over all masks
+        for mask_name in list(self.masks.keys()): self.remove_mask(mask_name)
 
 # -----------------------------------------------------------------

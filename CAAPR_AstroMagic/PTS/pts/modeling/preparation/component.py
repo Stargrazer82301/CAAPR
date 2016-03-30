@@ -64,6 +64,9 @@ class PreparationComponent(ModelingComponent):
         # Call the setup function of the base class
         super(PreparationComponent, self).setup()
 
+        # Set the output path (= the preparation directory)
+        self.config.output_path = self.prep_path
+
         # Set the info path
         self.info_path = filesystem.join(self.data_path, "info.dat")
 
@@ -79,7 +82,7 @@ class PreparationComponent(ModelingComponent):
 
             self.prep_names[original_name] = prep_name
             self.original_names[prep_name] = original_name
-            self.prep_paths[original_name] = filesystem.join(self.prep_path, prep_name)
+            self.prep_paths[prep_name] = filesystem.join(self.prep_path, prep_name)
             self.original_paths[prep_name] = original_path
 
         # Create the preparation subdirectories for each image

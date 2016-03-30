@@ -208,7 +208,7 @@ class SourceFinder(Configurable):
         self.find_galaxies()
         
         # 3. Find the stars
-        self.find_stars()
+        if self.config.find_stars: self.find_stars()
 
         # 4. Look for other sources
         if self.config.find_other_sources: self.find_other_sources()
@@ -366,10 +366,10 @@ class SourceFinder(Configurable):
         """
 
         # Build the catalog
-        self.build_catalog()
+        if self.config.build_catalogs: self.build_catalog()
 
         # Synchronize the catalog
-        if self.config.synchronize_catalogs: self.synchronize_catalog()
+        if self.config.build_catalogs and self.config.synchronize_catalogs: self.synchronize_catalog()
 
     # -----------------------------------------------------------------
 

@@ -14,6 +14,7 @@ from __future__ import absolute_import, division, print_function
 
 # Import the relevant PTS classes and modules
 from ..basics.mask import Mask
+from ..basics.geometry import Ellipse
 from ..core.source import Source
 from ...core.tools.logging import log
 from ...core.basics.configurable import Configurable
@@ -160,10 +161,10 @@ class SourceExtractor(Configurable):
         self.load_galaxy_sources()
 
         # Load the star sources
-        self.load_star_sources()
+        if self.star_region is not None: self.load_star_sources()
 
         # Load the other sources
-        self.load_other_sources()
+        if self.other_region is not None: self.load_other_sources()
 
     # -----------------------------------------------------------------
 
@@ -307,6 +308,7 @@ class SourceExtractor(Configurable):
         nsources = len(self.sources)
         count = 0
 
+        # Loop over all sources and remove them from the frame
         for source in self.sources:
 
             # Debugging
@@ -314,7 +316,7 @@ class SourceExtractor(Configurable):
 
             # Estimate the background
             try:
-                source.estimate_background(self.config.interpolation_method, True)
+                source.estimate_background(self.config.interpolation_method, sigma_clip=self.config.sigma_clip)
             except ValueError: # ValueError: zero-size array to reduction operation minimum which has no identity
                 # in: limits = (np.min(known_points), np.max(known_points)) [inpaint_biharmonic]
                 count += 1
@@ -346,5 +348,30 @@ class SourceExtractor(Configurable):
 
         # Set the NaN pixels to zero in the frame
         self.frame[self.nan_mask] = float("nan")
+
+    # -----------------------------------------------------------------
+
+    @property
+    def principal_ellipse(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        largest_shape = None
+
+        # Loop over all the shapes in the galaxy region
+        for shape in self.galaxy_region:
+
+            # Skip shapes that are not ellipses
+            if not isinstance(shape, Ellipse): continue
+
+            major_axis_length = shape.major
+
+            if largest_shape is None or major_axis_length > largest_shape.major: largest_shape = shape
+
+        # Return the largest shape in the galaxy region
+        return largest_shape
 
 # -----------------------------------------------------------------

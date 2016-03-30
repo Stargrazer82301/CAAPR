@@ -100,18 +100,6 @@ class SkirtRemote(Remote):
 
     # -----------------------------------------------------------------
 
-    @property
-    def scheduler(self):
-
-        """
-        This property ...
-        :return:
-        """
-
-        return self.host.scheduler
-
-    # -----------------------------------------------------------------
-
     def add_to_queue(self, arguments, name=None, scheduling_options=None):
 
         """
@@ -202,7 +190,9 @@ class SkirtRemote(Remote):
         for arguments in self.queue:
 
             # Write the command string to the job script
-            script_file.write(arguments.to_command(self.skirt_path, self.host.mpi_command, scheduler=False, to_string=True) + "\n")
+            threads_per_core = self.threads_per_core if self.use_hyperthreading else 1
+            command = arguments.to_command(self.skirt_path, self.host.mpi_command, scheduler=False, bind_to_cores=self.host.force_process_binding, threads_per_core=threads_per_core, to_string=True)
+            script_file.write(command + "\n")
 
         # Write to disk
         script_file.flush()
@@ -277,7 +267,7 @@ class SkirtRemote(Remote):
         remote_simulation_path = filesystem.join(self.skirt_run_dir, remote_simulation_name)
 
         # Create the remote simulation directory
-        self.execute("mkdir " + remote_simulation_path, output=False)
+        self.create_directory(remote_simulation_path)
 
         # Return the path to the remote simulation directory
         return remote_simulation_path
@@ -328,7 +318,7 @@ class SkirtRemote(Remote):
         if remote_input_path is not None: self.execute("mkdir " + remote_output_path, output=False)
 
         # Create the remote output directory
-        self.execute("mkdir " + remote_output_path, output=False)
+        self.create_directory(remote_output_path)
 
         local_ski_path = arguments.ski_pattern
         ski_name = filesystem.name(local_ski_path)
@@ -407,7 +397,9 @@ class SkirtRemote(Remote):
 
         # Create a job script next to the (local) simulation's ski file
         jobscript_name = filesystem.name(local_jobscript_path)
-        jobscript = JobScript(local_jobscript_path, arguments, self.host.clusters[self.host.cluster_name], self.skirt_path, self.host.mpi_command, self.host.modules, walltime, nodes, ppn, name=name, mail=mail, full_node=full_node)
+        jobscript = JobScript(local_jobscript_path, arguments, self.host.clusters[self.host.cluster_name],
+                              self.skirt_path, self.host.mpi_command, self.host.modules, walltime, nodes, ppn,
+                              name=name, mail=mail, full_node=full_node, bind_to_cores=self.host.force_process_binding)
 
         # Copy the job script to the remote simulation directory
         remote_jobscript_path = filesystem.join(remote_simulation_path, jobscript_name)
@@ -442,7 +434,8 @@ class SkirtRemote(Remote):
 
         # Send the command to the remote machine using a screen session so that we can safely detach from the
         # remote shell
-        command = arguments.to_command(self.skirt_path, self.host.mpi_command, self.scheduler, to_string=True)
+        threads_per_core = self.threads_per_core if self.use_hyperthreading else 1
+        command = arguments.to_command(self.skirt_path, self.host.mpi_command, self.scheduler, self.host.force_process_binding, threads_per_core=threads_per_core, to_string=True)
         self.execute("screen -d -m " + command, output=False)
 
         # Generate a new simulation ID based on the ID's currently in use

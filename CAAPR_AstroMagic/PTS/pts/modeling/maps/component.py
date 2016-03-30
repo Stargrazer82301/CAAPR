@@ -37,14 +37,11 @@ class MapsComponent(ModelingComponent):
 
         # -- Attributes --
 
-        # The path to the fit/in directory
-        #self.fit_in_path = None
+        # The path to the maps/solar directory
+        self.maps_solar_path = None
 
-        # The path to the fit/out directory
-        #self.fit_out_path = None
-
-        # The path to the ski file
-        #self.fit_ski_path = None
+        # The path to the maps/intermediate directory
+        self.maps_intermediate_path = None
 
     # -----------------------------------------------------------------
 
@@ -58,16 +55,16 @@ class MapsComponent(ModelingComponent):
         # Call the setup function of the base class
         super(MapsComponent, self).setup()
 
-        # Set the path to the fit/in path
-        #self.fit_in_path = filesystem.join(self.fit_path, "in")
+        # Set the output path (= the maps directory)
+        self.config.output_path = self.maps_path
 
-        # Set the path to the fit/out path
-        #self.fit_out_path = filesystem.join(self.fit_path, "out")
+        # Set the path to the maps/solar directory
+        self.maps_solar_path = filesystem.join(self.maps_path, "solar")
 
-        # Create the fit/in and fit/out directories
-        #filesystem.create_directories([self.fit_in_path, self.fit_out_path])
+        # Set the path to the maps/intermediate directory
+        self.maps_intermediate_path = filesystem.join(self.maps_path, "intermediate")
 
-        # Determine the path to the ski file
-        #self.fit_ski_path = filesystem.join(self.fit_path, self.galaxy_name + ".ski")
+        # Create the maps/solar and maps/intermediate directories
+        filesystem.create_directories([self.maps_solar_path, self.maps_intermediate_path])
 
 # -----------------------------------------------------------------

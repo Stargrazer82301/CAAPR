@@ -12,6 +12,9 @@
 # Ensure Python 3 compatibility
 from __future__ import absolute_import, division, print_function
 
+# Import standard modules
+import numpy as np
+
 # Import astronomical modules
 from astroquery.vizier import Vizier
 from astropy.units import Unit, dimensionless_angles
@@ -28,10 +31,14 @@ from ...core.basics.errorbar import ErrorBar
 from ...core.simulation.arguments import SkirtArguments
 from ...core.simulation.execute import SkirtExec
 from ...magic.tools import catalogs
-from ...magic.basics.vector import Extent
-from ...magic.basics.skygeometry import SkyEllipse, SkyCoord
+from ...magic.basics.vector import Extent, Position
+from ...magic.basics.skygeometry import SkyEllipse, SkyCoordinate
 from ...magic.basics.skyregion import SkyRegion
 from ...magic.core.frame import Frame
+from ...core.tools import tables
+from ..basics.models import SersicModel, ExponentialDiskModel
+from ..basics.instruments import SimpleInstrument
+from ...core.tools import special
 
 # -----------------------------------------------------------------
 
@@ -43,7 +50,25 @@ local_table_path = filesystem.join(inspection.pts_dat_dir("modeling"), "s4g", "s
 
 # -----------------------------------------------------------------
 
+# The path to the template ski files directory
 template_path = filesystem.join(inspection.pts_dat_dir("modeling"), "ski")
+
+# -----------------------------------------------------------------
+
+# Reference image
+reference_image = "Pacs red"
+
+# -----------------------------------------------------------------
+
+# The link to the page with corrected PSF's for different instruments
+aniano_psf_files_link = "http://www.astro.princeton.edu/~ganiano/Kernels/Ker_2012_May/PSF_fits_Files/"
+
+# The path to the PTS kernels directory
+kernels_path = filesystem.join(inspection.pts_user_dir, "kernels")
+
+# The path to the Pacs 160 PSF file
+#reference_psf_path = filesystem.join(kernels_path, "Corrected_PSF_PACS_160.fits")
+reference_psf_path = filesystem.join(kernels_path, "PSF_PACS_160.fits")
 
 # -----------------------------------------------------------------
 
@@ -71,6 +96,11 @@ class GalaxyDecomposer(DecompositionComponent):
         # The path to the disk and bulge directories
         self.bulge_directory = None
         self.disk_directory = None
+        self.model_directory = None
+
+        # The Vizier querying object
+        self.vizier = Vizier()
+        self.vizier.ROW_LIMIT = -1
 
         # The bulge and disk parameters
         self.parameters = Map()
@@ -78,9 +108,25 @@ class GalaxyDecomposer(DecompositionComponent):
         # The SKIRT execution context
         self.skirt = SkirtExec()
 
-        # The bulge and disk image
+        # The bulge and disk model
         self.bulge = None
         self.disk = None
+
+        # The bulge and disk image
+        self.bulge_image = None
+        self.disk_image = None
+        self.model_image = None
+
+        # The instruments
+        self.earth = None
+        self.faceon = None
+        self.edgeon = None
+
+        # The reference coordinate system
+        self.reference_wcs = None
+
+        # The PSF (of the reference image) for convolution with the simulated images
+        self.psf = None
 
     # -----------------------------------------------------------------
 
@@ -98,8 +144,6 @@ class GalaxyDecomposer(DecompositionComponent):
 
         # Set the input and output path
         decomposer.config.path = arguments.path
-        decomposer.config.input_path = filesystem.join(arguments.path, "prep")
-        decomposer.config.output_path = filesystem.join(arguments.path, "components")
 
         # Return the new instance
         return decomposer
@@ -118,6 +162,12 @@ class GalaxyDecomposer(DecompositionComponent):
 
         # 2. Get the parameters
         self.get_parameters()
+
+        # 3. Create the models
+        self.create_models()
+
+        # 4. Create the instruments
+        self.create_instruments()
 
         # 2. Simulate the bulge and disk images
         self.simulate()
@@ -144,9 +194,19 @@ class GalaxyDecomposer(DecompositionComponent):
         # Determine the path to the bulge and disk directories
         self.bulge_directory = self.full_output_path("bulge")
         self.disk_directory = self.full_output_path("disk")
+        self.model_directory = self.full_output_path("model")
 
         # Create the bulge and disk directories
-        filesystem.create_directories([self.bulge_directory, self.disk_directory])
+        filesystem.create_directories([self.bulge_directory, self.disk_directory, self.model_directory])
+
+        # Get the parameters describing the pixel grid of the prepared images
+        reference_path = filesystem.join(self.prep_path, reference_image, "result.fits")
+        reference_frame = Frame.from_file(reference_path)
+        self.reference_wcs = reference_frame.wcs
+
+        # Load the PSF
+        self.psf = Frame.from_file(reference_psf_path)
+        self.psf.fwhm = reference_frame.fwhm
 
     # -----------------------------------------------------------------
 
@@ -157,11 +217,17 @@ class GalaxyDecomposer(DecompositionComponent):
         :return:
         """
 
+        # Inform the user
+        log.info("Getting the structural galaxy parameters from the S4G catalog ...")
+
         # Query the S4G catalog using Vizier for general parameters
         self.get_general_parameters()
 
+        # Get the decomposition parameters
+        self.get_p4()
+
         # Parse the S4G table 8 to get the decomposition parameters
-        self.get_component_parameters()
+        #self.get_component_parameters()
 
     # -----------------------------------------------------------------
 
@@ -175,10 +241,8 @@ class GalaxyDecomposer(DecompositionComponent):
         # Inform the user
         log.info("Querying the S4G catalog ...")
 
-        vizier = Vizier(keywords=["galaxies"])
-
         # Get parameters from S4G catalog
-        result = vizier.query_object(self.galaxy_name, catalog=["J/PASP/122/1397/s4g"])
+        result = self.vizier.query_object(self.galaxy_name, catalog=["J/PASP/122/1397/s4g"])
         table = result[0]
 
         # Galaxy name for S4G catalog
@@ -187,7 +251,7 @@ class GalaxyDecomposer(DecompositionComponent):
         # Galaxy center from decomposition (?)
         ra_center = table["_RAJ2000"][0]
         dec_center = table["_DEJ2000"][0]
-        center = SkyCoord(ra=ra_center, dec=dec_center, unit=(Unit("deg"), Unit("deg")), frame='fk5')
+        center = SkyCoordinate(ra=ra_center, dec=dec_center, unit="deg", frame='fk5')
         self.parameters.center = center
 
         # Distance
@@ -213,15 +277,15 @@ class GalaxyDecomposer(DecompositionComponent):
         self.parameters.i2_mag = asymptotic_ab_magnitude_i2
         self.parameters.i2_mag_error = asymptotic_ab_magnitude_i2_error
 
-        self.parameters.i1_fluxdensity = unitconversion.ab_to_jansky(self.parameters.i1_mag)
-        i1_fluxdensity_lower = unitconversion.ab_to_jansky(self.parameters.i1_mag + self.parameters.i1_mag_error)
-        i1_fluxdensity_upper = unitconversion.ab_to_jansky(self.parameters.i1_mag - self.parameters.i1_mag_error)
+        self.parameters.i1_fluxdensity = unitconversion.ab_to_jansky(self.parameters.i1_mag) * Unit("Jy")
+        i1_fluxdensity_lower = unitconversion.ab_to_jansky(self.parameters.i1_mag + self.parameters.i1_mag_error) * Unit("Jy")
+        i1_fluxdensity_upper = unitconversion.ab_to_jansky(self.parameters.i1_mag - self.parameters.i1_mag_error) * Unit("Jy")
         i1_error = ErrorBar(i1_fluxdensity_lower, i1_fluxdensity_upper, at=self.parameters.i1_fluxdensity)
         self.parameters.i1_error = i1_error.average
 
-        self.parameters.i2_fluxdensity = unitconversion.ab_to_jansky(self.parameters.i2_mag)
-        i2_fluxdensity_lower = unitconversion.ab_to_jansky(self.parameters.i2_mag + self.parameters.i2_mag_error)
-        i2_fluxdensity_upper = unitconversion.ab_to_jansky(self.parameters.i2_mag - self.parameters.i2_mag_error)
+        self.parameters.i2_fluxdensity = unitconversion.ab_to_jansky(self.parameters.i2_mag) * Unit("Jy")
+        i2_fluxdensity_lower = unitconversion.ab_to_jansky(self.parameters.i2_mag + self.parameters.i2_mag_error) * Unit("Jy")
+        i2_fluxdensity_upper = unitconversion.ab_to_jansky(self.parameters.i2_mag - self.parameters.i2_mag_error) * Unit("Jy")
         i2_error = ErrorBar(i2_fluxdensity_lower, i2_fluxdensity_upper, at=self.parameters.i2_fluxdensity)
         self.parameters.i2_error = i2_error.average
 
@@ -234,7 +298,7 @@ class GalaxyDecomposer(DecompositionComponent):
         log.info("Querying the catalog of radial profiles for 161 face-on spirals ...")
 
         # Radial profiles for 161 face-on spirals (Munoz-Mateos+, 2007)
-        radial_profiles_result = vizier.query_object(self.galaxy_name, catalog="J/ApJ/658/1006")
+        radial_profiles_result = self.vizier.query_object(self.galaxy_name, catalog="J/ApJ/658/1006")
 
         distance = float(radial_profiles_result[0][0]["Dist"])
         inclination = Angle(float(radial_profiles_result[0][0]["i"]), "deg")
@@ -244,102 +308,278 @@ class GalaxyDecomposer(DecompositionComponent):
 
     # -----------------------------------------------------------------
 
-    def get_component_parameters(self):
+    def get_p4(self):
 
         """
         This function ...
         :return:
         """
 
+        #http://vizier.cfa.harvard.edu/viz-bin/VizieR?-source=J/ApJS/219/4
+
+        # J/ApJS/219/4: S4G pipeline 4: multi-component decompositions (Salo+, 2015)
+
+        #  - J/ApJS/219/4/galaxies: Parameters of the galaxies; center, outer orientation, sky background; and 1-component Sersic fits (tables 1 and 6) (2352 rows)
+        #  - J/ApJS/219/4/table7: *Parameters of final multicomponent decompositions (Note) (4629 rows)
+
         # Inform the user
-        log.info("Parsing S4G table 8 to get the decomposition parameters ...")
+        log.info("Querying the S4G pipeline 4 catalog ...")
 
-        #The table columns are:
-        # (1) the running number (1-2352),
-        # (2) the galaxy name,
-        # (3) the type of final decomposition model,
-        # (4) the number N of components in the final model , and
-        # (5) the quality flag Q.
+        # Get the "galaxies" table
+        result = self.vizier.query_object(self.galaxy_name, catalog=["J/ApJS/219/4/galaxies"])
+        table = result[0]
 
-        # 6- 8 for unresolved central component ('psf'; phys, frel,  mag),
-        # 9-15 for inner sersic-component ('sersic1'; phys,  frel,  mag,    re,    ar,      pa,    n),
-        # 16-22 for inner disk-component ('expo1'; phys,  frel,  mag,    hr,    ar,      pa,   mu0),
-        # 23-28 for inner ferrers-component ('ferrers1'; phys,  frel,  mu0,   rout,   ar,     pa),
-        # 29-34 for inner edge-on disk component ('edgedisk1';  phys, frel, mu0,  rs,    hs,      pa ).
-        # 35-41 for outer sersic-component ('sersic2'; phys,  frel,  mag,    re,    ar,      pa,    n),
-        # 42-49 for outer disk-component ('expo2'; phys,  frel,  mag,    hr,    ar,      pa,   mu0),
-        # 50-55 for outer ferrers-component ('ferrers2'; phys,  frel,  mu0,   rout,   ar,     pa),
-        # 56-61 for outer edge-on disk component ('edgedisk2';  phys, frel, mu0,  rs,    hs,      pa ).
+        # PA: [0.2/180] Outer isophote position angle
+        # e_PA: [0/63] Standard deviation in PA
+        # Ell:  [0.008/1] Outer isophote ellipticity
+        # e_Ell: [0/0.3] Standard deviation in Ell
 
-        sersic_1_index = 8
-        disk_1_index = 15
+        pa = Angle(table["PA"][0] - 90., "deg")
+        pa_error = Angle(table["e_PA"][0], "deg")
 
-        #For each function:
+        ellipticity = table["Ell"][0]
+        ellipticity_error = table["e_Ell"][0]
 
-        #the first entry stands for the physical intepretation of the component:
-        #'N' for a central source (or unresolved bulge), 'B' for a bulge (or elliptical), 'D' for a disk, 'BAR' for a bar, and 'Z' for an edge-on disk.
+        # Get the "table7" table
+        result = self.vizier.get_catalogs("J/ApJS/219/4/table7")
+        table = result[0]
 
-        # 'rel    =  the relative contribution of the component to the total model flux,
-        #  mag    =  the component's total 3.6 micron AB magnitude,
-        #  mu0    =  the central  surface brightness (mag/arcsec^2;  de-projected central surface brightness for expdisk and edgedisk, and
-        #                                                          sky-plane central surface brightness for ferrer)
-        #  ar     =  axial ratio
-        #  pa     =  position angle (degrees ccw from North)
-        #  n      =  sersic index
-        #  hr     =  exponential scale lenght (arcsec)
-        #  rs     =  radial scale lenght (arcsec)
-        #  hs     =  vertical scale height (arcsec)
-        #  rout   =  bar outer truncation radius (arcsec)
+        # Name: Galaxy name
+        # Mod: Type of final decomposition model
+        # Nc: [1/4] Number of components in the model (1-4)
+        # Q: [3/5] Quality flag, 5=most reliable
+        # C: Physical interpretation of the component
+        # Fn: The GALFIT function used for the component (sersic, edgedisk, expdisk, ferrer2 or psf)
+        # f1: [0.006/1] "sersic" fraction of the total model flux
+        # mag1:  [7/19.4] "sersic" total 3.6um AB magnitude
+        # q1: [0.1/1] "sersic" axis ratio
+        # PA1: [0.08/180] "sersic" position angle [deg]
+        # Re: [0.004/430] "sersic" effective radius (Re) [arcsec]
+        # n: [0.01/20] "sersic" parameter n
+        # f2: [0.02/1] "edgedisk" fraction of the total model flux
+        # mu02: [11.8/24.6] "edgedisk" central surface face-on brightness (µ0) [mag/arcsec2]
+        # PA2: [-90/90] "edgedisk" PA [deg]
+        # hr2: [1/153] "edgedisk" exponential scale length (hr) [arcsec]
+        # hz2: [0.003/39] "edgedisk" z-scale hz [arcsec]
+        # f3: [0.02/1] "expdisk" fraction of the total model flux
+        # mag3: [6.5/18.1] "expdisk" total 3.6um AB magnitude [mag]
+        # q3: [0.1/1] "expdisk" axis ratio
+        # PA3: [-90/90] "expdisk" position angle [deg]
+        # hr3: [0.7/332] "expdisk" exponential scale length (hr) [arcsec]
+        # mu03: [16.4/25.3] "expdisk" central surface face-on brightness (µ0) [mag/arcsec2]
+        # f4: [0.003/0.6] "ferrer2" fraction of the total model flux
+        # mu04: [16/24.8] "ferrer2" central surface sky brightness (µ0) [mag/arcsec2]
+        # q4: [0.01/1] "ferrer2" axis ratio
+        # PA4: [-90/90] "ferrer2" position angle [deg]
+        # Rbar: [3.7/232.5] "ferrer2" outer truncation radius of the bar (Rbar) [arcsec]
+        # f5: [0.001/0.4] "psf" fraction of the total model flux
+        # mag5: [11.5/21.1] "psf" total 3.6um AB magnitude [mag]
 
-        # SERSIC: phys,  frel,  mag,    re,    ar,      pa,    n
-        # DISK: phys,  frel,  mag,    hr,    ar,      pa,   mu0
+        indices = tables.find_indices(table, self.ngc_id_nospaces, "Name")
 
-        with open(local_table_path, 'r') as s4g_table:
+        labels = {"sersic": 1, "edgedisk": 2, "expdisk": 3, "ferrer2": 4, "psf": 5}
 
-            for line in s4g_table:
+        #units = {"f": None, "mag": "mag", "q": None, "PA": "deg", }
 
-                splitted = line.split()
+        # Loop over the indices
+        for index in indices:
 
-                if len(splitted) < 2: continue
+            model_type = table["Mod"][index]
+            number_of_components = table["Nc"][index]
+            quality = table["Q"][index]
+            interpretation = table["C"][index]
+            functionname = table["Fn"][index]
 
-                name = splitted[1]
+            component_parameters = Map()
 
-                # Only look at the line corresponding to the galaxy
-                if name != self.ngc_id_nospaces: continue
+            if self.parameters.model_type is not None: assert model_type == self.parameters.model_type
+            if self.parameters.number_of_components is not None: assert number_of_components == self.parameters.number_of_components
+            if self.parameters.quality is not None: assert quality == self.parameters.quality
+            self.parameters.model_type = model_type
+            self.parameters.number_of_components = number_of_components
+            self.parameters.quality = quality
 
-                self.parameters.model_type = splitted[2]
-                self.parameters.number_of_components = splitted[3]
-                self.parameters.quality = splitted[4]
+            for key in table.colnames:
 
-                # BULGE
-                self.parameters.bulge = Map()
-                self.parameters.bulge.interpretation = splitted[sersic_1_index].split("|")[1]
-                self.parameters.bulge.rel = float(splitted[sersic_1_index + 1])
-                self.parameters.bulge.mag = float(splitted[sersic_1_index + 2])
-                self.parameters.bulge.fluxdensity = unitconversion.ab_to_jansky(self.parameters.bulge.mag) * Unit("Jy")
+                if not key.endswith(str(labels[functionname])): continue
 
-                # Effective radius in pc
-                re_arcsec = float(splitted[sersic_1_index + 3]) * Unit("arcsec")
-                self.parameters.bulge.re = (self.parameters.distance * re_arcsec).to("pc", equivalencies=dimensionless_angles())
+                parameter = key[:-1]
 
-                self.parameters.bulge.ar = float(splitted[sersic_1_index + 4])
-                self.parameters.bulge.pa = float(splitted[sersic_1_index + 5])
-                self.parameters.bulge.n = float(splitted[sersic_1_index + 6])
+                value = table[key][index]
 
-                # DISK
-                self.parameters.disk = Map()
-                self.parameters.disk.interpretation = splitted[disk_1_index].split("|")[1]
-                self.parameters.disk.rel = float(splitted[disk_1_index + 1])
-                self.parameters.disk.mag = float(splitted[disk_1_index + 2])
-                self.parameters.disk.fluxdensity = unitconversion.ab_to_jansky(self.parameters.disk.mag) * Unit("Jy")
+                if parameter == "PA":
+                    value = Angle(value + 90., "deg")
+                    if quadrant(value) == 2: value = value - Angle(180., "deg")
+                    elif quadrant(value) == 3: value = value + Angle(180., "deg")
 
-                # Scale length in pc
-                hr_arcsec = float(splitted[disk_1_index + 3]) * Unit("arcsec")
-                self.parameters.disk.hr = (self.parameters.distance * hr_arcsec).to("pc", equivalencies=dimensionless_angles())
+                    if value.to("deg").value > 180.: value = value - Angle(360., "deg")
+                    elif value.to("deg").value < -180.: value = value + Angle(360., "deg")
+                elif parameter == "mag":
+                    parameter = "fluxdensity"
+                    value = unitconversion.ab_to_jansky(value) * Unit("Jy")
+                elif parameter == "mu0": value = value * Unit("mag/arcsec2")
+                elif parameter == "hr":
+                    value = value * Unit("arcsec")
+                    value = (self.parameters.distance * value).to("pc", equivalencies=dimensionless_angles())
+                elif parameter == "hz":
+                    value = value * Unit("arcsec")
+                    value = (self.parameters.distance * value).to("pc", equivalencies=dimensionless_angles())
 
-                self.parameters.disk.ar = float(splitted[disk_1_index + 4]) # axial ratio
-                self.parameters.disk.pa = float(splitted[disk_1_index + 5])
-                self.parameters.disk.mu0 = float(splitted[disk_1_index + 6])
+                component_parameters[parameter] = value
+
+            if functionname == "sersic":
+
+                re = table["Re"][index] * Unit("arcsec")
+                component_parameters["Re"] = (self.parameters.distance * re).to("pc", equivalencies=dimensionless_angles())
+                #print(re, component_parameters["Re"])
+                component_parameters["n"] = table["n"][index]
+
+            elif functionname == "ferrer2":
+
+                rbar = table["Rbar"][index] * Unit("arcsec")
+                component_parameters["Rbar"] = (self.parameters.distance * rbar).to("pc", equivalencies=dimensionless_angles())
+
+            if interpretation == "B": # bulge
+
+                self.parameters.bulge = component_parameters
+
+            elif interpretation == "D": # disk
+
+                self.parameters.disk = component_parameters
+
+            else: raise RuntimeError("Unrecognized component: " + interpretation)
+
+         # Determine the full path to the parameters file
+        path = self.full_output_path("parameters.dat")
+
+        # Write the parameters to the specified location
+        write_parameters(self.parameters, path)
+
+    # -----------------------------------------------------------------
+
+    def get_spiral_properties(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # http://vizier.cfa.harvard.edu/viz-bin/VizieR?-source=J/A+A/582/A86
+
+        # J/A+A/582/A86: Catalogue of features in the S4G (Herrera-Endoqui+, 2015)
+
+        # - J/A+A/582/A86/table2: Properties of bars, ring- and lens-structures in the S4G (2387 rows)
+        # - J/A+A/582/A86/table3: Properties of spiral arms in the S4G (1854 rows)
+
+        # Get table2
+        result = self.vizier.query_object(self.galaxy_name, catalog=["J/A+A/582/A86/table2"])
+        table = result[0]
+
+        # Name: Galaxy name
+        # Class: Morphological classification
+        # Type: Type of feature
+        # sma: Semi-major axis [arcsec]
+        # PA: Position angle [deg]
+        # Ell: Ellipticity
+        # smaEll: Semi-major axis from ellipticity [arcsec]
+        # dsma: Deprojected semi-major axis [arcsec]
+        # dPA: Deprojected position angle [deg]
+        # dEll: Deprojected ellipticity
+        # dsmaEll: Deprojexted semi-major axis from Ell [arcsec]
+        # Qual: [1/3] Quality flag
+
+        # Get table 3
+        result = self.vizier.query_object(self.galaxy_name, catalog=["J/A+A/582/A86/table3"])
+        table = result[0]
+
+        # Name: Galaxy name
+        # Class: Morphological classification
+        # Type: Type of arms
+        # Segment: Segment
+        # Pitchang: Pitch angle [deg]
+        # ri: Inner radius [arcsec]
+        # ro: Outer radius [arcsec]
+        # Qual: [1/2] Quality flag
+
+    # -----------------------------------------------------------------
+
+    def create_models(self):
+
+        """
+        :return:
+        """
+
+        # Create the bulge model
+        self.create_bulge_model()
+
+        # Create the disk model
+        self.create_disk_model()
+
+    # -----------------------------------------------------------------
+
+    def create_bulge_model(self):
+
+        """
+        :return:
+        """
+
+        # Create a Sersic model for the bulge
+        self.bulge = SersicModel.from_galfit(self.parameters.bulge, self.parameters.inclination, self.parameters.disk.PA)
+
+    # -----------------------------------------------------------------
+
+    def create_disk_model(self):
+
+        """
+        :return:
+        """
+
+        # Create an exponential disk model for the disk
+        self.disk = ExponentialDiskModel.from_galfit(self.parameters.disk, self.parameters.inclination, self.parameters.disk.PA)
+
+    # -----------------------------------------------------------------
+
+    def create_instruments(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # SKIRT:  incl.  azimuth PA
+        # XY-plane	0	 0	    90
+        # XZ-plane	90	 -90	0
+        # YZ-plane	90	 0	    0
+
+        # Add a new SimpleInstrument
+        distance = self.parameters.distance
+        inclination = self.parameters.inclination
+        azimuth = 0.0
+        position_angle = self.parameters.disk.PA # SAME PA AS THE DISK, BUT TILT THE BULGE W.R.T. THE DISK
+        pixels_x = self.reference_wcs.xsize
+        pixels_y = self.reference_wcs.ysize
+        pixel_center = self.parameters.center.to_pixel(self.reference_wcs)
+        #center = Position(0.5*pixels_x - pixel_center.x - 0.5, 0.5*pixels_y - pixel_center.y - 0.5)
+        center = Position(0.5*pixels_x - pixel_center.x - 1, 0.5*pixels_y - pixel_center.y - 1)
+        center_x = center.x * Unit("pix")
+        center_y = center.y * Unit("pix")
+        center_x = (center_x * self.reference_wcs.pixelscale.x.to("deg/pix") * distance).to("pc", equivalencies=dimensionless_angles())
+        center_y = (center_y * self.reference_wcs.pixelscale.y.to("deg/pix") * distance).to("pc", equivalencies=dimensionless_angles())
+        field_x_angular = self.reference_wcs.pixelscale.x.to("deg/pix") * pixels_x * Unit("pix")
+        field_y_angular = self.reference_wcs.pixelscale.y.to("deg/pix") * pixels_y * Unit("pix")
+        field_x_physical = (field_x_angular * distance).to("pc", equivalencies=dimensionless_angles())
+        field_y_physical = (field_y_angular * distance).to("pc", equivalencies=dimensionless_angles())
+
+        # Create the 'earth' instrument
+        self.earth = SimpleInstrument(distance, inclination, azimuth, position_angle, field_x_physical, field_y_physical, pixels_x, pixels_y, center_x, center_y)
+
+        # Create the face-on instrument
+        position_angle = Angle(90., "deg")
+        self.faceon = SimpleInstrument(distance, 0.0, 0.0, position_angle, field_x_physical, field_y_physical, pixels_x, pixels_y, center_x, center_y)
+
+        # Create the edge-on instrument
+        #azimuth = Angle(-90., "deg")
+        self.edgeon = SimpleInstrument(distance, 90.0, 0.0, 0.0, field_x_physical, field_y_physical, pixels_x, pixels_y, center_x, center_y)
 
     # -----------------------------------------------------------------
 
@@ -350,11 +590,99 @@ class GalaxyDecomposer(DecompositionComponent):
         :return:
         """
 
+        # Simulate the stellar bulge without deprojection
+        self.simulate_bulge_simple()
+
         # Simulate the stellar bulge
         self.simulate_bulge()
 
         # Simulate the stellar disk
         self.simulate_disk()
+
+        # Simulate the bulge + disk model
+        self.simulate_model()
+
+    # -----------------------------------------------------------------
+
+    def simulate_bulge_simple(self):
+
+        """
+        :return:
+        """
+
+        # Inform the user
+        log.info("Creating ski file to simulate the bulge image ...")
+
+        # Load the bulge ski file template
+        bulge_template_path = filesystem.join(template_path, "bulge.ski")
+        ski = SkiFile(bulge_template_path)
+
+        # Change the ski file parameters
+        # component_id, index, radius, y_flattening=1, z_flattening=1
+        ski.set_stellar_component_sersic_geometry(0, self.parameters.bulge.n, self.parameters.bulge.Re, y_flattening=self.parameters.bulge.q)
+
+        # Remove all existing instruments
+        ski.remove_all_instruments()
+
+        # Create the instrument
+        distance = self.parameters.distance
+        inclination = 0.0
+        azimuth = Angle(90., "deg")
+        #position_angle = self.parameters.bulge.PA + Angle(90., "deg") # + 90° because we can only do y_flattening and not x_flattening
+        position_angle = self.parameters.bulge.PA
+        pixels_x = self.reference_wcs.xsize
+        pixels_y = self.reference_wcs.ysize
+        pixel_center = self.parameters.center.to_pixel(self.reference_wcs)
+        center = Position(0.5*pixels_x - pixel_center.x - 0.5, 0.5*pixels_y - pixel_center.y - 0.5)
+        center_x = center.x * Unit("pix")
+        center_y = center.y * Unit("pix")
+        center_x = (center_x * self.reference_wcs.pixelscale.x.to("deg/pix") * distance).to("pc", equivalencies=dimensionless_angles())
+        center_y = (center_y * self.reference_wcs.pixelscale.y.to("deg/pix") * distance).to("pc", equivalencies=dimensionless_angles())
+        field_x_angular = self.reference_wcs.pixelscale.x.to("deg/pix") * pixels_x * Unit("pix")
+        field_y_angular = self.reference_wcs.pixelscale.y.to("deg/pix") * pixels_y * Unit("pix")
+        field_x_physical = (field_x_angular * distance).to("pc", equivalencies=dimensionless_angles())
+        field_y_physical = (field_y_angular * distance).to("pc", equivalencies=dimensionless_angles())
+        fake = SimpleInstrument(distance, inclination, azimuth, position_angle, field_x_physical, field_y_physical, pixels_x, pixels_y, center_x, center_y)
+
+        # Add the instrument
+        ski.add_instrument("earth", fake)
+
+        # Create the directory to simulate the bulge
+        simple_bulge_directory = self.full_output_path("bulge_simple")
+        filesystem.create_directory(simple_bulge_directory)
+
+        # Determine the path to the ski file
+        ski_path = filesystem.join(simple_bulge_directory, "bulge.ski")
+
+        # Save the ski file to the new path
+        ski.saveto(ski_path)
+
+        # Determine the path to the simulation output directory
+        out_path = filesystem.join(simple_bulge_directory, "out")
+
+        # Create the output directory
+        filesystem.create_directory(out_path)
+
+        # Create a SkirtArguments object
+        arguments = SkirtArguments()
+
+        # Adjust the parameters
+        arguments.ski_pattern = ski_path
+        arguments.output_path = out_path
+        arguments.single = True   # we expect a single simulation from the ski pattern
+
+        # Inform the user
+        log.info("Running the bulge simulation ...")
+
+        # Run the simulation
+        simulation = self.skirt.run(arguments, silent=False if log.is_debug else True)
+
+        # Determine the path to the output FITS file
+        bulge_image_path = filesystem.join(out_path, "bulge_earth_total.fits")
+
+        # Check if the output contains the "bulge_earth_total.fits" file
+        if not filesystem.is_file(bulge_image_path):
+            raise RuntimeError("Something went wrong with the simple bulge simulation: output FITS file missing")
 
     # -----------------------------------------------------------------
 
@@ -372,20 +700,16 @@ class GalaxyDecomposer(DecompositionComponent):
         bulge_template_path = filesystem.join(template_path, "bulge.ski")
         ski = SkiFile(bulge_template_path)
 
-        # Change the ski file parameters
-        ski.set_stellar_component_sersic_geometry(0, self.parameters.bulge.n, self.parameters.bulge.re, z_flattening=self.parameters.bulge.ar)
+        # Set the bulge geometry
+        ski.set_stellar_component_geometry(0, self.bulge)
 
-        # Set the distance of the instruments
-        for instrument_name in ski.get_instrument_names():
+        # Remove all existing instruments
+        ski.remove_all_instruments()
 
-            # Set the distance for all instruments
-            ski.set_instrument_distance(instrument_name, self.parameters.distance)
-
-            # Set the instrument orientation
-            if instrument_name == "earth": ski.set_instrument_orientation(instrument_name, self.parameters.inclination, self.parameters.position_angle, 0.0)
-            elif instrument_name == "face-on": ski.set_instrument_orientation_faceon(instrument_name)
-            elif instrument_name == "edge-on": ski.set_instrument_orientation_edgeon(instrument_name)
-            else: raise ValueError("Unknown instrument")
+        # Add the instruments
+        ski.add_instrument("earth", self.earth)
+        ski.add_instrument("faceon", self.faceon)
+        ski.add_instrument("edgeon", self.edgeon)
 
         # Determine the path to the ski file
         ski_path = filesystem.join(self.bulge_directory, "bulge.ski")
@@ -411,7 +735,7 @@ class GalaxyDecomposer(DecompositionComponent):
         log.info("Running the bulge simulation ...")
 
         # Run the simulation
-        simulation = self.skirt.run(arguments, silent=True)
+        simulation = self.skirt.run(arguments, silent=False if log.is_debug else True)
 
         # Determine the path to the output FITS file
         bulge_image_path = filesystem.join(out_path, "bulge_earth_total.fits")
@@ -421,21 +745,18 @@ class GalaxyDecomposer(DecompositionComponent):
             raise RuntimeError("Something went wrong with the bulge simulation: output FITS file missing")
 
         # Open the bulge image
-        self.bulge = Frame.from_file(bulge_image_path)
+        self.bulge_image = Frame.from_file(bulge_image_path)
+
+        # Set the coordinate system of the bulge image
+        self.bulge_image.wcs = self.reference_wcs
+
+        # Rescale to the 3.6um flux density
+        fluxdensity = self.parameters.bulge.fluxdensity
+        self.bulge_image *= fluxdensity.to("Jy").value / np.sum(self.bulge_image)
+        self.bulge_image.unit = "Jy"
 
         # Convolve the frame to the PACS 160 resolution
-        #kernels_dir = os.path.expanduser("~/Kernels")
-        #kernel_path = os.path.join(kernels_dir, "Kernel_HiRes_Moffet_00.5_to_PACS_160.fits")
-        #kernel = Frame.from_file(kernel_path)
-        #frame.convolve(kernel)
-
-        # Rebin the convolved frame to the PACS 160 frame (just as we did with the other images)
-        #reference_path = os.path.join(self.data_path, "PACS160.fits")
-        #reference = Frame.from_file(reference_path)
-        #frame.rebin(reference)
-
-        # Finally, crop the image
-        #frame.frames.primary.crop(350, 725, 300, 825)
+        #self.bulge_image = self.bulge_image.convolved(self.psf)
 
     # -----------------------------------------------------------------
 
@@ -453,22 +774,16 @@ class GalaxyDecomposer(DecompositionComponent):
         disk_template_path = filesystem.join(template_path, "disk.ski")
         ski = SkiFile(disk_template_path)
 
-        # Change the ski file parameters ...
-        radial_scale = self.parameters.disk.hr
-        axial_scale = self.parameters.disk.ar * radial_scale
-        ski.set_stellar_component_expdisk_geometry(0, radial_scale, axial_scale, radial_truncation=0, axial_truncation=0, inner_radius=0)
+        # Change the ski file parameters
+        ski.set_stellar_component_geometry(0, self.disk)
 
-        # Set the distance of the instruments
-        for instrument_name in ski.get_instrument_names():
+        # Remove all existing instruments
+        ski.remove_all_instruments()
 
-            # Set the distance for all instruments
-            ski.set_instrument_distance(instrument_name, self.parameters.distance)
-
-            # Set the instrument orientation
-            if instrument_name == "earth": ski.set_instrument_orientation(instrument_name, self.parameters.inclination, self.parameters.position_angle, 0.0)
-            elif instrument_name == "face-on": ski.set_instrument_orientation_faceon(instrument_name)
-            elif instrument_name == "edge-on": ski.set_instrument_orientation_edgeon(instrument_name)
-            else: raise ValueError("Unknown instrument")
+        # Add the instruments
+        ski.add_instrument("earth", self.earth)
+        ski.add_instrument("faceon", self.faceon)
+        ski.add_instrument("edgeon", self.edgeon)
 
         # Determine the path to the ski file
         ski_path = filesystem.join(self.disk_directory, "disk.ski")
@@ -494,7 +809,7 @@ class GalaxyDecomposer(DecompositionComponent):
         log.info("Running the disk simulation ...")
 
         # Run the simulation
-        simulation = self.skirt.run(arguments, silent=True)
+        simulation = self.skirt.run(arguments, silent=False if log.is_debug else True)
 
         # Determine the path to the output FITS file
         disk_image_path = filesystem.join(out_path, "disk_earth_total.fits")
@@ -504,21 +819,96 @@ class GalaxyDecomposer(DecompositionComponent):
             raise RuntimeError("Something went wrong with the disk simulation: output FITS file missing")
 
         # Open the disk image
-        self.disk = Frame.from_file(disk_image_path)
+        self.disk_image = Frame.from_file(disk_image_path)
+
+        # Set the coordinate system of the disk image
+        self.disk_image.wcs = self.reference_wcs
+
+        # Rescale to the 3.6um flux density
+        fluxdensity = self.parameters.disk.fluxdensity
+        self.disk_image *= fluxdensity.to("Jy").value / np.sum(self.disk_image)
+        self.disk_image.unit = "Jy"
 
         # Convolve the frame to the PACS 160 resolution
-        #kernels_dir = os.path.expanduser("~/Kernels")
-        #kernel_path = os.path.join(kernels_dir, "Kernel_HiRes_Moffet_00.5_to_PACS_160.fits")
-        #kernel = Frame.from_file(kernel_path)
-        #frame.convolve(kernel)
+        self.disk_image = self.disk_image.convolved(self.psf)
 
-        # Rebin the convolved frame to the PACS 160 frame (just as we did with the other images)
-        #reference_path = os.path.join(self.data_path, "PACS160.fits")
-        #reference = Frame.from_file(reference_path)
-        #frame.rebin(reference)
+    # -----------------------------------------------------------------
 
-        # Finally, crop the image
-        #frame.frames.primary.crop(350, 725, 300, 825)
+    def simulate_model(self):
+
+        """
+        This function ...
+        """
+
+        # Inform the user
+        log.info("Creating ski file to simulate the bulge+disk model image ...")
+
+        # Load the disk ski file template
+        disk_template_path = filesystem.join(template_path, "model.ski")
+        ski = SkiFile(disk_template_path)
+
+        # Change the ski file parameters
+        ski.set_stellar_component_geometry(0, self.disk)
+        ski.set_stellar_component_geometry(1, self.bulge)
+
+        # Set the luminosities of the two components
+        ski.set_stellar_component_luminosities(0, [self.parameters.disk.f])
+        ski.set_stellar_component_luminosities(1, [self.parameters.bulge.f])
+
+        # Remove all existing instruments
+        ski.remove_all_instruments()
+
+        # Add the instruments
+        ski.add_instrument("earth", self.earth)
+        ski.add_instrument("faceon", self.faceon)
+        ski.add_instrument("edgeon", self.edgeon)
+
+        # Determine the path to the ski file
+        ski_path = filesystem.join(self.model_directory, "model.ski")
+
+        # Save the ski file to the new path
+        ski.saveto(ski_path)
+
+        # Determine the path to the simulation output directory
+        out_path = filesystem.join(self.model_directory, "out")
+
+        # Create the output directory
+        filesystem.create_directory(out_path)
+
+        # Create a SkirtArguments object
+        arguments = SkirtArguments()
+
+        # Adjust the parameters
+        arguments.ski_pattern = ski_path
+        arguments.output_path = out_path
+        arguments.single = True   # we expect a single simulation from the ski pattern
+
+        # Inform the user
+        log.info("Running the disk+bulge simulation ...")
+
+        # Run the simulation
+        simulation = self.skirt.run(arguments, silent=False if log.is_debug else True)
+
+        # Determine the path to the output FITS file
+        model_image_path = filesystem.join(out_path, "model_earth_total.fits")
+
+        # Check if the output contains the "model_earth_total.fits" file
+        if not filesystem.is_file(model_image_path):
+            raise RuntimeError("Something went wrong with the disk+bulge simulation: output FITS file missing")
+
+        # Open the model image
+        self.model_image = Frame.from_file(model_image_path)
+
+        # Set the coordinate system of the model image
+        self.model_image.wcs = self.reference_wcs
+
+        # Rescale to the 3.6um flux density
+        fluxdensity = self.parameters.i1_fluxdensity
+        self.model_image *= fluxdensity.to("Jy").value / np.sum(self.model_image)
+        self.model_image.unit = "Jy"
+
+        # Convolve the frame to the PACS 160 resolution
+        self.model_image = self.model_image.convolved(self.psf)
 
     # -----------------------------------------------------------------
 
@@ -552,11 +942,15 @@ class GalaxyDecomposer(DecompositionComponent):
 
         # Determine the path to the bulge image and save it
         final_bulge_path = filesystem.join(self.components_path, "bulge.fits")
-        self.bulge.save(final_bulge_path)
+        self.bulge_image.save(final_bulge_path)
 
         # Determine the path to the disk image and save it
         final_disk_path = filesystem.join(self.components_path, "disk.fits")
-        self.disk.save(final_disk_path)
+        self.disk_image.save(final_disk_path)
+
+        # Determine the path to the model image and save it
+        final_model_path = filesystem.join(self.components_path, "model.fits")
+        self.model_image.save(final_model_path)
 
     # -----------------------------------------------------------------
 
@@ -639,15 +1033,15 @@ def write_parameters(parameters, path):
         for component in ["bulge", "disk"]:
 
             #print(component.title() + ": Interpretation:", parameters[component].interpretation, file=parameter_file)
-            print(component.title() + ": Relative contribution:", parameters[component].rel, file=parameter_file)
+            print(component.title() + ": Relative contribution:", parameters[component].f, file=parameter_file)
             #print(component.title() + ": Total IRAC 3.6um AB magnitude:", parameters[component].mag, file=parameter_file)
             print(component.title() + ": IRAC 3.6um flux density:", parameters[component].fluxdensity, file=parameter_file)
-            print(component.title() + ": Axial ratio:", parameters[component].ar, file=parameter_file)
-            print(component.title() + ": Position angle:", parameters[component].pa, file=parameter_file) # (degrees ccw from North)
+            print(component.title() + ": Axial ratio:", parameters[component].q, file=parameter_file)
+            print(component.title() + ": Position angle:", str(parameters[component].PA.to("deg").value) + " deg", file=parameter_file) # (degrees ccw from North)
 
             if component == "bulge":
 
-                print(component.title() + ": Effective radius:", str(parameters[component].re), file=parameter_file)
+                print(component.title() + ": Effective radius:", str(parameters[component].Re), file=parameter_file)
                 print(component.title() + ": Sersic index:", parameters[component].n, file=parameter_file)
 
             elif component == "disk":
@@ -679,24 +1073,107 @@ def load_parameters(path):
         # Loop over all lines in the file
         for line in parameter_file:
 
-            splitted = line.split(":")
+            splitted = line.split(": ")
 
             # Bulge parameters
-            if splitted[0] == "Bulge": pass
+            if splitted[0] == "Bulge":
+
+                if splitted[1] == "Relative contribution": parameters.bulge.f = float(splitted[2])
+                elif splitted[1] == "IRAC 3.6um flux density": parameters.bulge.fluxdensity = get_quantity(splitted[2])
+                elif splitted[1] == "Axial ratio": parameters.bulge.q = float(splitted[2])
+                elif splitted[1] == "Position angle": parameters.bulge.PA = get_angle(splitted[2])
+                elif splitted[1] == "Effective radius": parameters.bulge.Re = get_quantity(splitted[2])
+                elif splitted[1] == "Sersic index": parameters.bulge.n = float(splitted[2])
 
             # Disk parameters
-            elif splitted[0] == "Disk": pass
+            elif splitted[0] == "Disk":
+
+                if splitted[1] == "Relative contribution": parameters.disk.f = float(splitted[2])
+                elif splitted[1] == "IRAC 3.6um flux density": parameters.disk.fluxdensity = get_quantity(splitted[2])
+                elif splitted[1] == "Axial ratio": parameters.disk.q = float(splitted[2])
+                elif splitted[1] == "Position angle": parameters.disk.PA = get_angle(splitted[2])
+                elif splitted[1] == "Central surface brightness": parameters.disk.mu0 = get_quantity(splitted[2])
+                elif splitted[1] == "Exponential scale length": parameters.disk.hr = get_quantity(splitted[2])
 
             # Other parameters
             elif len(splitted) == 2:
 
                 if splitted[0] == "Name": parameters.galaxy_name = splitted[1]
-                elif splitted[0] == "Center RA": ra = float(splitted[1])
-                elif splitted[0] == "Center DEC": dec = float(splitted[1])
-                elif splitted[0] == "Major axis length": parameters.major = float(splitted[1])
+                elif splitted[0] == "Center RA": ra = get_quantity(splitted[1])
+                elif splitted[0] == "Center DEC": dec = get_quantity(splitted[1])
+                elif splitted[0] == "Major axis length": parameters.major = get_quantity(splitted[1])
                 elif splitted[0] == "Ellipticity": parameters.ellipticity = float(splitted[1])
+                elif splitted[0] == "Position angle": parameters.position_angle = get_angle(splitted[1])
+                elif splitted[0] == "Distance": parameters.distance = get_quantity(splitted[1])
+                elif splitted[0] == "Distance error": parameters.distance_error = get_quantity(splitted[1])
+                elif splitted[0] == "Inclination": parameters.inclination = get_angle(splitted[1])
+                elif splitted[0] == "IRAC 3.6um flux density": parameters.i1_fluxdensity = get_quantity(splitted[1])
+                elif splitted[0] == "IRAC 3.6um flux density error": parameters.i1_error = get_quantity(splitted[1])
+                elif splitted[0] == "IRAC 4.5um flux density": parameters.i2_fluxdensity = get_quantity(splitted[1])
+                elif splitted[0] == "IRAC 4.5um flux density error": parameters.i2_error = get_quantity(splitted[1])
+
+    # Add the center coordinate
+    parameters.center = SkyCoordinate(ra=ra, dec=dec)
 
     # Return the parameters
     return parameters
+
+# -----------------------------------------------------------------
+
+def get_quantity(entry, default_unit=None):
+
+    """
+    This function ...
+    :param entry:
+    :param default_unit:
+    :return:
+    """
+
+    splitted = entry.split()
+    value = float(splitted[0])
+    try: unit = splitted[1]
+    except IndexError: unit = default_unit
+
+    # Create a quantity object and return it
+    if unit is not None: value = value * Unit(unit)
+    return value
+
+# -----------------------------------------------------------------
+
+def get_angle(entry, default_unit=None):
+
+    """
+    This function ...
+    :param entry:
+    :param default_unit:
+    :return:
+    """
+
+    splitted = entry.split()
+    value = float(splitted[0])
+    try: unit = splitted[1]
+    except IndexError: unit = default_unit
+
+    # Create an Angle object and return it
+    if unit is not None: value = Angle(value, unit)
+    return value
+
+# -----------------------------------------------------------------
+
+def quadrant(angle):
+
+    """
+    This function ...
+    :param angle:
+    :return:
+    """
+
+    if -180 <= angle.to("deg").value < -90.: return 3
+    elif -90. <= angle.to("deg").value < 0.0: return 4
+    elif 0.0 <= angle.to("deg").value < 90.: return 1
+    elif 90. <= angle.to("deg").value < 180.: return 2
+    elif 180. <= angle.to("deg").value < 270.: return 3
+    elif 270. <= angle.to("deg").value <= 360.: return 4
+    else: raise ValueError("Failed to determine quadrant for " + str(angle))
 
 # -----------------------------------------------------------------

@@ -130,6 +130,9 @@ class Frame(np.ndarray):
         # Obtain the units of this image
         unit = headers.get_unit(header)
 
+        # Obtain the FWHM of this image
+        fwhm = headers.get_fwhm(header)
+
         # Get the magnitude zero-point
         zero_point = headers.get_zero_point(header)
 
@@ -183,6 +186,42 @@ class Frame(np.ndarray):
 
     # -----------------------------------------------------------------
 
+    def apply_mask(self, mask, fill=0.0):
+
+        """
+        This function ...
+        :param mask:
+        :param fill:
+        """
+
+        self[mask] = fill
+
+    # -----------------------------------------------------------------
+
+    @property
+    def all_zero(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return np.all(self == 0)
+
+    # -----------------------------------------------------------------
+
+    @property
+    def all_nonzero(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return not np.any(self == 0)
+
+    # -----------------------------------------------------------------
+
     @property
     def pixelscale(self):
 
@@ -218,6 +257,17 @@ class Frame(np.ndarray):
 
         # Return a zero-filled copy of the frame
         return np.zeros_like(frame)
+
+    # -----------------------------------------------------------------
+
+    def is_constant(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        np.nanmax(self) == np.nanmin(self)
 
     # -----------------------------------------------------------------
 
@@ -320,6 +370,25 @@ class Frame(np.ndarray):
 
     # -----------------------------------------------------------------
 
+    def normalize(self, to=1.0):
+
+        """
+        This function ...
+        :param to:
+        :return:
+        """
+
+        # Calculate the sum of all the pixels
+        sum = np.nansum(self)
+
+        # Calculate the conversion factor
+        factor = to / sum
+
+        # Multiply the frame with the conversion factor
+        self.__imul__(factor)
+
+    # -----------------------------------------------------------------
+
     def convolved(self, kernel):
 
         """
@@ -329,6 +398,12 @@ class Frame(np.ndarray):
         """
 
         kernel_fwhm = kernel.fwhm
+
+        # Skip the calculation for a constant frame
+        if self.is_constant():
+            copy = self.copy()
+            copy.fwhm = kernel_fwhm
+            return copy
 
         # Calculate the zooming factor
         factor = (self.xy_average_pixelscale.to("arcsec/pix").value / kernel.xy_average_pixelscale.to("arcsec/pix").value)
@@ -360,6 +435,8 @@ class Frame(np.ndarray):
         :param reference_wcs:
         :return:
         """
+
+        # TODO: use the 'Reproject' package here: http://reproject.readthedocs.org/en/stable/
 
         # Do the rebinning
         data = transformations.new_align_and_rebin(self, self.wcs, reference_wcs)
@@ -493,6 +570,7 @@ class Frame(np.ndarray):
 
         """
         This function ...
+        :param extent:
         :return:
         """
 
@@ -540,7 +618,7 @@ class Frame(np.ndarray):
         """
 
         # Get coordinate range
-        center, ra_span, dec_span = self.coordinate_range()
+        center, ra_span, dec_span = self.coordinate_range
 
         ra = center.ra.to(unit).value
         dec = center.dec.to(unit).value
@@ -585,84 +663,15 @@ class Frame(np.ndarray):
 
     # -----------------------------------------------------------------
 
-    def coordinate_range(self, silent=False):
+    @property
+    def coordinate_range(self):
 
         """
-        This function ...
-        :param silent:
+        This property ...
         :return:
         """
 
-        coor1 = self.wcs.wcs_pix2world(0.0, 0.0, 0)
-        coor2 = self.wcs.wcs_pix2world(self.xsize - 1.0, self.ysize - 1.0, 0)
-
-        #print(float(coor1[0]), float(coor1[1]))
-        #print(float(coor2[0]), float(coor2[1]))
-
-        # Some pixel coordinates of interest.
-        #pixels = np.array([[0.0, 0.0], [self.xsize - 1.0, self.ysize - 1.0]])
-        #world = self.wcs.all_pix2world(pixels, 0)  # Convert pixel coordinates to world coordinates (RA and DEC in degrees)
-        #print(world)
-
-        co1 = SkyCoordinate(ra=float(coor1[0]), dec=float(coor1[1]), unit="deg", frame='fk5')
-        co2 = SkyCoordinate(ra=float(coor2[0]), dec=float(coor2[1]), unit="deg", frame='fk5')
-
-        #print("co1=", co1.to_string('hmsdms'))
-        #print("co2=", co2.to_string('hmsdms'))
-
-        #coordinate1 = world[0]
-        #coordinate2 = world[1]
-        #ra_range = [coordinate2[0], coordinate1[0]]
-        #dec_range = [coordinate2[1], coordinate1[1]]
-
-        ra_range = [co1.ra.value, co2.ra.value]
-        dec_range = [co1.dec.value, co2.dec.value]
-
-        # Determine the center in RA and DEC (in degrees)
-        ra_center = 0.5 * (ra_range[0] + ra_range[1])
-        dec_center = 0.5 * (dec_range[0] + dec_range[1])
-
-        # New
-        dec_begin = dec_range[0]
-        dec_end = dec_range[1]
-        ra_begin = ra_range[0]
-        ra_end = ra_range[1]
-
-        # Calculate the actual RA and DEC distance in degrees
-        ra_distance = abs(coordinates.ra_distance(dec_center, ra_begin, ra_end))
-        dec_distance = abs(dec_end - dec_begin)
-
-        # Calculate the pixel scale of this image in degrees
-        x_pixelscale_deg = self.pixelscale.x.to("deg/pix").value
-        y_pixelscale_deg = self.pixelscale.y.to("deg/pix").value
-
-        # Get the center pixel
-        ref_pix = self.wcs.wcs.crpix
-        ref_world = self.wcs.wcs.crval
-
-        # Get the number of pixels
-        size_dec_deg = self.ysize * x_pixelscale_deg
-        size_ra_deg = self.xsize * y_pixelscale_deg
-
-        if not silent:
-
-            # Check whether the two different ways of calculating the RA width result in approximately the same value
-            #assert np.isclose(ra_distance, size_ra_deg, rtol=0.05), "The coordinate system and pixel scale do not match: ra_distance=" + str(ra_distance) + ",size_ra_deg=" + str(size_ra_deg)
-            #assert np.isclose(dec_distance, size_dec_deg, rtol=0.05), "The coordinate system and pixel scale do not match: dec_distance=" + str(dec_distance) + ",size_dec_deg=" + str(size_dec_deg)
-
-            if not np.isclose(ra_distance, size_ra_deg, rtol=0.05):
-                print("ERROR: the coordinate system and pixel scale do not match: ra_distance = " + str(ra_distance) + ", size_ra_deg = " + str(size_ra_deg))
-            if not np.isclose(dec_distance, size_dec_deg, rtol=0.05):
-                print("ERROR: the coordinate system and pixel scale do not match: dec_distance = " + str(dec_distance) + ",size_dec_deg = " + str(size_dec_deg))
-
-        center = SkyCoordinate(ra=ra_center, dec=dec_center, unit="deg", frame="fk5")
-
-        # Create RA and DEC span as quantities
-        ra_span = ra_distance * Unit("deg")
-        dec_span = dec_distance * Unit("deg")
-
-        # Return the center coordinate and the RA and DEC span
-        return center, ra_span, dec_span
+        return self.wcs.coordinate_range
 
     # -----------------------------------------------------------------
 
@@ -816,6 +825,11 @@ class Frame(np.ndarray):
         """
 
         if header is None: header = self.header
+
+        # Set unit, FWHM and filter description
+        if self.unit is not None: header.set("SIGUNIT", str(self.unit), "Unit of the map")
+        if self.fwhm is not None: header.set("FWHM", self.fwhm.to("arcsec").value, "[arcsec] FWHM of the PSF")
+        if self.filter is not None: header.set("FILTER", self.filter.description(), "Filter used for this observation")
 
         # Add origin description
         if origin is not None: header["ORIGIN"] = origin
