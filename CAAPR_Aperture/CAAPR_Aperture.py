@@ -81,7 +81,6 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
         # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
         if pod['verbose']: print '['+pod['id']+'] Parsing input data.'
-        CAAPR_IO.MemCheck(pod)
         pod = CAAPR_Pipeline.MapPrelim(pod)
         if pod['within_bounds']==False:
             return pod
@@ -89,52 +88,56 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
 
         # If star-removal is required, run pod through AstroMagic
+        CAAPR_IO.MemCheck(pod)
         do_magic = True
         if do_magic:
             if band_dict['remove_stars']==True:
                 if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
-                CAAPR_IO.MemCheck(pod)
-                pod = CAAPR_AstroMagic.Magic(pod, source_dict)
+                pod = CAAPR_AstroMagic.Magic(pod, source_dict, kwargs_dict, do_sat=False)
+
+
+
+        # Run pod through function that determines aperture shape, to provide preliminary estimate to facilitate removal of large-scale sky
+        #CAAPR_IO.MemCheck(pod)
+        pod = ApertureShape(pod)
+
+
+
+        # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter
+        #CAAPR_IO.MemCheck(pod)
+        pod = CAAPR_Pipeline.PolySub(pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'])
 
 
 
         # If this band is not to be considered when constructing final aperture, default to standard minimum aperture and skip further processing
-        if band_dict['consider_aperture']==False:
+        if isinstance(source_dict['exclude_band_aperture'], str):
+            exclude_band_aperture = source_dict['exclude_band_aperture'].split(';')
+        elif source_dict['exclude_band_aperture']==False:
+            exclude_band_aperture = []
+        if (band_dict['consider_aperture']==False) or (band_dict['band_name'] in exclude_band_aperture):
             pod['opt_axial_ratio'] = 1.0
             pod['opt_angle'] = 0.0
-            pod['opt_semimaj_arcsec'] = 2.0 * band_dict['beam_arcsec']
+            pod['opt_semimaj_arcsec'] = ( (2.0*band_dict['beam_arcsec'])**2.0 - band_dict['beam_arcsec']**2.0 )**0.5
             pod['opt_semimaj_pix'] = pod['opt_semimaj_arcsec'] / pod['pix_arcsec']
         else:
 
 
 
-            # Run pod through function that determines aperture shape, to provide preliminary estimate to facilitate removal of large-scale sky
-            CAAPR_IO.MemCheck(pod)
-            pod = ApertureShape(pod)
-
-
-
-            # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter
-            CAAPR_IO.MemCheck(pod)
-            pod = CAAPR_Pipeline.PolySub(pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'])
-
-
-
             # If sky polynomial removed, run pod through function that determines aperture shape, to provide final estiamte
             if pod['sky_poly']!=False:
-                CAAPR_IO.MemCheck(pod)
+                #CAAPR_IO.MemCheck(pod)
                 pod = ApertureShape(pod)
 
 
 
             # Run pod through function that determines aperture size
-            CAAPR_IO.MemCheck(pod)
+            #CAAPR_IO.MemCheck(pod)
             pod = ApertureSize(pod)
 
 
 
         # If thumbnail images have been requested, save a copy of the current image (ie, with any star and/or background subtaction)
-        if kwargs_dict['thumbnails']==True or kwargs_dict['do_photom']==True:
+        if kwargs_dict['thumbnails']==True:
             astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'])
 
 
@@ -168,10 +171,22 @@ def ApertureShape(pod):
     # Find all significant pixels that are connected to the region of the source (ie, withing a beam-width of the provided target coords)
     if verbose: print '['+pod['id']+'] Finding contiguous significant pixels around target.'
     semimaj_initial = int(round(pod['beam_pix']*1.0))
-    cutoff = field_value + (5.0*noise_value)
+    cutoff = field_value + (4.0*noise_value)
     #ChrisFuncs.Cutout(cont_array_binary, '/home/saruman/spx7cjc/DustPedia/Cont.fits')
     #cont_structure = np.array([[1]*(2*semimaj_initial)]*(2*semimaj_initial))
-    cont_array = ChrisFuncs.Photom.ContiguousPixels(pod['cutout'], semimaj_initial, pod['centre_i'], pod['centre_j'], cutoff)#, custom_structure=cont_structure)
+    cont_array_prelim = ChrisFuncs.Photom.ContiguousPixels(pod['cutout'], semimaj_initial, pod['centre_i'], pod['centre_j'], cutoff)#, custom_structure=cont_structure)
+
+    # Use binary erosion to remove thin artefacts (primarily diffraction spikes)
+    erode_size = int(np.ceil(2.0*pod['beam_pix']))
+    erode_centre = (0.5*float(erode_size))-0.5
+    erode_structure = ChrisFuncs.Photom.EllipseMask(np.zeros([erode_size,erode_size]), pod['beam_pix'], 1.0, 0.0, erode_centre, erode_centre)
+    erode_array = scipy.ndimage.morphology.binary_erosion(cont_array_prelim, structure=erode_structure).astype(int)
+    #cont_array = scipy.ndimage.measurements.label(erode_array)[0]
+    cont_array = ChrisFuncs.Photom.ContiguousPixels(erode_array, semimaj_initial, pod['centre_i'], pod['centre_j'], 1E-50)
+
+    # If remainging contiguous pixel region has same or fewer number of pixels than erosion structure, replace with erosion sturcture
+    if np.sum(cont_array)<=(np.sum(erode_structure)):
+        cont_array = erode_structure
 
     # Find ellipse that best fits outline of contiguous region
     if verbose: print '['+pod['id']+'] Fitting ellipse to perimeter of contiguous significant pixels.'
@@ -191,7 +206,7 @@ def ApertureShape(pod):
     else:
         opt_axial_ratio = 1.0
         opt_angle = 0.0
-    if verbose: print '['+pod['id']+'] Ellipse angle: '+str(opt_angle)[:6]+'; Ellipse axial ratio: '+str(opt_axial_ratio)[:6]+'.'
+    if verbose: print '['+pod['id']+'] Ellipse angle: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_angle,4))+' degrees; Ellipse axial ratio: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_axial_ratio,4))+'.'
 
     # Clean garbage, record results to pod, and return
     gc.collect()
@@ -286,7 +301,7 @@ def ApertureSize(pod):
             snr_success = True
             #ann_brute_semimaj = ann_brute_range[i-1]
             ann_bounds = [( ann_brute_range[ max(i-2,0) ], ann_brute_range[ min(i+1,len(ann_brute_range)-1) ] )]
-            if verbose: print '['+pod['id']+'] Course analysis finds that radial SNR=2 between semi-major axes of '+str(ann_bounds[0][1]*pod['pix_arcsec'])[:7]+' and '+str(ann_bounds[0][0]*pod['pix_arcsec'])[:7]+' arcseconds.'
+            if verbose: print '['+pod['id']+'] Course analysis finds that radial SNR=2 between semi-major axes of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ann_bounds[0][1]*pod['pix_arcsec'],4))+' and '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ann_bounds[0][0]*pod['pix_arcsec'],4))+' arcseconds.'
             break
 
     # If SNR=2 threshold not reached, set to minimum semi-major axis of two beam-widths
@@ -294,29 +309,30 @@ def ApertureSize(pod):
         ann_bounds = [( ann_brute_range[i], np.floor(pod['cutout'].shape[0]/2.0) )]
         opt_semimaj_pix = pod['beam_pix'] * 2.0
         opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
-        if verbose: print '['+pod['id']+'] No SNR=2 threshold found; hence reverting to two beam-width minimum value of '+str(opt_semimaj_arcsec)[:7]+' arcseconds.'
+        if verbose: print '['+pod['id']+'] No SNR=2 threshold found; hence reverting to two beam-width minimum value of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_semimaj_arcsec,4))+' arcseconds.'
+    else:
 
-    # Now use scipy differential evolution optimisation to find, with more precision, the semi-major axis at which annulus falls to a SNR of 2
-    ann_beams = 1.0
-    ann_width = np.ceil( ann_beams * pod['beam_pix'] )
-    if verbose: print '['+pod['id']+'] Refining size of target source with more precise analysis.'
-    ann_fit = scipy.optimize.differential_evolution(AnnulusSNR, ann_bounds, args=(pod, pod['cutout'], ann_width, i_trans, j_trans, True), maxiter=5, popsize=10, polish=False)
-    """
-    ann_guess = ann_brute_semimaj
-    ann_fit = scipy.optimize.minimize(AnnulusSNR, ann_guess, args=(pod, pod['cutout'], ann_width, i_trans, j_trans))#method='Nelder-Mead', tol=1E-4, method='L-BFGS-B', bounds=[(pod['semimaj_initial_pix'], None)],
-    minimizer_kwargs = {'args':(pod, pod['cutout'], ann_width, i_trans, j_trans)}
-    ann_fit = scipy.optimize.basinhopping(AnnulusSNR, ann_guess, T=0.1, stepsize=5.0, minimizer_kwargs=minimizer_kwargs)
-    """
-    # Extract results from fitting
-    opt_semimaj_pix = ann_fit['x'][0]
-    opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
-    if verbose: print '['+pod['id']+'] Precision analysis finds that radial SNR=2 at semi-major axis of '+str(opt_semimaj_arcsec)[:7]+' arcseconds.'
-
-    # For small sources, default to minimum semi-major axis of two beam-widths
-    if opt_semimaj_pix<(ann_beams*2.0):
-        opt_semimaj_pix = pod['beam_pix'] * 2.0
+        # Now use scipy differential evolution optimisation to find, with more precision, the semi-major axis at which annulus falls to a SNR of 2
+        ann_beams = 1.0
+        ann_width = np.ceil( ann_beams * pod['beam_pix'] )
+        if verbose: print '['+pod['id']+'] Refining size of target source with more precise analysis.'
+        ann_fit = scipy.optimize.differential_evolution(AnnulusSNR, ann_bounds, args=(pod, pod['cutout'], ann_width, i_trans, j_trans, True), maxiter=5, popsize=10, polish=False)
+        """
+        ann_guess = ann_brute_semimaj
+        ann_fit = scipy.optimize.minimize(AnnulusSNR, ann_guess, args=(pod, pod['cutout'], ann_width, i_trans, j_trans))#method='Nelder-Mead', tol=1E-4, method='L-BFGS-B', bounds=[(pod['semimaj_initial_pix'], None)],
+        minimizer_kwargs = {'args':(pod, pod['cutout'], ann_width, i_trans, j_trans)}
+        ann_fit = scipy.optimize.basinhopping(AnnulusSNR, ann_guess, T=0.1, stepsize=5.0, minimizer_kwargs=minimizer_kwargs)
+        """
+        # Extract results from fitting
+        opt_semimaj_pix = ann_fit['x'][0]
         opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
-        if verbose: print '['+pod['id']+'] Semi-major axis at which SNR=2 is less than two beam-widths; hence reverting to two beam-width minimum value of '+str(opt_semimaj_arcsec)[:7]+' arcseconds.'
+        if verbose: print '['+pod['id']+'] Precision analysis finds that radial SNR=2 at semi-major axis of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_semimaj_arcsec,4))+' arcseconds.'
+
+        # For small sources, default to minimum semi-major axis of two beam-widths
+        if opt_semimaj_pix<(ann_beams*2.0):
+            opt_semimaj_pix = pod['beam_pix'] * 2.0
+            opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
+            if verbose: print '['+pod['id']+'] Semi-major axis at which SNR=2 is less than two beam-widths; hence reverting to two beam-width minimum value of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_semimaj_arcsec,4))+' arcseconds.'
 
     # Establish what fraction of the pixels inside a band's aperture are NaNs
     pix_good = ChrisFuncs.Photom.EllipseQuickSum(pod['cutout'], opt_semimaj_pix, pod['opt_axial_ratio'], pod['opt_angle'], pod['centre_i'], pod['centre_j'], i_trans, j_trans)[1]
@@ -331,8 +347,8 @@ def ApertureSize(pod):
     # If more than 10% of the pixels in the aperture are NaNs, report NaN values for aperture dimensions; else proceed normally
     if pix_good_frac<0.9:
         if verbose: print '['+pod['id']+'] More than 10% of pixels in fitted aperture are NaNs; hence reverting to two beam-width minimum value of '+str(opt_semimaj_arcsec)[:7]+' arcseconds.'
-        pod['opt_semimaj_pix'] = pod['beam_pix'] * 2.0
-        pod['opt_semimaj_arcsec'] = pod['opt_semimaj_pix'] * pod['pix_arcsec']
+        opt_semimaj_pix = pod['beam_pix'] * 2.0
+        opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
         pod['opt_axial_ratio'] = 1.0
         pod['opt_angle'] = 0.0
     else:
@@ -409,12 +425,13 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
 
     # Convert final semi-major axis back to arcsec and apply expanson factor, then clean garbage and return results
     if isinstance(kwargs_dict['expansion_factor'], float) or isinstance(kwargs_dict['expansion_factor'], int):
-        expansion_facor = kwargs_dict['expansion_factor']
+        expansion_facor = float(kwargs_dict['expansion_factor'])
     else:
         expansion_facor = 1.0
     cont_semimaj_arcsec = cont_semimaj_pix * ap_array_pix_size * expansion_facor
 
     # Clean garbage and return results
+    if kwargs_dict['verbose']: print '['+source_dict['name']+'] Final ellipse semi-major axis: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_semimaj_arcsec,4))+' arcsec; final ellipse angle: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_angle,4))+' '+' degrees; final ellipse axial ratio: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_axial_ratio,4))+'.'
     gc.collect()
     return [cont_semimaj_arcsec, cont_axial_ratio, cont_angle, ap_array]
 

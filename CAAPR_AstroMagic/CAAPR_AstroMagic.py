@@ -74,7 +74,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
     bad_region_path = None
 
     # The FWHM of the image (if known)
-    fwhm = band_dict['beam_arcsec'] * Unit("arcsec")
+    fwhm = 2.0 * band_dict['beam_arcsec'] * Unit("arcsec")
 
     # Import the image
     importer = ImageImporter()
@@ -171,7 +171,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
 
 
         # Only process the most conspicuous foreground stars, to save time
-        BrightestStars(saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, percentile=1.0, maxtot=500, do_sat=do_sat)
+        BrightestStars(saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, percentile=75.0, maxtot=75, do_sat=do_sat)
 
         # Region files can be adjusted by the user; if this is done, they have to be reloaded
         star_region = Region.from_file(star_region_path.replace('.reg','_revised.reg'))
@@ -331,23 +331,23 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
         band_wcs = astropy.wcs.WCS(band_header)
         band_cdelt = band_wcs.wcs.cdelt.max()
         diam = np.max([ band_cdelt*float(band_header['NAXIS1']), band_cdelt*float(band_header['NAXIS2']) ])
-        #diam *= 2.0**0.5
         if diam>diam_max:
-            #file_max = in_fitspath
+            file_max = in_fitspath
             diam_max = diam
+            file_max_cdelt = band_cdelt
     """
     # Use IRSA header template service to create dummy header
     try:
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Accessing IRSA header template service to create generic template header.'
-        dummy_cdelt_arcsec = (diam_max/100.0)*3600.0
+        dummy_cdelt_arcsec = (diam_max/dummy_pix)*3600.0
         url = 'http://irsa.ipac.caltech.edu/cgi-bin/HdrTemplate/nph-hdr?location='+str(source_dict['ra'])+'%2C+'+str(source_dict['dec'])+'&system=Equatorial&equinox=2000.&width='+str(diam_max)+'&height='+str(diam_max)+'&resolution='+str(dummy_cdelt_arcsec)+'&rotation=0.0'
         sys.stdout = open(os.devnull, "w")
         ChrisFuncs.wgetURL(url, os.path.join(kwargs_dict['temp_dir_path'],'Header_Template.txt'), clobber=True, auto_retry=False)
         sys.stdout = sys.__stdout__
 
     # Produce dummy header
-    except:"""
-    dummy_cdelt = diam_max / 11.0
+    except:
+    dummy_cdelt = diam_max / dummy_pix
     #dummy_cdelt_arcsec = (diam_max/100.0)*3600.0
     dummy_header_in = open(os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR_AstroMagic','Header_Template.txt'), 'r')
     dummy_header_string = dummy_header_in.read()
@@ -366,11 +366,11 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
     #dummy_cdelt_arcsec = (diam_max/float(dummy_header['NAXIS2']))*3600.0
     dummy_file = os.path.join( kwargs_dict['temp_dir_path'],'FITS_Template.fits' )
     astropy.io.fits.writeto( dummy_file, dummy_map, header=dummy_header)
-
-    # Get AstroMagic catalogue object using dummy fits as reference
+    """
+    # Get AstroMagic catalogue object reference fits
     logging.setup_log(level="ERROR")
     importer = ImageImporter()
-    importer.run(dummy_file)
+    importer.run(file_max)
     image = importer.image
 
     # Run catalogue importer on dummy fits, and save results

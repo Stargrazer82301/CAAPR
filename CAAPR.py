@@ -31,8 +31,9 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
           temp_dir_path = 'CAAPR_Temp',
           fit_apertures = True,
           aperture_table_path = None,#'CAAPR_Aperture_Table.csv',
+          photom_table_path = None,
           expansion_factor = 1.25,
-          do_photom = False,
+          do_photom = True,
           parallel = True,
           n_cores = mp.cpu_count()-4,
           thumbnails = True,
@@ -41,9 +42,26 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
 
 
 
+    # Create dictionary of kwarg values
+    kwargs_dict = {'sources_table_path':sources_table_path,
+                   'bands_table_path':bands_table_path,
+                   'output_dir_path':output_dir_path,
+                   'temp_dir_path':temp_dir_path,
+                   'fit_apertures':fit_apertures,
+                   'aperture_table_path':aperture_table_path,
+                   'photom_table_path':photom_table_path,
+                   'expansion_factor':expansion_factor,
+                   'do_photom':do_photom,
+                   'parallel':parallel,
+                   'n_cores':n_cores,
+                   'thumbnails':thumbnails,
+                   'verbose':verbose}
+
     # Read in source table and band table CSVs, and convert into dictionaries
     sources_dict = CAAPR_IO.SourcesDictFromCSV(sources_table_path)
     bands_dict = CAAPR_IO.BandsDictFromCSV(bands_table_path)
+
+
 
     # Prepare output directory
     if os.path.exists(output_dir_path):
@@ -52,6 +70,8 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
         os.mkdir(output_dir_path)
     if fit_apertures and thumbnails and not os.path.exists( os.path.join(output_dir_path,'Aperture_Fitting_Thumbnails') ):
         os.mkdir( os.path.join(output_dir_path,'Aperture_Fitting_Thumbnails') )
+    if do_photom and thumbnails and not os.path.exists( os.path.join(output_dir_path,'Photometry_Thumbnails') ):
+        os.mkdir( os.path.join(output_dir_path,'Photometry_Thumbnails') )
 
     # Prepare temp directory, deleting any pre-existing directory at the specified location
     if os.path.exists(temp_dir_path):
@@ -61,33 +81,35 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
         os.mkdir( os.path.join(temp_dir_path,'Processed_Maps') )
     os.mkdir(os.path.join(temp_dir_path, 'AstroMagic'))
 
-    # If no aperture table file provided, create and prepare CSV file to store aperture dimensions for each source
-    timestamp = str(time.time()).replace('.','')
-    if aperture_table_path==None:
+
+
+    # Record timestamp
+    timestamp = str(time.time()).replace('.','-')
+    kwargs_dict['timestamp'] = timestamp
+
+    # If no aperture table file provided, and aperture-fitting is requested, create and prepare CSV file to store aperture dimensions for each source
+    if aperture_table_path==None and fit_apertures==True:
         aperture_table_path = os.path.join(output_dir_path,'CAAPR_Aperture_Table_'+timestamp+'.csv')
+        kwargs_dict['aperture_table_path'] = aperture_table_path
         aperture_table_header = 'name,semimaj_arcsec,axial_ratio,pos_angle\n'
         aperture_table_file = open( aperture_table_path, 'a')
         aperture_table_file.write(aperture_table_header)
         aperture_table_file.close()
 
-    # Create dictionary of kwarg values
-    kwargs_dict = {'sources_table_path':sources_table_path,
-                   'bands_table_path':bands_table_path,
-                   'output_dir_path':output_dir_path,
-                   'temp_dir_path':temp_dir_path,
-                   'fit_apertures':fit_apertures,
-                   'aperture_table_path':aperture_table_path,
-                   'expansion_factor':expansion_factor,
-                   'do_photom':do_photom,
-                   'parallel':parallel,
-                   'n_cores':n_cores,
-                   'thumbnails':thumbnails,
-                   'verbose':verbose}
+    # If no photometry table path provided, and photometry is requested, create and prepare CSV file to store photometry output for each source
+    if photom_table_path==None and do_photom==True:
+        photom_table_path = os.path.join(kwargs_dict['output_dir_path'],'CAAPR_Photom_Table_'+kwargs_dict['timestamp']+'.csv')
+        kwargs_dict['photom_table_path'] = photom_table_path
+        CAAPR_IO.PhotomTablePrepare(bands_dict, kwargs_dict)
+
+
 
     # Loop over each source
     for source in sources_dict.keys():
         source_dict = sources_dict[source]
-        CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, kwargs_dict)#sources_table_path, bands_table_path, output_dir_path, temp_dir_path, fit_apertures, aperture_table_path, parallel, n_cores, thumbnails, verbose)
+        CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, kwargs_dict)
+
+
 
 
 
@@ -96,9 +118,9 @@ if __name__ == "__main__":
 
     # Run function
     testing = True
-    parallel = False
+    parallel = True
     if testing:
-        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', parallel=parallel)
+        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', fit_apertures=True, do_photom=True, aperture_table_path=None, sources_table_path='CAAPR_Source_Table.csv', parallel=parallel, n_cores=4)
 
         # Jubilate
         print 'All done!'

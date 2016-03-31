@@ -8,6 +8,7 @@ import time
 import warnings
 import numbers
 import random
+import shutil
 import numpy as np
 import scipy.ndimage
 import multiprocessing as mp
@@ -27,6 +28,8 @@ from pts.magic.catalog.importer import CatalogImporter
 
 # The main pipeline; the cutout-production, aperture-fitting, and actual photometry parts of the CAAPR process are called in here, as sub-pipelines
 def PipelineMain(source_dict, bands_dict, kwargs_dict):
+    source_start = time.time()
+    if kwargs_dict['verbose']: print '['+source_dict['name']+'] Processing target '+source_dict['name']+'.'
 
 
 
@@ -41,9 +44,12 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         if bands_dict[band]['make_cutout']==True:
             raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
         if bands_dict[band]['make_cutout']>0:
+            if 'band_dir_original' in bands_dict[band].keys():
+                bands_dict[band]['band_dir'] = bands_dict[band]['band_dir_original']
             band_cutout_dir = CAAPR_IO.Cutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
 
             # Update current row of bands table to reflect the path of the freshly-made cutout
+            bands_dict[band]['band_dir_original'] = bands_dict[band]['band_dir']
             bands_dict[band]['band_dir'] = band_cutout_dir
 
 
@@ -53,15 +59,15 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         print '['+source_dict['name']+'] So you don\'t want aperture fitting, nor do you want actual photometry to happen? Erm, okay.'
 
 
-    """
-    # Check if star-subtraction is requested for any band; if so, commence pre-processing
+
+    # Check if star-subtraction is requested for any band; if so, commence catalogue pre-fetching
     star_sub_check = False
     for band in bands_dict.keys():
         if bands_dict[band]['remove_stars']==True:
             star_sub_check = True
-        if star_sub_check==True:
-            source_dict['pre_catalogue'] = CAAPR_AstroMagic.PreCatalogue(source_dict, bands_dict, kwargs_dict)
-    """
+    if star_sub_check==True:
+        source_dict['pre_catalogue'] = CAAPR_AstroMagic.PreCatalogue(source_dict, bands_dict, kwargs_dict)
+
 
 
     # If aperture file not provided, commence aperture-fitting sub-pipeline
@@ -89,7 +95,6 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
         # Combine all fitted apertures to produce amalgam aperture
         aperture_combined = CAAPR_Aperture.CombineAperture(aperture_list, source_dict, kwargs_dict)
-        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Time taken performing aperture fitting: '+str(time.time()-aperture_start)[:7]+' seconds.'
 
         # Record aperture properties to file
         aperture_string = str([ source_dict['name'], aperture_combined[0], aperture_combined[1], aperture_combined[2] ])#'name','semimaj_arcsec,axial_ratio,pos_angle\n'
@@ -99,7 +104,12 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         aperture_table_file.close()
 
         # Create grid of thumbnail images
-        CAAPR_IO.ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined)
+        if kwargs_dict['thumbnails']==True:
+            CAAPR_IO.ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined)
+
+        # Report time taken to fit apertures, and tidy up
+        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Time taken performing aperture fitting: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-aperture_start,4))+' seconds.'
+        gc.collect()
 
 
 
@@ -130,8 +140,36 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
                 photom_output_list.append( CAAPR_Photom.PipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
                 photom_list = [output for output in photom_output_list if output!=None]
 
-        # Report time taken to user
-        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Time taken performing actual photometry: '+str(time.time()-photom_start)[:7]+' seconds.'
+        # Use band input table to establish order in which to put bands in results file
+        photom_string = source_dict['name']
+        bands_table = np.genfromtxt(kwargs_dict['bands_table_path'], delimiter=',', names=True, dtype=None)
+        bands_list = bands_table['band_name']
+        for band_name in bands_list:
+            for photom_entry in photom_list:
+                if photom_entry['band_name']==band_name:
+                    photom_string += ','+str(photom_entry['ap_sum'])+','+str(photom_entry['ap_error'])
+        photom_string += '\n'
+
+        # Record photometry results to file
+        photom_table_file = open( kwargs_dict['photom_table_path'], 'a')
+        photom_table_file.write(photom_string)
+        photom_table_file.close()
+
+        # Create grid of thumbnail images
+        if kwargs_dict['thumbnails']==True:
+            CAAPR_IO.PhotomThumbGrid(source_dict, bands_dict, kwargs_dict)
+
+        # Report time taken to do photometry, and tidy up
+        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Time taken performing actual photometry: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-photom_start,4))+' seconds.'
+
+
+
+    # Tidy up temporary files
+    if kwargs_dict['verbose']: print '['+source_dict['name']+'] Total time taken for souce: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-source_start,4))+' seconds.'
+    [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
+    if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name'])):
+        shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name']))
+    gc.collect()
 
 
 
@@ -247,17 +285,15 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
 
 
 
-    # Do a memory check before continuing
-    CAAPR_IO.MemCheck(pod)
-
     # Establish background variation before application of filter
-    clip_in = ChrisFuncs.SigmaClip(pod['cutout'], tolerance=0.005, median=True, sigma_thresh=2.0)
+    sigma_thresh = 3.0
+    clip_in = ChrisFuncs.SigmaClip(pod['cutout'], tolerance=0.005, median=True, sigma_thresh=sigma_thresh)
     bg_in = pod['cutout'][ np.where( pod['cutout']<clip_in[1] ) ]
     spread_in = np.mean( np.abs( bg_in - clip_in[1] ) )
 
     # How much reduction in background variation there was due to application of the filter
     image_sub = pod['cutout'] - poly_full
-    clip_sub = ChrisFuncs.SigmaClip(image_sub, tolerance=0.005, median=True, sigma_thresh=2.0)
+    clip_sub = ChrisFuncs.SigmaClip(image_sub, tolerance=0.005, median=True, sigma_thresh=sigma_thresh)
     bg_sub = image_sub[ np.where( image_sub<clip_sub[1] ) ]
     spread_sub = np.mean( np.abs( bg_sub - clip_sub[1] ) )
     spread_diff = spread_in / spread_sub
