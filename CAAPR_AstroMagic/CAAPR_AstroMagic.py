@@ -58,6 +58,10 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
         os.mkdir(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
     pickle_path = os.path.join( output_path, source_dict['name']+'_'+band_dict['band_name']+'_Preprocessed.pj' )
 
+    # Make copies of pre-fetched catalogues, to prevent simultaneous access conflicts
+    shutil.copy(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat'), os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
+    shutil.copy(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat'), os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
+
 
 
 
@@ -97,8 +101,8 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
         catalog_importer = CatalogImporter()
         catalog_importer.config.stars.use_catalog_file = True
         catalog_importer.config.galaxies.use_catalog_file = True
-        catalog_importer.config.stars.catalog_path = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat')
-        catalog_importer.config.galaxies.catalog_path = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat')
+        catalog_importer.config.stars.catalog_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Stars.cat') #os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat')
+        catalog_importer.config.galaxies.catalog_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Galaxies.cat') #os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat')
         catalog_importer.run(image.frames.primary)
 
 
@@ -167,7 +171,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
 
 
         # Only process the most conspicuous foreground stars, to save time
-        BrightestStars(saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, do_sat=do_sat)
+        BrightestStars(saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, percentile=1.0, maxtot=500, do_sat=do_sat)
 
         # Region files can be adjusted by the user; if this is done, they have to be reloaded
         star_region = Region.from_file(star_region_path.replace('.reg','_revised.reg'))
@@ -329,13 +333,44 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
         diam = np.max([ band_cdelt*float(band_header['NAXIS1']), band_cdelt*float(band_header['NAXIS2']) ])
         #diam *= 2.0**0.5
         if diam>diam_max:
+            #file_max = in_fitspath
             diam_max = diam
-            file_max = in_fitspath
+    """
+    # Use IRSA header template service to create dummy header
+    try:
+        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Accessing IRSA header template service to create generic template header.'
+        dummy_cdelt_arcsec = (diam_max/100.0)*3600.0
+        url = 'http://irsa.ipac.caltech.edu/cgi-bin/HdrTemplate/nph-hdr?location='+str(source_dict['ra'])+'%2C+'+str(source_dict['dec'])+'&system=Equatorial&equinox=2000.&width='+str(diam_max)+'&height='+str(diam_max)+'&resolution='+str(dummy_cdelt_arcsec)+'&rotation=0.0'
+        sys.stdout = open(os.devnull, "w")
+        ChrisFuncs.wgetURL(url, os.path.join(kwargs_dict['temp_dir_path'],'Header_Template.txt'), clobber=True, auto_retry=False)
+        sys.stdout = sys.__stdout__
+
+    # Produce dummy header
+    except:"""
+    dummy_cdelt = diam_max / 11.0
+    #dummy_cdelt_arcsec = (diam_max/100.0)*3600.0
+    dummy_header_in = open(os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR_AstroMagic','Header_Template.txt'), 'r')
+    dummy_header_string = dummy_header_in.read()
+    dummy_header_in.close()
+    dummy_header_string = dummy_header_string.replace('RA_PLACEHOLDER', str(source_dict['ra']))
+    dummy_header_string = dummy_header_string.replace('DEC_PLACEHOLDER', str(source_dict['dec']))
+    dummy_header_string = dummy_header_string.replace('CDELT1_PLACEHOLDER', str(dummy_cdelt))
+    dummy_header_string = dummy_header_string.replace('CDELT2_PLACEHOLDER', str(dummy_cdelt))
+    dummy_header_out = open( os.path.join( kwargs_dict['temp_dir_path'],'Header_Template.txt' ), 'w')
+    dummy_header_out.write(dummy_header_string)
+    dummy_header_out.close()
+
+    # Create dummy map
+    dummy_header = astropy.io.fits.Header.fromfile( os.path.join(kwargs_dict['temp_dir_path'],'Header_Template.txt'), sep='\n', endcard=False, padding=False)
+    dummy_map = np.zeros([ int(dummy_header['NAXIS1']), int(dummy_header['NAXIS2']) ])
+    #dummy_cdelt_arcsec = (diam_max/float(dummy_header['NAXIS2']))*3600.0
+    dummy_file = os.path.join( kwargs_dict['temp_dir_path'],'FITS_Template.fits' )
+    astropy.io.fits.writeto( dummy_file, dummy_map, header=dummy_header)
 
     # Get AstroMagic catalogue object using dummy fits as reference
     logging.setup_log(level="ERROR")
     importer = ImageImporter()
-    importer.run(file_max)
+    importer.run(dummy_file)
     image = importer.image
 
     # Run catalogue importer on dummy fits, and save results

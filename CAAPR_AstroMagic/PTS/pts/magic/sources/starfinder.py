@@ -14,6 +14,7 @@ from __future__ import absolute_import, division, print_function
 
 # Import standard modules
 import numpy as np
+import pdb
 
 # Import astronomical modules
 from astropy.units import Unit
@@ -217,7 +218,7 @@ class StarFinder(Configurable):
         # Keep track of the distances between the stars and the galaxies
         distances = []
 
-        on_galaxy_column = []
+        on_galaxy_column = [False]*len(self.catalog)
 
         # Create the list of stars
         for i in range(len(self.catalog)):
@@ -261,7 +262,7 @@ class StarFinder(Configurable):
                 # Check whether this star is on top of the galaxy, and label it so (by default, star.on_galaxy is False)
                 if self.galaxy_finder is not None: star_on_galaxy = self.galaxy_finder.principal.contains(pixel_position)
                 else: star_on_galaxy = False
-                on_galaxy_column.append(star_on_galaxy)
+                on_galaxy_column[i] = star_on_galaxy
 
             # -- Cross-referencing with the galaxies in the frame --
 
