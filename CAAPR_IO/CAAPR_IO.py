@@ -86,8 +86,10 @@ def PhotomTablePrepare(bands_dict, kwargs_dict):
     bands_table = np.genfromtxt(kwargs_dict['bands_table_path'], delimiter=',', names=True, dtype=None)
     bands_list = bands_table['band_name']
 
-    # Create header
+    # Create header, handling special case of a single band
     photom_table_header = 'name'
+    if bands_list.shape==():
+        bands_list = [bands_list.tolist()]
     for band in bands_list:
         photom_table_header += ','+band+','+band+'_ERR'
     photom_table_header += '\n'
@@ -181,7 +183,7 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
 
 
 # Define function that checks whether a decent amount of RAM is free before allowing things to progress
-def MemCheck(pod, thresh_fraction=0.75, thresh_factor=15.0, swap_thresh_fraction=0.5, return_status=False):
+def MemCheck(pod, thresh_fraction=0.75, thresh_factor=20.0, swap_thresh_fraction=0.5, return_status=False):
 
     # Start infinite loop
     wait_initial = True
@@ -331,6 +333,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
 
 
     # Begin main thumbnail plotting loop
+    aperture_name_list = [ aperture_list[b]['band_name'] for b in range(0, len(aperture_list))  ]
     for band_name in bands_list_present:
         for w in range(0, thumb_files):
             if aperture_list[w]['band_name']==band_name:

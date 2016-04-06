@@ -8,6 +8,7 @@ import shutil
 import psutil
 import time
 import resource
+import random
 import warnings
 warnings.filterwarnings('ignore')
 import numpy as np
@@ -33,9 +34,11 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
           aperture_table_path = None,#'CAAPR_Aperture_Table.csv',
           photom_table_path = None,
           expansion_factor = 1.25,
+          polysub = True,
+          starsub = True,
           do_photom = True,
           parallel = True,
-          n_cores = mp.cpu_count()-4,
+          n_proc = mp.cpu_count()-2,
           thumbnails = True,
           verbose = True
           ):
@@ -51,9 +54,11 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
                    'aperture_table_path':aperture_table_path,
                    'photom_table_path':photom_table_path,
                    'expansion_factor':expansion_factor,
+                   'polysub':polysub,
+                   'starsub':starsub,
                    'do_photom':do_photom,
                    'parallel':parallel,
-                   'n_cores':n_cores,
+                   'n_proc':n_proc,
                    'thumbnails':thumbnails,
                    'verbose':verbose}
 
@@ -105,7 +110,9 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
 
 
     # Loop over each source
-    for source in sources_dict.keys():
+    source_dict_keys = sources_dict.keys()
+    random.shuffle(source_dict_keys)
+    for source in source_dict_keys:
         source_dict = sources_dict[source]
         CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, kwargs_dict)
 
@@ -120,7 +127,7 @@ if __name__ == "__main__":
     testing = True
     parallel = True
     if testing:
-        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', fit_apertures=True, do_photom=True, aperture_table_path=None, sources_table_path='CAAPR_Source_Table.csv', parallel=parallel, n_cores=4)
+        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=10, polysub=True, starsub=False, fit_apertures=True, do_photom=False, aperture_table_path=None, sources_table_path='CAAPR_Source_Table_Full.csv', parallel=parallel)
 
         # Jubilate
         print 'All done!'

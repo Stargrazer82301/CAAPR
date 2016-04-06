@@ -8,6 +8,8 @@ import time
 import math
 import numpy as np
 import scipy.optimize
+import scipy.ndimage.measurements
+import scipy.stats
 import matplotlib
 import matplotlib.pyplot as plt
 import astropy.io.fits
@@ -104,7 +106,6 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
         pod = CAAPR_Pipeline.MapPrelim(pod)
         if pod['within_bounds']==False:
             return pod
-        CAAPR_IO.MemCheck(pod)
 
 
 
@@ -124,8 +125,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
         # If star-removal is required, run pod through AstroMagic
         CAAPR_IO.MemCheck(pod)
-        do_magic = True
-        if do_magic:
+        if kwargs_dict['starsub']==True:
             if band_dict['remove_stars']==True:
                 if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
                 pod = CAAPR_AstroMagic.Magic(pod, source_dict, kwargs_dict, do_sat=False)
@@ -133,13 +133,12 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
         # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter, with source aperture masked
-        #CAAPR_IO.MemCheck(pod)
-        pod = CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'])
+        if kwargs_dict['polysub']==True:
+            pod = CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'])
 
 
 
         # Run pod through function that (finally) performs the actual photometry
-        #CAAPR_IO.MemCheck(pod)
         pod = Photom(pod)
 
 
@@ -153,8 +152,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
             # Attempt to determine aperture noise the preferred way, using full-size randomly-placed apertures
             if kwargs_dict['verbose']: print '['+source_id+'] Estimating aperture noise using full-size randomly-placed sky apertures.'
-            #CAAPR_IO.MemCheck(pod)
-            ap_noise_dict = ApNoise(pod['cutout'], source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
+            ap_noise_dict = ApNoise(pod['cutout'].copy(), source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
             if ap_noise_dict['fail']==False:
                 if kwargs_dict['verbose']: print '['+source_id+'] Aperture noise successfully estimated using full-size randomly-placed sky apertures.'
                 pod['ap_noise'] = ap_noise_dict['ap_noise']
@@ -165,21 +163,27 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
             else:
                 sky_success_counter = ap_noise_dict['sky_success_counter']
                 if kwargs_dict['verbose']: print '['+source_id+'] Unable to estiamte aperture noise using full-size randomly-placed sky apertures (only '+str(int(sky_success_counter))+' could be placed); switching to aperture extrapolation.'
-                ap_noise_dict = ApNoiseExtrap(pod['cutout'], source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
+                ap_noise_dict = ApNoiseExtrap(pod['cutout'].copy(), source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
                 pod['ap_noise'] = ap_noise_dict['ap_noise']
 
-
-
-            # If even aperture extrapolation is unable to produce am aperture noise estimate, record null value
+            # If even aperture extrapolation is unable to produce an aperture noise estimate, report null value
             if ap_noise_dict['fail']==True:
                 pod['ap_noise'] = np.NaN
+            else:
+                if pod['verbose']: print '['+pod['id']+'] Final aperture noise is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_noise'],4))+' (in map units).'
 
 
 
-        # Calculate final apeture noise value
-        if pod['verbose']:print '['+pod['id']+'] Calibration uncertainty is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(abs(pod['ap_sum']*band_dict['calib_error']),4))+' (in map units).'
-        pod['ap_error'] = ( pod['ap_noise']**2.0 + (pod['ap_sum']*band_dict['calib_error'])**2.0 )**0.5
-        if pod['verbose']:print '['+pod['id']+'] Final source flux and uncertainty is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_sum'],4))+' +/- '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_error'],4))+' (in map units).'
+            # Calculate calibration uncertainty
+            calib_err = abs( pod['ap_sum'] * band_dict['calib_error'] )
+            if pod['verbose']:print '['+pod['id']+'] Calibration uncertainty is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(calib_err,4))+' (in map units).'
+
+            # Calculate final uncertainty
+            pod['ap_error'] = ( pod['ap_noise']**2.0 + calib_err**2.0 )**0.5
+            if np.isnan(pod['ap_noise'])==True:
+                pod['ap_error'] = -1.0 * pod['ap_sum'] * band_dict['calib_error']
+            if np.isnan(pod['ap_sum'])==False:
+                if pod['verbose']:print '['+pod['id']+'] Final source flux and uncertainty is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_sum'],4))+' +/- '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_error'],4))+' (in map units).'
 
 
 
@@ -193,8 +197,9 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
         output_dict = {'band_name':band_dict['band_name'],
                        'ap_sum':pod['ap_sum'],
                        'ap_error':pod['ap_error']}
-        gc.collect()
-        del(pod)
+        print 'BLARG'
+#        gc.collect()
+#        del(pod)
         return output_dict
 
 
@@ -266,6 +271,7 @@ def Photom(pod):
 # Define funcion that attempts to estimate aperture noise using randomly-positioned sky apertures of given dimensions
 def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_axial_ratio, adj_angle, centre_i, centre_j, mini=False):
     source_id = source_dict['name']+'_'+band_dict['band_name']
+    cutout = cutout.copy()
     ap_debug = False
 
 
@@ -300,11 +306,71 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
 
 
 
-    # Commence creation of random sky apertures
-    sky_success_counter = 0
-    sky_success_target = 100
+    # Define how many random aperture are desired/required/permitted
+    sky_success_target = 50
     sky_success_min = 20
-    sky_gen_max = 250
+    sky_gen_max = 100
+
+    # Generate random polar coordinates to draw from
+    random_size = sky_success_target * sky_gen_max * 100
+    random_failed = []
+    random_theta_list = 360.0 * np.random.rand(random_size)
+    random_r_list = (2.0*adj_semimin_pix) + np.abs(np.random.normal(loc=0.0, scale=5.0*adj_semimaj_pix_full, size=random_size))
+
+    # Remove random coordinates that are more distant than most distant part of the coverage region the target source lies in
+    cont_binary = np.zeros(cutout.shape)
+    cont_binary[ np.where( np.isnan(cutout_inviolate)==False ) ] = 1
+    cont_structure = np.array([[1,1,1], [1,1,1], [1,1,1]])
+    cont_label = scipy.ndimage.measurements.label(cont_binary, structure=cont_structure)[0]
+    cont_search_mask = ChrisFuncs.EllipseMask(cont_label, 3.0, 1.0, 0.0, centre_i, centre_j)
+    cont_search_values = cont_label[ np.where( cont_search_mask==1 ) ]
+    cont_target = scipy.stats.mode(cont_search_values[np.where(cont_search_values>0)])[0][0]
+    cont_where_bad = np.where( cont_label!=cont_target )
+    cont_size_i, cont_size_j = cutout.shape
+    cont_range_i = np.arange(cont_size_i) - centre_i
+    cont_range_j = np.arange(cont_size_j) - centre_j
+    cont_coord_i, cont_coord_j = np.meshgrid(cont_range_j, cont_range_i) # Yes, i and j are supposed to be this way around inside meshgrid (for some reason)
+    cont_coord_i[cont_where_bad] = np.NaN
+    cont_coord_j[cont_where_bad] = np.NaN
+    cont_dist = np.sqrt(cont_coord_i**2 + cont_coord_j**2)
+    cont_dist_max = np.nanmax(cont_dist)
+    random_r_coverage = np.where( random_r_list < (cont_dist_max-sky_border) )
+    random_r_list = random_r_list[random_r_coverage]
+    random_theta_list = random_theta_list[random_r_coverage]
+
+    # Convert random polar coordinates into cartesian coordinates
+    random_i_list = centre_i + ( random_r_list * np.cos(np.radians(random_theta_list)) )#np.random.normal(loc=centre_i, scale=2.0*sky_ap_rad_pix)
+    random_j_list = centre_j + ( random_r_list * np.sin(np.radians(random_theta_list)) )#np.random.normal(loc=centre_j, scale=2.0*sky_ap_rad_pix)
+
+    # Remove random coodinates that fall fall beyond border in i-coords
+    random_not_i_border = np.where( (random_i_list>sky_border) & (random_i_list<(cutout.shape[0]-sky_border)) )
+    random_i_list = random_i_list[random_not_i_border]
+    random_j_list = random_j_list[random_not_i_border]
+
+    # Remove random coodinates that fall fall beyond border in j-coords
+    random_not_j_border = np.where( (random_j_list>sky_border) & (random_j_list<(cutout.shape[1]-sky_border)) )
+    random_i_list = random_i_list[random_not_j_border]
+    random_j_list = random_j_list[random_not_j_border]
+
+    # Remove random coordinates that intersect source
+    random_not_source = np.where( (abs(centre_i-random_i_list)>adj_semimaj_pix_full) & (abs(centre_j-random_j_list)>adj_semimaj_pix_full) )
+    random_i_list = random_i_list[random_not_source]
+    random_j_list = random_j_list[random_not_source]
+
+    # Remove random coordinates that correspond to NaN pixels
+    random_i_list_pix = np.round(random_i_list).astype(int)
+    random_j_list_pix = np.round(random_j_list).astype(int)
+    random_ij_values = cutout[(random_i_list_pix,random_j_list_pix)]
+    random_ij_pix_good = np.where(np.isnan(random_ij_values)==False)
+    random_i_list = random_i_list[random_ij_pix_good]
+    random_j_list = random_j_list[random_ij_pix_good]
+
+
+
+
+
+    # Commence creation of random sky apertures    sky_success_counter = 0
+    sky_success_counter = 0
     sky_sum_list = []
     sky_total_fail = False
     while True:
@@ -323,15 +389,25 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
 
 
 
+            # Select random coordinate set for this iteration
+            random_accept = False
+            while random_accept==False:
+                random_index = int( np.round( np.random.rand() * float(random_i_list.shape[0]) ) )
+                if random_index not in random_failed:
+                    random_accept = True
+            random_i = random_i_list[random_index]
+            random_j = random_j_list[random_index]
+            if ap_debug:
+                ap_mask = ChrisFuncs.Photom.EllipseMask(cutout, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)
+                attempt_mask[ np.where(ap_mask==1) ] = sky_success_counter
+                print 'Aperture :'+str(sky_success_counter+1)+';   Generation: '+str(sky_gen_counter)+';   Pix Coords: ['+str(random_i)+','+str(random_j)+']'
+
+            """
             # Produce r & theta coords for random sky aperture, dictated by gaussian distribution centred on source
             random_theta = 360.0 * np.random.rand()
             random_r = (2.0*adj_semimin_pix) + np.abs(np.random.normal(loc=0.0, scale=4.0*adj_semimaj_pix_full))
             random_i = centre_i + ( random_r * np.cos(np.radians(random_theta)) )#np.random.normal(loc=centre_i, scale=2.0*sky_ap_rad_pix)
             random_j = centre_j + ( random_r * np.sin(np.radians(random_theta)) )#np.random.normal(loc=centre_j, scale=2.0*sky_ap_rad_pix)
-            if ap_debug:
-                ap_mask = ChrisFuncs.Photom.EllipseMask(cutout, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)
-                attempt_mask += ap_mask
-                print 'Aperture :'+str(sky_success_counter+1)+';   Generation: '+str(sky_gen_counter)+';   Pix Coords: ['+str(random_i)+','+str(random_j)+']'
 
             # Check that generated sky aperture does not intersect border region
             if random_i<=sky_border or random_i>(cutout.shape[0]-sky_border) or random_j<=sky_border or random_j>(cutout.shape[1]-sky_border):
@@ -342,11 +418,12 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
             if ( abs(centre_i - random_i) < adj_semimaj_pix_full ) and ( abs(centre_j - random_j) < adj_semimaj_pix_full ):
                 if ap_debug: print 'Rejection: aperture intersects source (according to basic check)'
                 continue
-
+            """
             # Do sophisticated check that generated sky aperture does not intersect source; if it does, reject
             exclude_sum = ChrisFuncs.Photom.EllipseSum(exclude_mask, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)[0]
             if exclude_sum>0:
                 if ap_debug: print 'Rejection: aperture intersects source (according to sophisticated check)'
+                random_failed.append(random_index)
                 continue
 
             # Do basic chrck that the majority of the pixels in the generated sky aperture have not already been sampled by previous sky apertures; they have, reject
@@ -355,9 +432,10 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
             prior_frac = np.sum(prior_calc[2]) / float(prior_calc[1])
             if prior_frac>0.5:
                 if ap_debug: print 'Rejection: aperture over-sampled (according to basic check)'
+                random_failed.append(random_index)
                 continue
 
-            # Do sophisticated chrck that the majority of the pixels in the generated sky aperture have not already been sampled by previous sky apertures; they have, reject
+            # Do sophisticated check that the majority of the pixels in the generated sky aperture have not already been sampled by previous sky apertures; they have, reject
             ap_mask_check = ChrisFuncs.Photom.EllipseMask(cutout, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)
             flag_mask_check = flag_mask.copy()
             flag_mask_check[np.where(ap_mask_check==1)] = int(2.0**(sky_success_counter+1.0))
@@ -365,6 +443,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
             flag_check = np.where(flag_tallies<(0.5*ap_area))[0].shape[0]
             if flag_check>1:
                 if ap_debug: print 'Rejection: aperture over-sampled (according to sophisticated check)'
+                random_failed.append(random_index)
                 continue
 
             # Evaluate pixels in sky aperture
@@ -376,21 +455,32 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
             bg_calc = ChrisFuncs.Photom.AnnulusSum(cutout, bg_inner_semimaj_pix, bg_width, 1.0, 0.0, random_i, random_j)
 
             # Check if more than 5% of the pixels inside the sky aperture, or 75% of those in sky annulus, are NaN; if so, reject
-            if np.where(np.isnan(ap_calc[2]))[0].shape[0]==0:
-                ap_nan_frac = 0.0
-            else:
-                ap_nan_frac = float(np.where(np.isnan(ap_calc[2]))[0].shape[0]) / float(ap_calc[1])
-            if np.where(np.isnan(bg_calc[2]))[0].shape[0]==0:
-                bg_nan_frac = 0.0
-            else:
-                bg_nan_frac = float(np.where(np.isnan(bg_calc[2]))[0].shape[0]) / float(bg_calc[1])
+            try:
+                if ap_calc[3][0].shape[0]==0 or ap_calc[1]==0:
+                    ap_nan_frac = 0.0
+                elif ap_calc[1]==0:
+                    ap_nan_frac = 1.0
+                else:
+                    ap_nan_frac = float(ap_calc[3][0].shape[0]) / float(ap_calc[1]+float(ap_calc[3][0].shape[0]))
+                if bg_calc[3][0].shape[0]==0:
+                    bg_nan_frac = 0.0
+                elif bg_calc[1]==0:
+                    bg_nan_frac = 1.0
+                else:
+                    bg_nan_frac = float(bg_calc[3][0].shape[0]) / float(bg_calc[1]+bg_calc[3][0].shape[0])
+            except:
+                pdb.set_trace()
+            #if ap_debug: print 'Aperture NaN fraction: '+str(ap_nan_frac)
+            #if ap_debug: print 'Background NaN fraction: '+str(bg_nan_frac)
             ap_nan_thresh = 0.05
             bg_nan_thresh = 0.75
             if ap_nan_frac>ap_nan_thresh:
                 if ap_debug: print 'Rejection: aperture contains too many NaNs'
+                random_failed.append(random_index)
                 continue
             if bg_nan_frac>bg_nan_thresh:
                 if ap_debug: print 'Rejection: annulus contains too many NaNs'
+                random_failed.append(random_index)
                 continue
 
 
@@ -441,7 +531,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
         ap_noise = ChrisFuncs.SigmaClip(sky_sum_list, tolerance=0.001, median=True, sigma_thresh=3.0)[0] #np.std(sky_sum_list)
         ap_noise_dict = {'fail':False, 'ap_noise':ap_noise, 'ap_num':sky_success_counter, 'prior_mask':prior_mask, 'flag_mask':flag_mask}
         #ChrisFuncs.Cutout(prior_mask, '/home/saruman/spx7cjc/DustPedia/Prior.fits')
-        if kwargs_dict['verbose']:print '['+source_id+'] Aperture noise is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_noise,4))+' (in map units).'
+        if kwargs_dict['verbose']:print '['+source_id+'] Aperture noise from current random apertures is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_noise,4))+' (in map units).'
         cutout = cutout_inviolate
         return ap_noise_dict
 
@@ -460,8 +550,8 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
     sky_ap_rad_pix = ( ap_area / np.pi )**0.5
 
     # Generate list of mini-aperture sizes to use, and declare result lists
-    mini_ap_rad_base = 2.0**0.5 #1.25
-    mini_ap_rad_pix_input = mini_ap_rad_base**np.arange( 4.0, np.ceil( 1.0 + math.log( sky_ap_rad_pix, mini_ap_rad_base ) ) )
+    mini_ap_rad_base = 2.0 #2.0**0.5 #1.25
+    mini_ap_rad_pix_input = mini_ap_rad_base**np.arange( 1.0, np.ceil( 1.0 + math.log( sky_ap_rad_pix, mini_ap_rad_base ) ) )
     min_ap_rad_pix_output = []
     mini_ap_noise_output = []
     mini_ap_num_output = []
@@ -488,7 +578,7 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
 
 
     # If insufficient points to make extrapolation, report failure; else proceed
-    if min_ap_rad_pix_output.shape[0]<=2:
+    if min_ap_rad_pix_output.shape[0]<2:
         ap_noise_dict = {'fail':True, 'ap_noise':np.NaN}
         gc.collect()
         return ap_noise_dict
@@ -556,6 +646,7 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
         gc.collect()
         ap_noise_dict = {'fail':False, 'ap_noise':ap_noise_proj}
         return ap_noise_dict
+
 
 
 

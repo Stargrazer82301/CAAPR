@@ -89,8 +89,7 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
         # If star-removal is required, run pod through AstroMagic
         CAAPR_IO.MemCheck(pod)
-        do_magic = True
-        if do_magic:
+        if kwargs_dict['starsub']==True:
             if band_dict['remove_stars']==True:
                 if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
                 pod = CAAPR_AstroMagic.Magic(pod, source_dict, kwargs_dict, do_sat=False)
@@ -98,23 +97,22 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
 
         # Run pod through function that determines aperture shape, to provide preliminary estimate to facilitate removal of large-scale sky
-        #CAAPR_IO.MemCheck(pod)
         pod = ApertureShape(pod)
 
 
 
         # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter
-        #CAAPR_IO.MemCheck(pod)
-        pod = CAAPR_Pipeline.PolySub(pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'])
+        if kwargs_dict['polysub']==True:
+            pod = CAAPR_Pipeline.PolySub(pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'])
 
 
 
         # If this band is not to be considered when constructing final aperture, default to standard minimum aperture and skip further processing
-        if isinstance(source_dict['exclude_band_aperture'], str):
-            exclude_band_aperture = source_dict['exclude_band_aperture'].split(';')
-        elif source_dict['exclude_band_aperture']==False:
-            exclude_band_aperture = []
-        if (band_dict['consider_aperture']==False) or (band_dict['band_name'] in exclude_band_aperture):
+        if isinstance(source_dict['fitting_bands_exclude'], str):
+            fitting_bands_exclude = source_dict['fitting_bands_exclude'].split(';')
+        elif source_dict['fitting_bands_exclude']==False:
+            fitting_bands_exclude = []
+        if (band_dict['consider_aperture']==False) or (band_dict['band_name'] in fitting_bands_exclude):
             pod['opt_axial_ratio'] = 1.0
             pod['opt_angle'] = 0.0
             pod['opt_semimaj_arcsec'] = ( (2.0*band_dict['beam_arcsec'])**2.0 - band_dict['beam_arcsec']**2.0 )**0.5
@@ -125,13 +123,11 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
             # If sky polynomial removed, run pod through function that determines aperture shape, to provide final estiamte
             if pod['sky_poly']!=False:
-                #CAAPR_IO.MemCheck(pod)
                 pod = ApertureShape(pod)
 
 
 
             # Run pod through function that determines aperture size
-            #CAAPR_IO.MemCheck(pod)
             pod = ApertureSize(pod)
 
 
@@ -346,9 +342,10 @@ def ApertureSize(pod):
 
     # If more than 10% of the pixels in the aperture are NaNs, report NaN values for aperture dimensions; else proceed normally
     if pix_good_frac<0.9:
-        if verbose: print '['+pod['id']+'] More than 10% of pixels in fitted aperture are NaNs; hence reverting to two beam-width minimum value of '+str(opt_semimaj_arcsec)[:7]+' arcseconds.'
         opt_semimaj_pix = pod['beam_pix'] * 2.0
         opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
+        if verbose: print '['+pod['id']+'] More than 10% of pixels in fitted aperture are NaNs; hence reverting to two beam-width minimum value of '+str(opt_semimaj_arcsec)[:7]+' arcseconds.'
+        pod['opt_semimaj_arcsec'] = opt_semimaj_arcsec
         pod['opt_axial_ratio'] = 1.0
         pod['opt_angle'] = 0.0
     else:
@@ -429,6 +426,13 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
     else:
         expansion_facor = 1.0
     cont_semimaj_arcsec = cont_semimaj_pix * ap_array_pix_size * expansion_facor
+
+    # If final aperture is smaller than defined minimum aperture, switch to defined minimum
+    if cont_semimaj_arcsec<source_dict['fitting_min_arcsec']:
+        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Fitted aperture is smaller than minimum permitted aperture size; reverting to minimum permitted aperture size.'
+        cont_semimaj_arcsec = source_dict['fitting_min_arcsec']
+        cont_axial_ratio = 1.0
+        cont_angle = 0.0
 
     # Clean garbage and return results
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Final ellipse semi-major axis: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_semimaj_arcsec,4))+' arcsec; final ellipse angle: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_angle,4))+' '+' degrees; final ellipse axial ratio: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_axial_ratio,4))+'.'

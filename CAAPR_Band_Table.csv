@@ -18,8 +18,8 @@ Spitzer_4.5,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,True,False,0.03,1.7
 Spitzer_5.8,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,True,False,0.03,1.88,pink,1.25,1.601,1,1,True,True
 Spitzer_8.0,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,True,False,0.03,1.98,pink,1.25,1.601,1,1,True,True
 Spitzer_24,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,True,False,0.05,6,pink,1.25,1.601,1,1,True,True
-Spitzer_70,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,True,False,0.1,18,pink,1.25,1.601,1,1,True,False
-Spitzer_160,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,True,False,0.12,38,pink,1.25,1.601,1,1,True,False
+Spitzer_70,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,True,False,0.1,18,pink,1.25,1.601,1,1,False,False
+Spitzer_160,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,True,False,0.12,38,pink,1.25,1.601,1,1,False,False
 PACS_70,/home/saruman/spx7cjc/DustPedia/PACS/Cutouts/,True,3600,0.1,9,gist_heat,1.25,1.601,10,1,True,False
 PACS_100,/home/saruman/spx7cjc/DustPedia/PACS/Cutouts/,True,3600,0.1,10,gist_heat,1.25,1.601,10,1,True,False
 PACS_160,/home/saruman/spx7cjc/DustPedia/PACS/Cutouts/,True,3600,0.1,13,gist_heat,1.25,1.601,10,1,True,False

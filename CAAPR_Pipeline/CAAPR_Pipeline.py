@@ -61,12 +61,13 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
 
     # Check if star-subtraction is requested for any band; if so, commence catalogue pre-fetching
-    star_sub_check = False
-    for band in bands_dict.keys():
-        if bands_dict[band]['remove_stars']==True:
-            star_sub_check = True
-    if star_sub_check==True:
-        source_dict['pre_catalogue'] = CAAPR_AstroMagic.PreCatalogue(source_dict, bands_dict, kwargs_dict)
+    if kwargs_dict['starsub']==True:
+        star_sub_check = False
+        for band in bands_dict.keys():
+            if bands_dict[band]['remove_stars']==True:
+                star_sub_check = True
+        if star_sub_check==True:
+            source_dict['pre_catalogue'] = CAAPR_AstroMagic.PreCatalogue(source_dict, bands_dict, kwargs_dict)
 
 
 
@@ -79,7 +80,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         if kwargs_dict['parallel']==True:
             bands_dict_keys = bands_dict.keys()
             random.shuffle(bands_dict_keys)
-            pool = mp.Pool(processes=kwargs_dict['n_cores'])
+            pool = mp.Pool(processes=kwargs_dict['n_proc'])
             for band in bands_dict_keys:
                 aperture_output_list.append( pool.apply_async( CAAPR_Aperture.PipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
@@ -126,11 +127,13 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         if kwargs_dict['parallel']==True:
             bands_dict_keys = bands_dict.keys()
             random.shuffle(bands_dict_keys)
-            pool = mp.Pool(processes=kwargs_dict['n_cores'])
+            del(pool)
+            pool = mp.Pool(processes=kwargs_dict['n_proc'])
             for band in bands_dict_keys:
                 photom_output_list.append( pool.apply_async( CAAPR_Photom.PipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
             pool.join()
+            pdb.set_trace()
             photom_list = [output.get() for output in photom_output_list if output.successful()==True]
             photom_list = [photom for photom in photom_list if photom!=None]
 
@@ -140,10 +143,12 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
                 photom_output_list.append( CAAPR_Photom.PipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
                 photom_list = [output for output in photom_output_list if output!=None]
 
-        # Use band input table to establish order in which to put bands in results file
+        # Use band input table to establish order in which to put bands in results file, handling case of only one band
         photom_string = source_dict['name']
         bands_table = np.genfromtxt(kwargs_dict['bands_table_path'], delimiter=',', names=True, dtype=None)
         bands_list = bands_table['band_name']
+        if bands_list.shape==():
+            bands_list = [bands_list.tolist()]
         for band_name in bands_list:
             for photom_entry in photom_list:
                 if photom_entry['band_name']==band_name:

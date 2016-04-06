@@ -74,7 +74,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
     bad_region_path = None
 
     # The FWHM of the image (if known)
-    fwhm = 2.0 * band_dict['beam_arcsec'] * Unit("arcsec")
+    fwhm = 2.5 * band_dict['beam_arcsec'] * Unit("arcsec")
 
     # Import the image
     importer = ImageImporter()
@@ -335,38 +335,7 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
             file_max = in_fitspath
             diam_max = diam
             file_max_cdelt = band_cdelt
-    """
-    # Use IRSA header template service to create dummy header
-    try:
-        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Accessing IRSA header template service to create generic template header.'
-        dummy_cdelt_arcsec = (diam_max/dummy_pix)*3600.0
-        url = 'http://irsa.ipac.caltech.edu/cgi-bin/HdrTemplate/nph-hdr?location='+str(source_dict['ra'])+'%2C+'+str(source_dict['dec'])+'&system=Equatorial&equinox=2000.&width='+str(diam_max)+'&height='+str(diam_max)+'&resolution='+str(dummy_cdelt_arcsec)+'&rotation=0.0'
-        sys.stdout = open(os.devnull, "w")
-        ChrisFuncs.wgetURL(url, os.path.join(kwargs_dict['temp_dir_path'],'Header_Template.txt'), clobber=True, auto_retry=False)
-        sys.stdout = sys.__stdout__
 
-    # Produce dummy header
-    except:
-    dummy_cdelt = diam_max / dummy_pix
-    #dummy_cdelt_arcsec = (diam_max/100.0)*3600.0
-    dummy_header_in = open(os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR_AstroMagic','Header_Template.txt'), 'r')
-    dummy_header_string = dummy_header_in.read()
-    dummy_header_in.close()
-    dummy_header_string = dummy_header_string.replace('RA_PLACEHOLDER', str(source_dict['ra']))
-    dummy_header_string = dummy_header_string.replace('DEC_PLACEHOLDER', str(source_dict['dec']))
-    dummy_header_string = dummy_header_string.replace('CDELT1_PLACEHOLDER', str(dummy_cdelt))
-    dummy_header_string = dummy_header_string.replace('CDELT2_PLACEHOLDER', str(dummy_cdelt))
-    dummy_header_out = open( os.path.join( kwargs_dict['temp_dir_path'],'Header_Template.txt' ), 'w')
-    dummy_header_out.write(dummy_header_string)
-    dummy_header_out.close()
-
-    # Create dummy map
-    dummy_header = astropy.io.fits.Header.fromfile( os.path.join(kwargs_dict['temp_dir_path'],'Header_Template.txt'), sep='\n', endcard=False, padding=False)
-    dummy_map = np.zeros([ int(dummy_header['NAXIS1']), int(dummy_header['NAXIS2']) ])
-    #dummy_cdelt_arcsec = (diam_max/float(dummy_header['NAXIS2']))*3600.0
-    dummy_file = os.path.join( kwargs_dict['temp_dir_path'],'FITS_Template.fits' )
-    astropy.io.fits.writeto( dummy_file, dummy_map, header=dummy_header)
-    """
     # Get AstroMagic catalogue object reference fits
     logging.setup_log(level="ERROR")
     importer = ImageImporter()
@@ -388,7 +357,8 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
 """
 # Use IRSA header template service to create dummy header
 try:
-    dummy_cdelt_arcsec = (diam_max/100.0)*3600.0
+    if kwargs_dict['verbose']: print '['+source_dict['name']+'] Accessing IRSA header template service to create generic template header.'
+    dummy_cdelt_arcsec = (diam_max/dummy_pix)*3600.0
     url = 'http://irsa.ipac.caltech.edu/cgi-bin/HdrTemplate/nph-hdr?location='+str(source_dict['ra'])+'%2C+'+str(source_dict['dec'])+'&system=Equatorial&equinox=2000.&width='+str(diam_max)+'&height='+str(diam_max)+'&resolution='+str(dummy_cdelt_arcsec)+'&rotation=0.0'
     sys.stdout = open(os.devnull, "w")
     ChrisFuncs.wgetURL(url, os.path.join(kwargs_dict['temp_dir_path'],'Header_Template.txt'), clobber=True, auto_retry=False)
@@ -396,23 +366,25 @@ try:
 
 # Produce dummy header
 except:
-    dummy_cdelt = diam_max / 11.0
-    dummy_header_in = open(os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR_AstroMagic','Header_Template.txt'), 'r')
-    dummy_header_string = dummy_header_in.read()
-    dummy_header_in.close()
-    dummy_header_string = dummy_header_string.replace('RA_PLACEHOLDER', str(source_dict['ra']))
-    dummy_header_string = dummy_header_string.replace('DEC_PLACEHOLDER', str(source_dict['dec']))
-    dummy_header_string = dummy_header_string.replace('CDELT1_PLACEHOLDER', str(dummy_cdelt))
-    dummy_header_string = dummy_header_string.replace('CDELT2_PLACEHOLDER', str(dummy_cdelt))
-    dummy_header_out = open( os.path.join( kwargs_dict['temp_dir_path'],'Header_Template.txt' ), 'w')
-    dummy_header_out.write(dummy_header_string)
-    dummy_header_out.close()
+dummy_cdelt = diam_max / dummy_pix
+#dummy_cdelt_arcsec = (diam_max/100.0)*3600.0
+dummy_header_in = open(os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR_AstroMagic','Header_Template.txt'), 'r')
+dummy_header_string = dummy_header_in.read()
+dummy_header_in.close()
+dummy_header_string = dummy_header_string.replace('RA_PLACEHOLDER', str(source_dict['ra']))
+dummy_header_string = dummy_header_string.replace('DEC_PLACEHOLDER', str(source_dict['dec']))
+dummy_header_string = dummy_header_string.replace('CDELT1_PLACEHOLDER', str(dummy_cdelt))
+dummy_header_string = dummy_header_string.replace('CDELT2_PLACEHOLDER', str(dummy_cdelt))
+dummy_header_out = open( os.path.join( kwargs_dict['temp_dir_path'],'Header_Template.txt' ), 'w')
+dummy_header_out.write(dummy_header_string)
+dummy_header_out.close()
 
 # Create dummy map
 dummy_header = astropy.io.fits.Header.fromfile( os.path.join(kwargs_dict['temp_dir_path'],'Header_Template.txt'), sep='\n', endcard=False, padding=False)
 dummy_map = np.zeros([ int(dummy_header['NAXIS1']), int(dummy_header['NAXIS2']) ])
-dummy_cdelt_arcsec = (diam_max/float(dummy_header['NAXIS2']))*3600.0
-astropy.io.fits.writeto( os.path.join( kwargs_dict['temp_dir_path'],'FITS_Template.fits' ), dummy_map, header=dummy_header)
+#dummy_cdelt_arcsec = (diam_max/float(dummy_header['NAXIS2']))*3600.0
+dummy_file = os.path.join( kwargs_dict['temp_dir_path'],'FITS_Template.fits' )
+astropy.io.fits.writeto( dummy_file, dummy_map, header=dummy_header)
 """
 
 """
