@@ -110,12 +110,13 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
     source_dict_keys = sources_dict.keys()
     random.shuffle(source_dict_keys)
     time_list = [time.time()]
+    if verbose: print '[CAAPR] '+str(len(source_dict_keys))+' target objects to be processed.'
     for source in source_dict_keys:
         source_dict = sources_dict[source]
         CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, kwargs_dict)
         time_list.append(time.time())
         time_remaining = ChrisFuncs.TimeEst(time_list, len(source_dict_keys))
-        if verbose: print '['+source_dict['name']+'] CAAPR estimated completion at: '+time_remaining
+        if verbose: print '['+source_dict['name']+'] CAAPR estimated completion at: '+time_remaining+'.'
 
 
 

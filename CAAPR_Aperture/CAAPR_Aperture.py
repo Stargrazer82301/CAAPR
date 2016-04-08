@@ -173,7 +173,7 @@ def ApertureShape(pod):
     cont_array_prelim = ChrisFuncs.Photom.ContiguousPixels(pod['cutout'], semimaj_initial, pod['centre_i'], pod['centre_j'], cutoff)#, custom_structure=cont_structure)
 
     # Use binary erosion to remove thin artefacts (primarily diffraction spikes)
-    erode_size = int(np.ceil(2.0*pod['beam_pix']))
+    erode_size = int(np.ceil(3.0*pod['beam_pix']))
     erode_centre = (0.5*float(erode_size))-0.5
     erode_structure = ChrisFuncs.Photom.EllipseMask(np.zeros([erode_size,erode_size]), pod['beam_pix'], 1.0, 0.0, erode_centre, erode_centre)
     erode_array = scipy.ndimage.morphology.binary_erosion(cont_array_prelim, structure=erode_structure).astype(int)
@@ -227,7 +227,7 @@ def ApertureSize(pod):
     def AnnulusSNR(semimaj, pod, cutout, width, i_trans, j_trans, residual):
         semimaj = semimaj[0]
         sig_annulus = ChrisFuncs.Photom.AnnulusQuickSum(cutout, semimaj, width, pod['opt_axial_ratio'], pod['opt_angle'], pod['centre_i'], pod['centre_j'], i_trans, j_trans)
-        sig_value = ChrisFuncs.SigmaClip(sig_annulus[2], tolerance=0.001, sigma_thresh=3.0, median=True)[1]#np.median(sig_annulus[2])
+        sig_value = ChrisFuncs.SigmaClip(sig_annulus[2], tolerance=0.005, sigma_thresh=2.0, median=True)[1]#np.median(sig_annulus[2])
         noise_value = pod['cutout_clip'][0]
         field_value = pod['cutout_clip'][1]
         ann_SNR = (sig_value - field_value) / noise_value
