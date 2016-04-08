@@ -11,6 +11,7 @@ import scipy.optimize
 import scipy.ndimage.measurements
 import scipy.stats
 import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import astropy.io.fits
 import astropy.wcs

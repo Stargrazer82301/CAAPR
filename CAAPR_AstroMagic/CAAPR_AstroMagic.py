@@ -74,7 +74,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
     bad_region_path = None
 
     # The FWHM of the image (if known)
-    fwhm = 2.5 * band_dict['beam_arcsec'] * Unit("arcsec")
+    fwhm = 2.0 * band_dict['beam_arcsec'] * Unit("arcsec")
 
     # Import the image
     importer = ImageImporter()

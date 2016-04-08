@@ -109,13 +109,16 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
 
 
 
-    # Loop over each source
+    # Loop over each source, with completion time estimate
     source_dict_keys = sources_dict.keys()
     random.shuffle(source_dict_keys)
+    time_list = [time.time()]
     for source in source_dict_keys:
         source_dict = sources_dict[source]
         CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, kwargs_dict)
-
+        time_list.append(time.time())
+        time_remaining = CAAPR_Pipeline.TimeEst(time_list, len(source_dict_keys))
+        if verbose: print '['+source_dict['name']+'] CAAPR estimated completion at: '+time_remaining
 
 
 
@@ -127,7 +130,7 @@ if __name__ == "__main__":
     testing = True
     parallel = True
     if testing:
-        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=10, polysub=True, starsub=False, fit_apertures=True, do_photom=False, aperture_table_path=None, sources_table_path='CAAPR_Source_Table_Full.csv', parallel=parallel)
+        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=10, polysub=True, starsub=False, sources_table_path='CAAPR_Source_Table_Full.csv', fit_apertures=True, do_photom=False, aperture_table_path=None, parallel=parallel)
 
         # Jubilate
         print 'All done!'

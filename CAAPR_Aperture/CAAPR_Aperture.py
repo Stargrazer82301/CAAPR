@@ -227,7 +227,7 @@ def ApertureSize(pod):
     def AnnulusSNR(semimaj, pod, cutout, width, i_trans, j_trans, residual):
         semimaj = semimaj[0]
         sig_annulus = ChrisFuncs.Photom.AnnulusQuickSum(cutout, semimaj, width, pod['opt_axial_ratio'], pod['opt_angle'], pod['centre_i'], pod['centre_j'], i_trans, j_trans)
-        sig_value = np.median(sig_annulus[2]) #sig_annulus[0] / sig_annulus[1]
+        sig_value = ChrisFuncs.SigmaClip(sig_annulus[2], tolerance=0.001, sigma_thresh=3.0, median=True)[1]#np.median(sig_annulus[2])
         noise_value = pod['cutout_clip'][0]
         field_value = pod['cutout_clip'][1]
         ann_SNR = (sig_value - field_value) / noise_value

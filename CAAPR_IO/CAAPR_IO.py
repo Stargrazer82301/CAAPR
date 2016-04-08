@@ -10,6 +10,8 @@ import shutil
 import psutil
 import multiprocessing as mp
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import astropy.io.fits
 import astropy.wcs
@@ -266,6 +268,8 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         edge_long += 1
     if (int(edge_short*edge_long)-int(edge_long))>=thumb_files:
         edge_long -= 1
+    if int(edge_long)==5:
+        pdb.set_trace()
 
     # Set up various variables
     counter = 0
