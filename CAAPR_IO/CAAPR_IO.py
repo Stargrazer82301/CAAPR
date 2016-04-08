@@ -268,7 +268,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         edge_long += 1
     if (int(edge_short*edge_long)-int(edge_long))>=thumb_files:
         edge_long -= 1
-    if int(edge_long)==5:
+    if int(edge_long)==3:
         pdb.set_trace()
 
     # Set up various variables

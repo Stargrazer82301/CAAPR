@@ -315,16 +315,6 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
     return pod
     
     
-    
-    
-    
-# Define function that estimates time until completion
-def TimeEst(time_list, total):
-    iter_list = range(0, len(time_list))
-    time_fit = np.polyfit(iter_list, time_list, 1)
-    time_end = ( time_fit[0] * total ) + time_fit[1]
-    return time.ctime(time_end)
-
 
 
 
