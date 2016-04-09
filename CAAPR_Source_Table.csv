@@ -1,4 +1,4 @@
-name,ra,dec,fitting_bands_exclude,fitting_min_arcsec
+name,ra,dec,fitting_bands_exclude,fitting_min_semimaj_arcsec
 ESO097-013,213.29129999999998,-65.339,,261.28911141296254
 ESO116-012,48.2697,-57.35714,,108.92340207982924
 ESO149-001,356.9529,-57.07261,,101.65324014510045

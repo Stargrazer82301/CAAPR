@@ -428,9 +428,9 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
     cont_semimaj_arcsec = cont_semimaj_pix * ap_array_pix_size * expansion_facor
 
     # If final aperture is smaller than defined minimum aperture, switch to defined minimum
-    if cont_semimaj_arcsec<source_dict['fitting_min_arcsec']:
+    if cont_semimaj_arcsec<source_dict['fitting_min_semimaj_arcsec']:
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Fitted aperture is smaller than minimum permitted aperture size; reverting to minimum permitted aperture size.'
-        cont_semimaj_arcsec = source_dict['fitting_min_arcsec']
+        cont_semimaj_arcsec = source_dict['fitting_min_semimaj_arcsec']
         cont_axial_ratio = 1.0
         cont_angle = 0.0
 
