@@ -241,7 +241,7 @@ def Photom(pod):
 
     # If more than 5% of the pixels inside the source aperture, or 75% of those in background annulus are NaN, record NaN flux, otherwise continue as per normal
     ap_nan_thresh = 0.05
-    bg_nan_thresh = 0.75
+    bg_nan_thresh = 0.80
     if ap_nan_frac>ap_nan_thresh:
         if pod['verbose']: print '['+pod['id']+'] More than '+str(int(100.0*ap_nan_thresh))+'% of pixels in source aperture are NaN; recording null flux.'
         nan_fail = True
@@ -474,7 +474,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
             #if ap_debug: print 'Aperture NaN fraction: '+str(ap_nan_frac)
             #if ap_debug: print 'Background NaN fraction: '+str(bg_nan_frac)
             ap_nan_thresh = 0.05
-            bg_nan_thresh = 0.75
+            bg_nan_thresh = 0.80
             if ap_nan_frac>ap_nan_thresh:
                 if ap_debug: print 'Rejection: aperture contains too many NaNs'
                 random_failed.append(random_index)
