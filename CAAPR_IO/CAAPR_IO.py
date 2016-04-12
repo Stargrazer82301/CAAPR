@@ -367,7 +367,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
                 vars()['subfig'+str(b)].axis_labels.hide()
                 vars()['subfig'+str(b)].tick_labels.hide()
                 vars()['subfig'+str(b)].ticks.hide()
-        
+
                 # Extract band-specific aperture dimensions
                 band_ap_angle = aperture_list[b]['opt_angle']
                 band_ap_axial_ratio = aperture_list[b]['opt_axial_ratio']
@@ -380,12 +380,12 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
                 print band_ap_semimaj*3600.0
                 band_ap_semimin = ( band_ap_semimin**2.0 + (0.5*band_beam_width)**2.0 )**0.5
                 band_ap_axial_ratio = band_ap_semimaj / band_ap_semimaj
-        
+
                 # Plot band-specific aperture (if one was provided)
                 line_width = 4.0
                 if bands_dict[band_name]['consider_aperture']==True:
                     vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*band_ap_semimaj, 2.0*band_ap_semimin, angle=band_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/2.0, linestyle='dotted')
-        
+
                 # Extract combined aperture dimensions
                 comb_ap_angle = aperture_combined[2]
                 comb_ap_axial_ratio = aperture_combined[1]
@@ -395,16 +395,16 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
                 comb_ap_semimaj = ( comb_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
                 print comb_ap_semimaj*3600.0
                 comb_ap_semimin = ( comb_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
-        
+
                 # Plot combined aperture
                 vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*comb_ap_semimaj, 2.0*comb_ap_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width)
-        
+
                 # Plot combined background annulus
                 band_ann_inner_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_inner']
                 band_ann_outer_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_outer']
                 vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_inner_semimaj, band_ann_inner_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
                 vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_outer_semimaj, band_ann_outer_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
-        
+
                 # Plot label
                 vars()['subfig'+str(b)].add_label(0.035, 0.92, bands_dict[band_name]['band_name'], relative=True, size=20, color='white', horizontalalignment='left')
 
@@ -424,6 +424,8 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
     # Save figure, and remove temporary files
     fig.savefig( os.path.join(kwargs_dict['output_dir_path'],'Aperture_Fitting_Thumbnails',source_dict['name']+'_Thumbnail_Grid.png'), facecolor='white', dpi=100.0)
     [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
+    fig.clear()
+    plt.close('all')
     gc.collect()
 
 
@@ -574,7 +576,7 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
                 vars()['subfig'+str(w)].axis_labels.hide()
                 vars()['subfig'+str(w)].tick_labels.hide()
                 vars()['subfig'+str(w)].ticks.hide()
-        
+
                 # Extract combined aperture dimensions
                 band_beam_width = bands_dict[band_name]['beam_arcsec'] / 3600.0
                 comb_ap_angle = opt_angle
@@ -583,17 +585,17 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
                 comb_ap_semimin = comb_ap_semimaj / comb_ap_axial_ratio
                 comb_ap_semimaj = ( comb_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
                 comb_ap_semimin = ( comb_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
-        
+
                 # Plot combined aperture
                 line_width = 4.0
                 vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*comb_ap_semimaj, 2.0*comb_ap_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width)
-        
+
                 # Plot combined background annulus
                 band_ann_inner_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_inner']
                 band_ann_outer_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_outer']
                 vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_inner_semimaj, band_ann_inner_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
                 vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_outer_semimaj, band_ann_outer_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
-        
+
                 # Plot label
                 vars()['subfig'+str(w)].add_label(0.035, 0.92, bands_dict[band_name]['band_name'], relative=True, size=20, color='white', horizontalalignment='left')
 
@@ -613,6 +615,8 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
     # Save figure, and remove temporary files
     fig.savefig( os.path.join(kwargs_dict['output_dir_path'],'Photometry_Thumbnails',source_dict['name']+'_Thumbnail_Grid.png'), facecolor='white', dpi=100.0)
     [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
+    fig.clear()
+    plt.close('all')
     gc.collect()
 
 

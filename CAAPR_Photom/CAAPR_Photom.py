@@ -645,6 +645,8 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
         # Save figure, clean up, and report results
         fig.savefig( os.path.join( kwargs_dict['temp_dir_path'], source_id+'_Aperture_Noise_Projection.png' ), dpi=100 )
         gc.collect()
+        fig.clear()
+        plt.close('all')
         ap_noise_dict = {'fail':False, 'ap_noise':ap_noise_proj}
         return ap_noise_dict
 
