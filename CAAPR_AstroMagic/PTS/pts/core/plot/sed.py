@@ -21,7 +21,9 @@ import matplotlib.patches as patches
 from collections import OrderedDict
 
 # Import the relevant PTS classes and modules
-from ...core.tools.logging import log
+from ..tools.logging import log
+
+# -----------------------------------------------------------------
 
 import matplotlib.gridspec as gridspec
 from scipy.interpolate import interp1d
@@ -140,6 +142,9 @@ class SEDPlotter(object):
         :return:
         """
 
+        # Inform the user
+        log.info("Clearing the SED plotter ...")
+
         # Set default values for all attributes
         self.models = OrderedDict()
         self.observations = OrderedDict()
@@ -160,6 +165,9 @@ class SEDPlotter(object):
         :param path:
         :return:
         """
+
+        # Inform the user
+        log.info("Making the SED plot ...")
 
         if len(self.models) == 0: self.plot_no_models(path)
         else: self.plot_with_models(path)
@@ -201,11 +209,11 @@ class SEDPlotter(object):
         observation = self.observations[self.observations.keys()[0]]
 
         # Get wavelengths, fluxes, instruments, bands, errors
-        wavelengths = observation.wavelengths(unit="micron")
-        fluxes = observation.fluxes(unit="Jy")
+        wavelengths = observation.wavelengths(unit="micron", add_unit=False)
+        fluxes = observation.fluxes(unit="Jy", add_unit=False)
         instruments = observation.instruments()
         bands = observation.bands()
-        errors = observation.errors(unit="Jy")
+        errors = observation.errors(unit="Jy", add_unit=False)
 
         # Create colors
         colors = colormap(np.linspace(0, 1, len(wavelengths)))
@@ -283,11 +291,11 @@ class SEDPlotter(object):
             observation = self.observations[label]
 
             # Get wavelengths, fluxes, instruments, bands, errors
-            wavelengths = observation.wavelengths(unit="micron")
-            fluxes = observation.fluxes(unit="Jy")
+            wavelengths = observation.wavelengths(unit="micron", add_unit=False)
+            fluxes = observation.fluxes(unit="Jy", add_unit=False)
             instruments = observation.instruments()
             bands = observation.bands()
-            errors = observation.errors(unit="Jy")
+            errors = observation.errors(unit="Jy", add_unit=False)
 
             # Create color range
             if number_of_observations <= 3:
@@ -327,7 +335,7 @@ class SEDPlotter(object):
 
                 else:
 
-                    reference_flux = find_reference_flux(instruments[k], bands[k], wavelengths[k], reference_sed.instruments(), reference_sed.bands(), reference_sed.wavelengths(unit="micron"), reference_sed.fluxes(unit="Jy"))
+                    reference_flux = find_reference_flux(instruments[k], bands[k], wavelengths[k], reference_sed.instruments(), reference_sed.bands(), reference_sed.wavelengths(unit="micron", add_unit=False), reference_sed.fluxes(unit="Jy", add_unit=False))
 
                     if reference_flux is None:
 
@@ -399,11 +407,11 @@ class SEDPlotter(object):
         observation = self.observations[self.observations.keys()[0]]
 
         # Get wavelengths, fluxes, instruments, bands, errors
-        wavelengths = observation.wavelengths(unit="micron")
-        fluxes = observation.fluxes(unit="Jy")
+        wavelengths = observation.wavelengths(unit="micron", add_unit=False)
+        fluxes = observation.fluxes(unit="Jy", add_unit=False)
         instruments = observation.instruments()
         bands = observation.bands()
-        errors = observation.errors(unit="Jy")
+        errors = observation.errors(unit="Jy", add_unit=False)
 
         # Get labels and descriptions
         labels, descriptions = get_labels_and_descriptions(instruments, bands)
@@ -452,9 +460,9 @@ class SEDPlotter(object):
 
             model_label = model_labels[j]
 
-            log_model = np.log10(self.models[model_label].fluxes(unit="Jy"))
+            log_model = np.log10(self.models[model_label].fluxes(unit="Jy", add_unit=False))
 
-            f2 = interp1d(self.models[model_label].wavelengths(unit="micron"), log_model, kind='cubic')
+            f2 = interp1d(self.models[model_label].wavelengths(unit="micron", add_unit=False), log_model, kind='cubic')
             ax2.plot(wavelengths, -(fluxes - f2(wavelengths))/fluxes * 100., line_styles[j], color='black', label='model')
 
         # Add model SEDs
@@ -464,8 +472,8 @@ class SEDPlotter(object):
             # Get the current model label
             model_label = model_labels[j]
 
-            log_model = np.log10(self.models[model_label].fluxes(unit="Jy"))
-            self._main_axis.plot(self.models[model_label].wavelengths(unit="micron"), log_model, line_styles[j], color='black', label=model_label)
+            log_model = np.log10(self.models[model_label].fluxes(unit="Jy", add_unit=False))
+            self._main_axis.plot(self.models[model_label].wavelengths(unit="micron", add_unit=False), log_model, line_styles[j], color='black', label=model_label)
 
             if self.models[model_label].has_errors:
 
@@ -542,11 +550,11 @@ class SEDPlotter(object):
             observation = self.observations[label]
 
             # Get wavelengths, fluxes, instruments, bands, errors
-            wavelengths = observation.wavelengths(unit="micron")
-            fluxes = observation.fluxes(unit="Jy")
+            wavelengths = observation.wavelengths(unit="micron", add_unit=False)
+            fluxes = observation.fluxes(unit="Jy", add_unit=False)
             instruments = observation.instruments()
             bands = observation.bands()
-            errors = observation.errors(unit="Jy")
+            errors = observation.errors(unit="Jy", add_unit=False)
 
             # Get labels and descriptions
             labels, descriptions = get_labels_and_descriptions(instruments, bands)
@@ -587,9 +595,9 @@ class SEDPlotter(object):
 
                 model_label = model_labels[j]
 
-                log_model = np.log10(self.models[model_label].fluxes(unit="Jy"))
+                log_model = np.log10(self.models[model_label].fluxes(unit="Jy", add_unit=False))
 
-                f2 = interp1d(self.models[model_label].wavelengths(unit="micron"), log_model, kind='cubic')
+                f2 = interp1d(self.models[model_label].wavelengths(unit="micron", add_unit=False), log_model, kind='cubic')
                 ax2.plot(wavelengths, -(fluxes - f2(wavelengths))/fluxes * 100., line_styles[j], color='black', label='model')
 
         # Add model SEDs
@@ -599,9 +607,9 @@ class SEDPlotter(object):
             model_label = model_labels[j]
 
             # Get fluxes, wavelengths and errors
-            fluxes = self.models[model_label].fluxes(unit="Jy")
-            wavelengths = self.models[model_label].wavelengths(unit="micron")
-            errors = self.models[model_label].errors(unit="Jy") if self.models[model_label].has_errors else None
+            fluxes = self.models[model_label].fluxes(unit="Jy", add_unit=False)
+            wavelengths = self.models[model_label].wavelengths(unit="micron", add_unit=False)
+            errors = self.models[model_label].errors(unit="Jy", add_unit=False) if self.models[model_label].has_errors else None
 
             # Plot the model SED as a line (with errors if present)
             self.draw_model(self._main_axis, wavelengths, fluxes, line_styles[j], model_label, errors=errors)
@@ -670,6 +678,12 @@ class SEDPlotter(object):
 
         """
         This function ...
+        :param instruments:
+        :param bands:
+        :param wavelengths:
+        :param fluxes:
+        :param errors:
+        :param colors:
         :return:
         """
 
@@ -813,6 +827,9 @@ class SEDPlotter(object):
 
         # Add title if requested
         if self.title is not None: self._figure.suptitle(self.title, fontsize=14, fontweight='bold')
+
+        # Debugging
+        log.debug("Saving the SED plot to " + path + " ...")
 
         # Save the figure
         plt.savefig(path, bbox_inches='tight', pad_inches=0.25)

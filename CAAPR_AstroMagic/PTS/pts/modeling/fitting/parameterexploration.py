@@ -17,11 +17,12 @@ import numpy as np
 
 # Import the relevant PTS classes and modules
 from .component import FittingComponent
-from ...core.tools import filesystem
+from ...core.tools import filesystem, time, tables
 from ...core.simulation.arguments import SkirtArguments
 from ...core.basics.filter import Filter
 from ...core.simulation.skifile import SkiFile
 from ...core.launch.batchlauncher import BatchLauncher
+from ...core.tools.logging import log
 
 # -----------------------------------------------------------------
 
@@ -53,6 +54,9 @@ class ParameterExplorer(FittingComponent):
         self.ionizing_luminosities = None
         self.dust_masses = None
 
+        # The table with the parameter values for each simulation
+        self.table = None
+
     # -----------------------------------------------------------------
 
     @classmethod
@@ -67,7 +71,7 @@ class ParameterExplorer(FittingComponent):
         # Create a new ParameterExplorer instance
         explorer = cls(arguments.config)
 
-        # Set the output path
+        # Set the modeling path
         explorer.config.path = arguments.path
 
         # Set options for the young stellar population
@@ -115,8 +119,57 @@ class ParameterExplorer(FittingComponent):
         # 3. Set the ranges of the different fit parameters
         self.set_parameter_ranges()
 
-        # 3. Launch the simulations for different parameter values
+        # 4. Launch the simulations for different parameter values
         self.simulate()
+
+        # 5. Create and write a table with the parameter values for each simulation
+        self.write_parameter_table()
+
+    # -----------------------------------------------------------------
+
+    def setup(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Call the setup function of the base class
+        super(ParameterExplorer, self).setup()
+
+        # Get the names of the filters for which we have photometry
+        filter_names = []
+        fluxes_table_path = filesystem.join(self.phot_path, "fluxes.dat")
+        fluxes_table = tables.from_file(fluxes_table_path)
+        # Loop over the entries in the fluxes table, get the filter
+        for entry in fluxes_table:
+            # Get the filter
+            filter_id = entry["Instrument"] + "." + entry["Band"]
+            filter_names.append(filter_id)
+
+        # Set options for the BatchLauncher
+        self.launcher.config.analysis.misc.path = self.fit_res_path # The base directory where all of the simulations will have a seperate directory with the 'misc' analysis output
+        self.launcher.config.analysis.plotting.path = self.fit_plot_path # The base directory where all of the simulations will have a seperate directory with the plotting analysis output
+        self.launcher.config.analysis.plotting.seds = True  # Plot the output SEDs
+        self.launcher.config.analysis.misc.fluxes = True  # Calculate observed fluxes
+        self.launcher.config.analysis.misc.images = True  # Make observed images
+        self.launcher.config.analysis.misc.observation_filters = filter_names  # The filters for which to create the observations
+        self.launcher.config.analysis.plotting.format = "png" # plot in PNG format so that an animation can be made from the fit SEDs
+
+        self.launcher.config.shared_input = True   # The input directories for the different simulations are shared
+        self.launcher.config.remotes = ["nancy"]   # temporary; only use Nancy
+
+        # If a parameter table already exists, load it
+        if filesystem.is_file(self.parameter_table_path): self.table = tables.from_file(self.parameter_table_path)
+
+        # If the table does not exist yet
+        else:
+
+            # Create an empty table
+            names = ["Simulation name", "FUV young", "FUV ionizing", "Dust mass"]
+            data = [[], [], [], []]
+            dtypes = ["S24", "float64", "float64", "float64"]
+            self.table = tables.new(data, names, dtypes=dtypes)
 
     # -----------------------------------------------------------------
 
@@ -226,23 +279,7 @@ class ParameterExplorer(FittingComponent):
         scheduling_options["walltime"] = None
 
         # Create a FUV filter object
-        fuv_filter = Filter.from_string("FUV")
-
-        # Create a SkirtArguments object
-        arguments = SkirtArguments()
-
-        # The ski file pattern
-        arguments.ski_pattern = None
-        arguments.recursive = False
-        arguments.relative = False
-
-        # Input and output
-        arguments.input_path = self.fit_in_path
-        arguments.output_path = None
-
-        # Parallelization settings
-        arguments.parallel.threads = threads
-        arguments.parallel.processes = processes
+        fuv = Filter.from_string("FUV")
 
         # Loop over the different values of the young stellar luminosity
         for young_luminosity in self.young_luminosities:
@@ -254,12 +291,12 @@ class ParameterExplorer(FittingComponent):
                 for dust_mass in self.dust_masses:
 
                     # Create a unique name for this combination of parameter values
-                    simulation_name = str(young_luminosity) + "_" + str(ionizing_luminosity) + "_" + str(dust_mass)
+                    simulation_name = time.unique_name()
 
                     # Change the parameter values in the ski file
-                    self.ski.set_stellar_component_luminosity("Young stars", young_luminosity, fuv_filter) # TODO: units!
-                    self.ski.set_stellar_component_luminosity("Ionizing stars", ionizing_luminosity, fuv_filter) # TODO: units!
-                    self.ski.set_dust_component_mass(0, dust_mass) # TODO: units !
+                    self.ski.set_stellar_component_luminosity("Young stars", young_luminosity, fuv)
+                    self.ski.set_stellar_component_luminosity("Ionizing stars", ionizing_luminosity, fuv)
+                    self.ski.set_dust_component_mass(0, dust_mass)
 
                     # Determine the directory for this simulation
                     simulation_path = filesystem.join(self.fit_out_path, simulation_name)
@@ -267,20 +304,30 @@ class ParameterExplorer(FittingComponent):
                     # Create the simulation directory
                     filesystem.create_directory(simulation_path)
 
+                    # Create an 'out' directory within the simulation directory
+                    output_path = filesystem.join(simulation_path, "out")
+                    filesystem.create_directory(output_path)
+
                     # Put the ski file with adjusted parameters into the simulation directory
                     ski_path = filesystem.join(simulation_path, self.galaxy_name + ".ski")
                     self.ski.saveto(ski_path)
 
-                    # Create a directory 'out' in the simulation directory to contain the SKIRT output
-                    ouput_path = filesystem.join(simulation_path, "out")
-                    filesystem.create_directory(output_path)
+                    # Create the SKIRT arguments object
+                    arguments = create_arguments(ski_path, self.fit_in_path, output_path)
 
-                    # Adjust the SKIRT arguments
-                    arguments.ski_pattern = ski_path
-                    arguments.output_path = output_path
+                    # Debugging
+                    log.debug("Adding a simulation to the queue with:")
+                    log.debug(" - ski path: " + arguments.ski_pattern)
+                    log.debug(" - output path: " + arguments.output_path)
 
                     # Put the parameters in the queue and get the simulation object
-                    self.launcher.add_to_queue(arguments, scheduling_options)
+                    self.launcher.add_to_queue(arguments, simulation_name)
+
+                    # Set scheduling options
+                    self.launcher.set_scheduling_options(simulation_name, scheduling_options)
+
+                    # Add an entry to the parameter table
+                    self.table.add_row([simulation_name, young_luminosity, ionizing_luminosity, dust_mass])
 
         # Run the launcher, schedules the simulations
         simulations = self.launcher.run()
@@ -289,9 +336,54 @@ class ParameterExplorer(FittingComponent):
         for simulation in simulations:
 
             # Add the path to the modeling directory to the simulation object
-            simulation.modeling_path = self.config.path
+            simulation.analysis.modeling_path = self.config.path
+
+            # Set the path to the reference SED (for plotting the simulated SED against the reference points)
+            simulation.analysis.plotting.reference_sed = filesystem.join(self.phot_path, "fluxes.dat")
 
             # Save the simulation object
             simulation.save()
+
+    # -----------------------------------------------------------------
+
+    def write_parameter_table(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Write the parameter table
+        tables.write(self.table, self.parameter_table_path)
+
+# -----------------------------------------------------------------
+
+def create_arguments(ski_path, input_path, output_path):
+
+    """
+    This function ...
+    :param ski_path:
+    :param input_path:
+    :param output_path:
+    :return:
+    """
+
+    # Create a new SkirtArguments object
+    arguments = SkirtArguments()
+
+    # The ski file pattern
+    arguments.ski_pattern = ski_path
+    arguments.recursive = False
+    arguments.relative = False
+
+    # Input and output
+    arguments.input_path = input_path
+    arguments.output_path = output_path
+
+    # Parallelization settings
+    arguments.parallel.threads = None
+    arguments.parallel.processes = None
+
+    return arguments
 
 # -----------------------------------------------------------------

@@ -16,7 +16,7 @@ from __future__ import absolute_import, division, print_function
 import os
 
 # Import the relevant PTS classes and modules
-from ..tools import configuration, inspection, filesystem
+from ..tools import configuration, inspection, filesystem, network
 from ..tools.logging import log
 
 # -----------------------------------------------------------------
@@ -33,12 +33,12 @@ def find_host_ids():
 
     # Search for files that define remote host configurations
     hosts_directory = filesystem.join(inspection.pts_user_dir, "hosts")
-    if not os.path.isdir(hosts_directory): os.makedirs(hosts_directory)
+    if not filesystem.is_directory(hosts_directory): filesystem.create_directory(hosts_directory, recursive=True)
 
     # If the hosts directory is empty, place a template host configuration file there and exit with an error
-    if len([item for item in os.listdir(hosts_directory) if os.path.isfile(filesystem.join(hosts_directory, item))]) == 0:
-        config = configuration.new()
+    if len([item for item in os.listdir(hosts_directory) if filesystem.is_file(filesystem.join(hosts_directory, item))]) == 0:
 
+        config = configuration.new()
         config.name = "server.institute.com"
         config.user = "user000"
         config.password = None
@@ -94,6 +94,9 @@ def has_simulations(host_id):
     # Check whether there are simulation files corresponding to this host ID
     host_run_dir = filesystem.join(inspection.skirt_run_dir, host_id)
 
+    # If the host run directory does not exist yet, create it
+    if not filesystem.is_directory(host_run_dir): filesystem.create_directory(host_run_dir)
+
     # If there are no simulation files for this host, skip it
     return len([item for item in os.listdir(host_run_dir) if item.endswith(".sim") and not item.startswith(".")]) > 0
 
@@ -109,8 +112,8 @@ class Host(object):
 
         """
         The constructor ...
-        :param config:
-        :param subpackage:
+        :param host_id:
+        :param cluster:
         :return:
         """
 
@@ -151,6 +154,7 @@ class Host(object):
         self.use_hyperthreading = config.use_hyperthreading
         self.modules = config.modules
         self.clusters = config.clusters
+        self.vpn = config.vpn
 
     # -----------------------------------------------------------------
 
@@ -164,5 +168,36 @@ class Host(object):
 
         if self.cluster_name is not None: return self.id + "-" + self.cluster_name
         else: return self.id
+
+    # -----------------------------------------------------------------
+
+    @property
+    def requires_vpn(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # If a VPN service is specified in the host configuration file
+        if self.vpn.service is not None:
+
+            # If the VPN connection is not required when connected to a certain DNS server, check which servers we
+            # are connected to
+            if self.vpn.not_for_dns_domain is not None:
+
+                # Get the DNS search domains currently connected to
+                domains = network.dns_search_domains()
+
+                # Check whether the DNS domain in the host configuration file is in the list of current DNS domains
+                # If this is the case, no VPN connection is required. Else, the VPN connection is required.
+                if self.vpn.not_for_dns_domain in domains: return False
+                else: return True
+
+            # If the VPN connection is always required, regardless of which DNS server we are connected to, return True.
+            else: return True
+
+        # If no VPN service is specified in the host configuration file, assume VPN is not required
+        else: return False
 
 # -----------------------------------------------------------------

@@ -45,8 +45,15 @@ class BatchLauncher(Configurable):
         # The queue
         self.queue = []
 
+        # The scheduling options for (some of) the simulations, accesed by keys that are the names given to the
+        # simulations (see 'name' parameter of 'add_to_queue')
+        self.scheduling_options = dict()
+
         # The assignment from items in the queue to the different remotes
         self.assignment = None
+
+        # The parallelization scheme for the different remotes
+        self.parallelization = dict()
 
         # The simulations that have been retrieved
         self.simulations = []
@@ -72,17 +79,30 @@ class BatchLauncher(Configurable):
 
     # -----------------------------------------------------------------
 
-    def add_to_queue(self, arguments, scheduling_options=None):
+    def add_to_queue(self, arguments, name=None):
 
         """
         This function ...
         :param arguments:
-        :param scheduling_options: can for example specify the walltime ...
+        :param name: a name that is given to the simulation
         :return:
         """
 
         # Add the SkirtArguments object to the queue
-        self.queue.append((arguments, scheduling_options))
+        self.queue.append((arguments, name))
+
+    # -----------------------------------------------------------------
+
+    def set_scheduling_options(self, name, options):
+
+        """
+        This function ...
+        :param name:
+        :param options:
+        :return:
+        """
+
+        self.scheduling_options[name] = options
 
     # -----------------------------------------------------------------
 
@@ -99,13 +119,16 @@ class BatchLauncher(Configurable):
         # 2. Determine how many simulations are assigned to each remote
         self.assign()
 
-        # 2. Launch the simulations
+        # 3. Set the parallelization scheme for the different remotes
+        self.set_parallelization()
+
+        # 4. Launch the simulations
         simulations = self.simulate()
 
-        # 3. Retrieve the simulations that are finished
+        # 5. Retrieve the simulations that are finished
         self.retrieve()
 
-        # 4. Analyse the output of the retrieved simulations
+        # 6. Analyse the output of the retrieved simulations
         self.analyse()
 
         # Return the simulations that are just scheduled
@@ -128,6 +151,9 @@ class BatchLauncher(Configurable):
 
         # Clear the queue
         self.queue = []
+
+        # Clear the scheduling options
+        self.scheduling_options = dict()
 
         # Clear the assignment
         self.assignment = None
@@ -188,6 +214,45 @@ class BatchLauncher(Configurable):
 
     # -----------------------------------------------------------------
 
+    def set_parallelization(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Setting the parallelization scheme for the different remote hosts ...")
+
+        # Loop over the different remote hosts
+        for remote in self.remotes:
+
+            # Debugging
+            log.debug("Setting the parallelization scheme for host '" + remote.host_id + "' ...")
+
+            # Fix the number of processes to 16
+            processes = 16
+
+            # Calculate the maximum number of threads per process based on the current cpu load of the system
+            threads = int(remote.free_cores / processes)
+
+            # If hyperthreading should be used for the remote host, we can even use more threads
+            if remote.use_hyperthreading: threads *= remote.threads_per_core
+
+            # If there are too little free cpus for the amount of processes, the number of threads will be smaller than one
+            if threads < 1:
+
+                processes = int(remote.free_cores)
+                threads = 1
+
+            # Debugging
+            log.debug("Using " + str(processes) + " processes and " + str(threads) + " threads per process on this remote")
+
+            # Set the parallelization scheme for this host
+            self.parallelization[remote.host_id] = (processes, threads)
+
+    # -----------------------------------------------------------------
+
     def simulate(self):
 
         """
@@ -195,11 +260,17 @@ class BatchLauncher(Configurable):
         :return:
         """
 
+        # The remote input path
+        remote_input_path = None
+
         # The complete list of simulations
         simulations = []
 
         # Loop over the different remotes
         for remote in self.remotes:
+
+            # Get the parallelization scheme for this remote host
+            processes, threads = self.parallelization[remote.host_id]
 
             # Cache the simulation objects scheduled to the current remote
             simulations_remote = []
@@ -208,20 +279,30 @@ class BatchLauncher(Configurable):
             for _ in range(next(self.assignment)):
 
                 # Get the last item from the queue (it is removed)
-                arguments, scheduling_options = self.queue.pop()
+                arguments, name = self.queue.pop()
+
+                # Set the parallelization
+                arguments.parallel.processes = processes
+                arguments.parallel.threads = threads
+
+                # Check whether scheduling options are defined for this simulation
+                scheduling_options = self.scheduling_options[name] if name in self.scheduling_options else None
 
                 # Queue the simulation
-                simulation = remote.add_to_queue(arguments, scheduling_options=scheduling_options)
+                simulation = remote.add_to_queue(arguments, name=name, scheduling_options=scheduling_options, remote_input_path=remote_input_path)
                 simulations_remote.append(simulation)
 
-                # Add additional information to the simulation object
-                self.add_analysis_info(simulation)
+                # If the input directory is shared between the different simulations,
+                if self.config.shared_input and remote_input_path is None: remote_input_path = simulation.remote_input_path
+
+                # Set the analysis options for the simulation
+                self.set_analysis_options(simulation)
 
                 # Save the simulation object
                 simulation.save()
 
             # Start the queue if the remote host does not use a scheduling system
-            if remote.scheduler:
+            if not remote.scheduler:
 
                 # Start the queue
                 screen_name = remote.start_queue()
@@ -269,7 +350,7 @@ class BatchLauncher(Configurable):
         """
 
         # Inform the user
-        log.info("Analysing the output of retrieved simulations...")
+        log.info("Analysing the output of retrieved simulations ...")
 
         # Loop over the list of simulations and analyse them
         for simulation in self.simulations:
@@ -282,7 +363,7 @@ class BatchLauncher(Configurable):
 
     # -----------------------------------------------------------------
 
-    def add_analysis_info(self, simulation):
+    def set_analysis_options(self, simulation):
 
         """
         This function ...
@@ -290,31 +371,29 @@ class BatchLauncher(Configurable):
         :return:
         """
 
-        # Extraction
-        simulation.extract_progress = self.config.extraction.progress
-        simulation.extract_timeline = self.config.extraction.timeline
-        simulation.extract_memory = self.config.extraction.memory
+        # Set the options
+        simulation.set_analysis_options(self.config.analysis)
 
-        # Determine the extraction directory for this simulation
-        if self.config.extraction.path is not None: extraction_path = filesystem.join(self.config.extraction.path, simulation.id)
-        else: extraction_path = filesystem.join(simulation.output_path, "extract")
-        simulation.extraction_path = extraction_path
+        # Determine the extraction directory for this simulation (and create it if necessary)
+        if self.config.analysis.extraction.path is not None: extraction_path = filesystem.join(self.config.analysis.extraction.path, simulation.name)
+        else: extraction_path = filesystem.join(simulation.output_path, "extr")
+        if simulation.analysis.any_extraction:
+            if not filesystem.is_directory(extraction_path): filesystem.create_directory(extraction_path, recursive=True)
+            simulation.analysis.extraction.path = extraction_path
 
-        # Plotting
-        simulation.plot_progress = self.config.plotting.progress
-        simulation.plot_timeline = self.config.plotting.timeline
-        simulation.plot_memory = self.config.plotting.memory
-        simulation.plot_seds = self.config.plotting.seds
-        simulation.plot_grids = self.config.plotting.grids
-
-        # Determine the plotting directory for this simulation
-        if self.config.plotting.path is not None: plotting_path = filesystem.join(self.config.plotting.path, simulation.id)
+        # Determine the plotting directory for this simulation (and create it if necessary)
+        if self.config.analysis.plotting.path is not None: plotting_path = filesystem.join(self.config.analysis.plotting.path, simulation.name)
         else: plotting_path = filesystem.join(simulation.output_path, "plot")
-        simulation.plotting_path = plotting_path
+        if simulation.analysis.any_plotting:
+            if not filesystem.is_directory(plotting_path): filesystem.create_directory(plotting_path, recursive=True)
+            simulation.analysis.plotting.path = plotting_path
 
-        # Advanced
-        simulation.make_rgb = self.config.advanced.rgb
-        simulation.make_wave = self.config.advanced.wavemovie
+        # Determine the 'misc' directory for this simulation (and create it if necessary)
+        if self.config.analysis.misc.path is not None: misc_path = filesystem.join(self.config.analysis.misc.path, simulation.name)
+        else: misc_path = filesystem.join(simulation.output_path, "misc")
+        if simulation.analysis.any_misc:
+            if not filesystem.is_directory(misc_path): filesystem.create_directory(misc_path, recursive=True)
+            simulation.analysis.misc.path = misc_path
 
         # Remove remote files
         simulation.remove_remote_input = not self.config.keep and not self.config.shared_input

@@ -275,6 +275,18 @@ class Box(np.ndarray):
 
     # -----------------------------------------------------------------
 
+    @property
+    def origin(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return Position(self.x_min, self.y_min)
+
+    # -----------------------------------------------------------------
+
     def box_like(self, box):
 
         """
@@ -462,7 +474,7 @@ class Box(np.ndarray):
 
     # -----------------------------------------------------------------
 
-    def fit_model(self, center, model_name, sigma=None, max_center_offset=None, amplitude=None):
+    def fit_model(self, center, model_name, sigma=None, max_center_offset=None, amplitude=None, max_sigma_offset=None):
 
         """
         This function ...
@@ -471,6 +483,7 @@ class Box(np.ndarray):
         :param sigma:
         :param max_center_offset:
         :param amplitude:
+        :param max_sigma_offset:
         :return:
         """
 
@@ -481,7 +494,7 @@ class Box(np.ndarray):
         if model_name == "Gaussian":
 
             # Do the fitting
-            model = fitting.fit_2D_Gaussian(self, rel_center, sigma=sigma, max_center_offset=max_center_offset, amplitude=amplitude)
+            model = fitting.fit_2D_Gaussian(self, rel_center, sigma=sigma, max_center_offset=max_center_offset, amplitude=amplitude, max_sigma_offset=max_sigma_offset)
 
         # Fit an Airy Disk model to the data
         elif model_name == "Airy":

@@ -43,6 +43,28 @@ def home():
 
 # -----------------------------------------------------------------
 
+def desktop():
+
+    """
+    This function returns the full path to the desktop directory
+    :return:
+    """
+
+    return os.path.expanduser("~/Desktop") # On Mac OS X
+
+# -----------------------------------------------------------------
+
+def documents():
+
+    """
+    This function returns the full path to the documents directory
+    :return:
+    """
+
+    return os.path.expanduser("~/Documents") # On Mac OS X
+
+# -----------------------------------------------------------------
+
 def absolute(path):
 
     """
@@ -218,7 +240,7 @@ def remove_file(path):
 # -----------------------------------------------------------------
 
 def files_in_path(path=None, recursive=False, ignore_hidden=True, extension=None, contains=None, not_contains=None,
-                  extensions=False, returns="path", exact_name=None, startswith=None, endswith=None):
+                  extensions=False, returns="path", exact_name=None, startswith=None, endswith=None, sort=None):
 
     """
     This function ...
@@ -233,6 +255,7 @@ def files_in_path(path=None, recursive=False, ignore_hidden=True, extension=None
     :param exact_name:
     :param startswith:
     :param endswith:
+    :param sort: a function which determines how the files should be sorted based on their filename. Hidden items (starting with .) are placed first.
     :return:
     """
 
@@ -248,6 +271,18 @@ def files_in_path(path=None, recursive=False, ignore_hidden=True, extension=None
     # Get the list of items
     if recursive: items = [join(dp, f) for dp, dn, fn in os.walk(path) for f in fn]
     else: items = [join(path, item) for item in os.listdir(path)]
+
+    # If the files have to be sorted on their name
+    if sort is not None:
+        #sort_function = lambda x: sort(strip_extension(name(x)))
+        def sort_function(x):
+            item_name = strip_extension(name(x))
+            if item_name.startswith("."): value = 0
+            else:
+                try: value = sort(item_name)
+                except ValueError: value = 0
+            return value
+        items.sort(key=sort_function)
 
     # Loop over all items; get files that match the specified conditions
     for item_path in items:
@@ -310,7 +345,8 @@ def files_in_path(path=None, recursive=False, ignore_hidden=True, extension=None
 
 # -----------------------------------------------------------------
 
-def directories_in_path(path=None, recursive=False, ignore_hidden=True, contains=None, not_contains=None, returns="path", exact_name=None, startswith=None, endswith=None):
+def directories_in_path(path=None, recursive=False, ignore_hidden=True, contains=None, not_contains=None,
+                        returns="path", exact_name=None, startswith=None, endswith=None, sort=None):
 
     """
     This function ...
@@ -323,6 +359,7 @@ def directories_in_path(path=None, recursive=False, ignore_hidden=True, contains
     :param exact_name:
     :param startswith:
     :param endswith:
+    :param sort: a function which determines how the directories should be sorted based on their name. Hidden items (starting with .) are placed first.
     :return:
     """
 
@@ -338,6 +375,18 @@ def directories_in_path(path=None, recursive=False, ignore_hidden=True, contains
     # Get the list of items
     if recursive: items = [join(dp, d) for dp, dn, fn in os.walk(path) for d in dn]
     else: items = [join(path, item) for item in os.listdir(path)]
+
+    # If the directories have to be sorted on their name
+    if sort is not None:
+        #sort_function = lambda x: sort(strip_extension(name(x)))
+        def sort_function(x):
+            item_name = name(x)
+            if item_name.startswith("."): value = 0
+            else:
+                try: value = sort(item_name)
+                except ValueError: value = 0
+            return value
+        items.sort(key=sort_function)
 
     # List all items in the specified directory
     for item_path in items:

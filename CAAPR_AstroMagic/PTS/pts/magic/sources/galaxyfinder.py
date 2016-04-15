@@ -11,7 +11,6 @@
 
 # Ensure Python 3 functionality
 from __future__ import absolute_import, division, print_function
-import pdb
 
 # Import astronomical modules
 from astropy.units import Unit

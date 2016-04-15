@@ -24,7 +24,7 @@ from ...core.tools.logging import log
 from ..core.sed import ObservedSED
 from ...core.basics.errorbar import ErrorBar
 from ...core.tools import tables
-from ..plotting.sed import SEDPlotter
+from ...core.plot.sed import SEDPlotter
 
 # -----------------------------------------------------------------
 
@@ -238,7 +238,7 @@ class PhotoMeter(PhotometryComponent):
         # Get list of instruments, bands and fluxes of the calculated SED
         instruments = self.sed.instruments()
         bands = self.sed.bands()
-        fluxes = self.sed.fluxes(unit="Jy")
+        fluxes = self.sed.fluxes(unit="Jy", add_unit=False)
 
         # The number of data points
         number_of_points = len(instruments)
@@ -320,11 +320,8 @@ class PhotoMeter(PhotometryComponent):
         # Inform the user
         log.info("Writing SED to a data file ...")
 
-        # Determine the full path to the output file
-        path = self.full_output_path("fluxes.dat")
-
         # Save the SED
-        self.sed.save(path)
+        self.sed.save(self.fluxes_path)
 
     # -----------------------------------------------------------------
 
@@ -357,7 +354,7 @@ class PhotoMeter(PhotometryComponent):
         log.info("Plotting the SED ...")
 
         # Create a new SEDPlotter instance
-        plotter = SEDPlotter("M81")
+        plotter = SEDPlotter(self.galaxy_name)
 
         # Add the SED
         plotter.add_observed_sed(self.sed, "PTS")
@@ -379,7 +376,7 @@ class PhotoMeter(PhotometryComponent):
         log.info("Plotting the SED with reference fluxes ...")
 
         # Create a new SEDPlotter instance
-        plotter = SEDPlotter("M81")
+        plotter = SEDPlotter(self.galaxy_name)
 
         # Add the SED
         plotter.add_observed_sed(self.sed, "PTS")

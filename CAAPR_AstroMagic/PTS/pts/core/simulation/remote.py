@@ -5,7 +5,7 @@
 # **       © Astronomical Observatory, Ghent University          **
 # *****************************************************************
 
-## \package pts.core.simulation.remote Contains the SkirtRemote class, used for launching, checking and retreiving
+## \package pts.core.simulation.remote Contains the SkirtRemote class, used for launching, checking and retrieving
 #  remote SKIRT simulations.
 
 # -----------------------------------------------------------------
@@ -71,6 +71,9 @@ class SkirtRemote(Remote):
         # Obtain some information about the SKIRT installation on the remote machine
         self.skirt_path = self.find_executable("skirt")
 
+        # Check whether a SKIRT installation is found on the remote host
+        if self.skirt_path is None: raise RuntimeError("SKIRT is not installed on the remote host")
+
         # We want absolute paths
         if self.skirt_path.startswith("~"):
 
@@ -100,13 +103,15 @@ class SkirtRemote(Remote):
 
     # -----------------------------------------------------------------
 
-    def add_to_queue(self, arguments, name=None, scheduling_options=None):
+    def add_to_queue(self, arguments, name=None, scheduling_options=None, remote_input_path=None, analysis_options=None):
 
         """
         This function ...
         :param arguments:
-        :param name:
+        :param name: a name given to the simulation
         :param scheduling_options:
+        :param remote_input_path:
+        :param analysis_options:
         :return:
         """
 
@@ -124,7 +129,7 @@ class SkirtRemote(Remote):
         if name is None: name = remote_simulation_name
 
         # Make preparations for this simulation
-        local_ski_path, local_input_path, local_output_path = self.prepare(arguments, remote_simulation_path)
+        local_ski_path, local_input_path, local_output_path = self.prepare(arguments, remote_simulation_path, remote_input_path)
 
         # If the remote host uses a scheduling system, submit the simulation right away
         if self.scheduler:
@@ -142,8 +147,16 @@ class SkirtRemote(Remote):
             # Generate a new simulation ID based on the ID's currently in use
             simulation_id = self._new_simulation_id()
 
-        # Create a simulation object and return it
+        # Create a simulation object
         simulation = self.create_simulation_object(arguments, name, simulation_id, remote_simulation_path, local_ski_path, local_input_path, local_output_path)
+
+        # If analysis options are defined, adjust the correponding settings of the simulation object
+        if analysis_options is not None: simulation.set_analysis_options(analysis_options)
+
+        # Save the simulation object
+        simulation.save()
+
+        # Return the simulation object
         return simulation
 
     # -----------------------------------------------------------------
@@ -222,13 +235,14 @@ class SkirtRemote(Remote):
 
     # -----------------------------------------------------------------
 
-    def run(self, arguments, name=None, scheduling_options=None):
+    def run(self, arguments, name=None, scheduling_options=None, analysis_options=None):
 
         """
         This function ...
         :param arguments:
         :param name:
         :param scheduling_options:
+        :param analysis_options:
         :return:
         """
 
@@ -239,7 +253,7 @@ class SkirtRemote(Remote):
         if len(self.queue) > 0: raise RuntimeError("The simulation queue is not empty")
 
         # Add the simulation arguments to the queue
-        simulation = self.add_to_queue(arguments, name, scheduling_options)
+        simulation = self.add_to_queue(arguments, name, scheduling_options, analysis_options=analysis_options)
 
         # Start the queue if that is not left up to the remote's own scheduling system
         if not self.scheduler:
@@ -274,17 +288,15 @@ class SkirtRemote(Remote):
 
     # -----------------------------------------------------------------
 
-    def prepare(self, arguments, remote_simulation_path):
+    def prepare(self, arguments, remote_simulation_path, remote_input_path=None):
 
         """
         This function ...
         :param arguments:
         :param remote_simulation_path:
+        :param remote_input_path:
         :return:
         """
-
-        # Determine the full paths to the input and output directories on the remote system
-        remote_input_path = filesystem.join(remote_simulation_path, "in")
 
         # If an output path is defined in the remote host configuration file, use it for the simulation output
         if self.host.output_path is not None:
@@ -309,17 +321,38 @@ class SkirtRemote(Remote):
         local_input_path = arguments.input_path
         local_output_path = arguments.output_path
 
-        if local_input_path is None: remote_input_path = None
+        # The simulation does not require input
+        if local_input_path is None:
 
+            remote_input_path = None
+
+        # The simulation does require input
+        else:
+
+            # A remote input path is not specified, this means that we have yet to copy the input
+            if remote_input_path is None:
+
+                # Determine the full path to the input directory on the remote system
+                remote_input_path = filesystem.join(remote_simulation_path, "in")
+
+                # Create the remote input directory
+                #self.create_directory(remote_input_path)
+
+                # Copy the input directory to the remote host
+                self.upload(local_input_path, remote_input_path)
+
+            else:
+
+                if not self.is_directory(remote_input_path): raise RuntimeError("The remote input directory does not exist")
+
+        # Set the remote input and output path
         arguments.input_path = remote_input_path
         arguments.output_path = remote_output_path
-
-        # Create the remote input directory if necessary
-        if remote_input_path is not None: self.execute("mkdir " + remote_output_path, output=False)
 
         # Create the remote output directory
         self.create_directory(remote_output_path)
 
+        # Set the remote ski file path
         local_ski_path = arguments.ski_pattern
         ski_name = filesystem.name(local_ski_path)
         remote_ski_path = filesystem.join(remote_simulation_path, ski_name)
@@ -327,7 +360,6 @@ class SkirtRemote(Remote):
 
         # Copy the input directory and the ski file to the remote host
         self.upload(local_ski_path, remote_simulation_path)
-        if local_input_path is not None: self.upload(local_input_path, remote_input_path)
 
         # Return the paths of the local ski file and the local input and output directories
         return local_ski_path, local_input_path, local_output_path
@@ -468,7 +500,6 @@ class SkirtRemote(Remote):
 
         """
         This function ...
-        :param count:
         :return:
         """
 
@@ -545,8 +576,18 @@ class SkirtRemote(Remote):
         # Loop over the different entries of the status list
         for path, simulation_status in self.get_status():
 
-            # Skip already retrieved simulations
-            if simulation_status == "retrieved": continue
+            # Skip already retrieved and analysed simulations
+            if simulation_status == "analysed": continue
+
+            # If a simulation has been retrieved earlier, but is not yet analysed, also add it to the list of retrieved
+            # simulations (again) so that its results can be analysed
+            elif simulation_status == "retrieved":
+
+                # Open the simulation file
+                simulation = RemoteSimulation.from_file(path)
+
+                # Add the retrieved simulation to the list
+                simulations.append(simulation)
 
             # Finished simulations
             elif simulation_status == "finished":
@@ -555,13 +596,14 @@ class SkirtRemote(Remote):
                 simulation = RemoteSimulation.from_file(path)
 
                 # Debug info
-                log.debug("Retreiving simulation " + str(simulation.name) + " with id " + str(simulation.id) + " ...")
+                log.debug("Retrieving simulation " + str(simulation.name) + " with id " + str(simulation.id) + " ...")
 
                 # If retrieve file types are not defined, download the complete output directory
                 if simulation.retrieve_types is None or simulation.retrieve_types == "None":
 
                     # Debug info
                     log.debug("Retrieve file types are not defined, retrieving complete remote output directory ...")
+                    log.debug("Local output directory: " + simulation.output_path)
 
                     # Download the simulation output
                     self.download(simulation.remote_output_path, simulation.output_path)
@@ -602,13 +644,14 @@ class SkirtRemote(Remote):
                         elif filename.endswith("_ds_convergence.dat"):
                             if "convergence" in simulation.retrieve_types: copy_paths.append(filepath)
 
-                    # Debug info
+                    # Debugging
                     log.debug("Retrieving files: " + str(copy_paths))
+                    log.debug("Local output directory: " + simulation.output_path)
 
                     # Download the list of files to the local output directory
                     self.download(copy_paths, simulation.output_path)
 
-                # If retreival was succesful, add this information to the simulation file
+                # If retrieval was succesful, add this information to the simulation file
                 simulation.retrieved = True
                 simulation.save()
 
@@ -681,7 +724,7 @@ class SkirtRemote(Remote):
         if not self.scheduler:
 
             # Search for simulation files in the local SKIRT run/host_id directory
-            for path in filesystem.files_in_path(self.local_skirt_host_run_dir, extension="sim"):
+            for path in filesystem.files_in_path(self.local_skirt_host_run_dir, extension="sim", sort=int):
 
                 # Open the simulation file
                 simulation = RemoteSimulation.from_file(path)
@@ -692,8 +735,13 @@ class SkirtRemote(Remote):
                 # The path to the simulation log file
                 remote_log_file_path = filesystem.join(simulation.remote_output_path, ski_name + "_log.txt")
 
+                # Check whether the simulation has already been analysed
+                if simulation.analysed: simulation_status = "analysed"
+
+                # Check whether the simulation has already been retrieved
+                elif simulation.retrieved: simulation_status = "retrieved"
+
                 # Get the simulation status from the remote log file if not yet retrieved
-                if simulation.retrieved: simulation_status = "retrieved"
                 else: simulation_status = self.status_from_log_file(remote_log_file_path, simulation.screen_name, ski_name)
 
                 # Add the simulation properties to the list
@@ -744,8 +792,11 @@ class SkirtRemote(Remote):
                 # Get the job ID from the name of the simulation file
                 job_id = int(name)
 
+                # Check if the simulation has already been analysed
+                if simulation.analysed: simulation_status = "analysed"
+
                 # Check if the simulation has already been retrieved
-                if simulation.retrieved: simulation_status = "retrieved"
+                elif simulation.retrieved: simulation_status = "retrieved"
 
                 # Check if the job ID is in the list of queued or running jobs
                 elif job_id in queue_status:
@@ -785,6 +836,8 @@ class SkirtRemote(Remote):
         """
         This function ...
         :param file_path:
+        :param screen_name:
+        :param simulation_prefix:
         :return:
         """
 

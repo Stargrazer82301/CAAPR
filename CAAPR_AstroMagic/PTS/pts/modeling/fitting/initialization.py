@@ -13,17 +13,27 @@
 from __future__ import absolute_import, division, print_function
 
 # Import standard modules
+import math
 import numpy as np
 
 # Import astronomical modules
-from astropy.units import Unit
+from astropy.units import Unit, dimensionless_angles
+from astropy import constants
 
 # Import the relevant PTS classes and modules
 from .component import FittingComponent
 from ...core.tools import inspection, tables, filesystem
 from ...core.simulation.skifile import SkiFile
 from ...core.basics.filter import Filter
+from ..basics.models import SersicModel, DeprojectionModel
+from ...magic.basics.coordinatesystem import CoordinateSystem
 from ..decomposition.decomposition import load_parameters
+from ...magic.basics.skyregion import SkyRegion
+from ..basics.instruments import SEDInstrument
+from ..core.sun import Sun
+from ..core.mappings import Mappings
+from ...magic.tools import wavelengths
+from ...core.tools.logging import log
 
 # -----------------------------------------------------------------
 
@@ -59,6 +69,31 @@ class InputInitializer(FittingComponent):
         # The structural parameters
         self.parameters = None
 
+        # The geometric bulge model
+        self.bulge = None
+
+        # The deprojection model
+        self.deprojection = None
+
+        # The instrument
+        self.instrument = None
+
+        # The table of weights for each band
+        self.weights = None
+
+        # The fluxes table
+        self.fluxes = None
+
+        # Filters
+        self.i1 = None
+        self.fuv = None
+
+        # Solar properties
+        self.sun = None
+
+        # Coordinate system
+        self.reference_wcs = None
+
     # -----------------------------------------------------------------
 
     @classmethod
@@ -73,7 +108,7 @@ class InputInitializer(FittingComponent):
         # Create a new InputInitializer instance
         initializer = cls(arguments.config)
 
-        # Set the output path
+        # Set the modeling path
         initializer.config.path = arguments.path
 
         # Set minimum and maximum wavelength of the total grid
@@ -119,17 +154,53 @@ class InputInitializer(FittingComponent):
         # 3. Load the structural parameters for the galaxy
         self.load_parameters()
 
-        # 4. Create the wavelength grid
+        # 4. Load the fluxes
+        self.load_fluxes()
+
+        # 5. Create the wavelength grid
         self.create_wavelength_grid()
 
-        # 5. Adjust the ski file
+        # 6. Create the bulge model
+        self.create_bulge_model()
+
+        # 7. Create the deprojection model
+        self.create_deprojection_model()
+
+        # 8. Create the instrument
+        self.create_instrument()
+
+        # 9. Adjust the ski file
         self.adjust_ski()
 
-        # 4. Place the input
-        self.place_input()
+        # 10. Calculate the weight factor to give to each band
+        self.calculate_weights()
 
-        # 5. Place ski file
-        self.place_ski_file()
+        # 11. Writing
+        self.write()
+
+    # -----------------------------------------------------------------
+
+    def setup(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Call the setup function of the base class
+        super(InputInitializer, self).setup()
+
+        # Create filters
+        self.i1 = Filter.from_string("I1")
+        self.fuv = Filter.from_string("FUV")
+
+        # Solar properties
+        self.sun = Sun()
+
+        # Reference coordinate system
+        reference_image = "Pacs red"
+        reference_path = filesystem.join(self.truncation_path, reference_image + ".fits")
+        self.reference_wcs = CoordinateSystem.from_file(reference_path)
 
     # -----------------------------------------------------------------
 
@@ -139,6 +210,9 @@ class InputInitializer(FittingComponent):
         This function ...
         :return:
         """
+
+        # Inform the user
+        log.info("Loading the ski file template ...")
 
         # Open the template ski file
         self.ski = SkiFile(template_ski_path)
@@ -152,11 +226,32 @@ class InputInitializer(FittingComponent):
         :return:
         """
 
+        # Inform the user
+        log.info("Loading the decomposition parameters ...")
+
         # Determine the path to the parameters file
         path = filesystem.join(self.components_path, "parameters.dat")
 
         # Load the parameters
         self.parameters = load_parameters(path)
+
+    # -----------------------------------------------------------------
+
+    def load_fluxes(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Loading the observed fluxes table ...")
+
+        # Determine the path to the fluxes table
+        fluxes_path = filesystem.join(self.phot_path, "fluxes.dat")
+
+        # Load the fluxes table
+        self.fluxes = tables.from_file(fluxes_path)
 
     # -----------------------------------------------------------------
 
@@ -167,6 +262,9 @@ class InputInitializer(FittingComponent):
         :return:
         """
 
+        # Inform the user
+        log.info("Creating the wavelength grid ...")
+
         # Verify the grid parameters
         if self.config.wavelengths.npoints < 2: raise ValueError("the number of points in the low-resolution grid should be at least 2")
         if self.config.wavelengths.npoints_zoom < 2: raise ValueError("the number of points in the high-resolution subgrid should be at least 2")
@@ -176,9 +274,14 @@ class InputInitializer(FittingComponent):
             or self.config.wavelengths.max <= self.config.wavelengths.max_zoom):
                 raise ValueError("the high-resolution subgrid should be properly nested in the low-resolution grid")
 
+        logmin = np.log10(float(self.config.wavelengths.min))
+        logmax = np.log10(float(self.config.wavelengths.max))
+        logmin_zoom = np.log10(float(self.config.wavelengths.min_zoom))
+        logmax_zoom = np.log10(float(self.config.wavelengths.max_zoom))
+
         # Build the high- and low-resolution grids independently
-        base_grid = np.logspace(float(self.config.wavelengths.min), float(self.config.wavelengths.max), num=self.config.wavelengts.npoints, endpoint=True, base=10.)
-        zoom_grid = np.logspace(float(self.config.wavelengths.min_zoom), float(self.config.wavelengths.max_zoom), num=self.config.wavelengths.npoints_zoom, endpoint=True, base=10.)
+        base_grid = np.logspace(logmin, logmax, num=self.config.wavelengths.npoints, endpoint=True, base=10)
+        zoom_grid = np.logspace(logmin_zoom, logmax_zoom, num=self.config.wavelengths.npoints_zoom, endpoint=True, base=10)
 
         # Merge the two grids
         total_grid = []
@@ -194,33 +297,74 @@ class InputInitializer(FittingComponent):
         for wavelength in base_grid:
             if wavelength > self.config.wavelengths.max_zoom: total_grid.append(wavelength)
 
-        # -- Add the wavelengths of the bands of interest --
-
-        # Open the fluxes.dat table to get the filters that are used for the SED
-        fluxes_table_path = filesystem.join(self.phot_path, "fluxes.dat")
-        fluxes_table = tables.from_file(fluxes_table_path)
-
-        # Loop over the entries in the fluxes table, get the filter
-        for entry in fluxes_table:
-
-            # Get the filter
-            filter_id = entry["Instrument"] + "." + entry["Band"]
-            filter = Filter.from_string(filter_id)
-
-            # Get the wavelength in micron
-            wavelength = filter.pivotwavelength()
-
-            # Insert the wavelength at the appropriate place
-            for i in range(len(total_grid)):
-                if total_grid[i] > wavelength:
-                    total_grid.insert(i, wavelength)
-                    break
-            # If no break is encountered, no value in the grid was greater than our filter wavelength,
-            # so add the filter wavelength at the end
-            else: total_grid.append(wavelength)
-
         # Create table for the wavelength grid
         self.wavelength_grid = tables.new([total_grid], names=["Wavelength"])
+
+    # -----------------------------------------------------------------
+
+    def create_bulge_model(self):
+
+        """
+        :return:
+        """
+
+        # Inform the user
+        log.info("Creating the bulge model ...")
+
+        # Create a Sersic model for the bulge
+        self.bulge = SersicModel.from_galfit(self.parameters.bulge, self.parameters.inclination, self.parameters.disk.PA)
+
+    # -----------------------------------------------------------------
+
+    def create_deprojection_model(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Calculating the deprojection parameters ...")
+
+        filename = None
+        hz = None
+
+        # Get the galaxy distance, the inclination and position angle
+        distance = self.parameters.distance
+        inclination = self.parameters.inclination
+        pa = self.parameters.disk.PA
+
+        # Get the center pixel
+        pixel_center = self.parameters.center.to_pixel(self.reference_wcs)
+        xc = pixel_center.x
+        yc = pixel_center.y
+
+        # Get the pixelscale in physical units
+        pixelscale_angular = self.reference_wcs.xy_average_pixelscale * Unit("pix") # in deg
+        pixelscale = (pixelscale_angular * distance).to("pc", equivalencies=dimensionless_angles())
+
+        # Get the number of x and y pixels
+        x_size = self.reference_wcs.xsize
+        y_size = self.reference_wcs.ysize
+
+        # Create the deprojection model
+        self.deprojection = DeprojectionModel(filename, pixelscale, pa, inclination, x_size, y_size, xc, yc, hz)
+
+    # -----------------------------------------------------------------
+
+    def create_instrument(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Creating the instrument ...")
+
+        # Create an SED instrument
+        azimuth = 0.0
+        self.instrument = SEDInstrument(self.parameters.distance, self.parameters.inclination, azimuth, self.parameters.disk.PA)
 
     # -----------------------------------------------------------------
 
@@ -231,98 +375,32 @@ class InputInitializer(FittingComponent):
         :return:
         """
 
-        # -- Instruments --
+        # Inform the user
+        log.info("Adjusting the ski file parameters ...")
 
         # Remove the existing instruments
         self.ski.remove_all_instruments()
 
-        # Add a new SEDInstrument
-        self.ski.add_sed_instrument("earth", self.parameters.inclination, 0.0, self.parameters.position_angle, )
-
-        # -- Photon packages --
+        # Add the instrument
+        self.ski.add_instrument("earth", self.instrument)
 
         # Set the number of photon packages
         self.ski.setpackages(self.config.packages)
 
-        # -- The wavelengh grid --
-
         # Set the name of the wavelength grid file
         self.ski.set_file_wavelength_grid("wavelengths.txt")
 
-        # -- The evolved stellar bulge --
-
-        bulge_template = "BruzualCharlot"
-        bulge_age = 12
-        bulge_metallicity = 0.02
-
-        # Set the parameters of the bulge
-        self.ski.set_stellar_component_sersic_geometry("Evolved stellar bulge", index, radius, y_flattening, z_flattening) # geometry
-        self.ski.set_stellar_component_sed("Evolved stellar bulge", bulge_template, bulge_age, bulge_metallicity) # SED
-        self.ski.set_stellar_component_luminosity("Evolved stellar bulge", luminosity, filter_or_wavelength) # normalization
-
-        # -- The evolved stellar disk --
-
-        disk_template = "BruzualCharlot"
-        disk_age = 8
-        disk_metallicity = 0.02
-
-        # Set the parameters of the evolved stellar component
-        self.ski.set_stellar_component_fits_geometry("Evolved stellar disk", "old_stars.fits", pixelscale, position_angle, inclination, x_size, y_size, x_center, y_center, scale_height)
-        self.ski.set_stellar_component_sed("Evolved stellar disk", disk_template, disk_age, disk_metallicity) # SED
-        self.ski.set_stellar_component_luminosity("Evolved stellar disk", luminosity, filter_or_wavelength) # normalization
-
-        # -- The young stellar component --
-
-        young_template = "BruzualCharlot"
-        young_age = 0.1
-        young_metallicity = 0.02
-
-        # Set the parameters of the young stellar component
-        self.ski.set_stellar_component_fits_geometry("Young stars", "young_stars.fits", pixelscale, position_angle, inclination, x_size, y_size, x_center, y_center, scale_height)
-        self.ski.set_stellar_component_sed("Young stars", young_template, young_age, young_metallicity) # SED
-        self.ski.set_stellar_component_luminosity("Young stars", luminosity, filter_or_wavelength) # normalization
-
-        # -- The ionizing stellar component --
-
-        ionizing_metallicity = 0.02
-        ionizing_compactness = 6
-        ionizing_pressure = 1e12 * Unit("K/m3")
-        ionizing_covering_factor = 0.2
-
-        # Set the parameters of the ionizing stellar component
-        self.ski.set_stellar_component_fits_geometry("Ionizing stars", "ionizing_stars.fits", pixelscale, position_angle, inclination, x_size, y_size, x_center, y_center, scale_height)
-        self.ski.set_stellar_component_mappingssed("Ionizing stars", ionizing_metallicity, ionizing_compactness, ionizing_pressure, ionizing_covering_factor) # SED
-        self.ski.set_stellar_component_luminosity("Ionizing stars", luminosity, filter_or_wavelength) # normalization
-
-        # -- The dust component --
-
-        self.ski.set_dust_component_fits_geometry(0, "dust.fits", pixelscale, position_angle, inclination, x_size, y_size, x_center, y_center, scale_height) # geometry
-        self.ski.set_dust_component_themis_mix(0, hydrocarbon_pops, enstatite_pops, forsterite_pops) # dust mix
-        self.ski.set_dust_component_mass(0, dust_mass) # dust mass
-
-        # -- The dust emissivity --
+        # Set the stellar and dust components
+        self.set_components()
 
         # Set transient dust emissivity
         self.ski.set_transient_dust_emissivity()
 
-        # -- The dust grid --
-
-        min_x = -15. * Unit("kpc")
-        max_x = 15. * Unit("kpc")
-        min_y = -15. * Unit("kpc")
-        max_y = 15. * Unit("kpc")
-        min_z = -3. * Unit("kpc")
-        max_z = 3. * Unit("kpc")
-
-        # Set the bintree
-        self.ski.set_binary_tree_dust_grid(min_x, max_x, min_y, max_y, min_z, max_z)
-
-        # -- The dust cell library --
+        # Set the dust grid
+        self.set_dust_grid()
 
         # Set all-cells dust library
         self.ski.set_allcells_dust_lib()
-
-        # -- Other settings --
 
         # Dust self-absorption
         if self.config.selfabsorption: self.ski.enable_selfabsorption()
@@ -333,12 +411,366 @@ class InputInitializer(FittingComponent):
 
     # -----------------------------------------------------------------
 
-    def place_input(self):
+    def set_components(self):
 
         """
         This function ...
         :return:
         """
+
+        # Inform the user
+        log.info("Setting the stellar and dust components ...")
+
+        # Set the evolved stellar bulge component
+        self.set_bulge_component()
+
+        # Set the evolved stellar disk component
+        self.set_old_stellar_component()
+
+        # Set the young stellar component
+        self.set_young_stellar_component()
+
+        # Set the ionizing stellar component
+        self.set_ionizing_stellar_component()
+
+        # The dust component
+        self.set_dust_component()
+
+    # -----------------------------------------------------------------
+
+    def set_bulge_component(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Configuring the bulge component ...")
+
+        # Like M31
+        bulge_template = "BruzualCharlot"
+        bulge_age = 12
+        bulge_metallicity = 0.02
+
+        # Get the flux density of the bulge
+        fluxdensity = self.parameters.bulge.fluxdensity # In Jy
+
+        # Get the luminosity of the Sun for the 3.6 micron band
+        solar_luminosity = self.sun.luminosity_for_filter(self.i1)
+
+        # Convert the flux density into a spectral luminosity
+        luminosity = fluxdensity_to_luminosity(fluxdensity, self.i1.pivotwavelength() * Unit("micron"), self.parameters.distance)
+
+        # Get the spectral luminosity in solar units
+        luminosity = (luminosity.to("W/m").value / solar_luminosity.to("W/m").value ) * Unit("Lsun") # !! the unit is not really the Lsun that Astropy means
+
+        # Set the parameters of the bulge
+        self.ski.set_stellar_component_geometry("Evolved stellar bulge", self.bulge)
+        self.ski.set_stellar_component_sed("Evolved stellar bulge", bulge_template, bulge_age, bulge_metallicity) # SED
+        self.ski.set_stellar_component_luminosity("Evolved stellar bulge", luminosity, self.i1) # normalization
+
+    # -----------------------------------------------------------------
+
+    def set_old_stellar_component(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Configuring the old stellar component ...")
+
+        # Like M31
+        disk_template = "BruzualCharlot"
+        disk_age = 8
+        disk_metallicity = 0.02
+
+        # Get the scale height
+        scale_height = 521. * Unit("pc") # first models
+        #scale_height = 538 * Unit("pc")  # M31
+
+        # Get the 3.6 micron flux density with the bulge subtracted
+        i1_index = tables.find_index(self.fluxes, "I1", "Band")
+        fluxdensity = self.fluxes["Flux"][i1_index]*Unit("Jy") - self.parameters.bulge.fluxdensity
+
+        # Get the luminosity of the Sun for the 3.6 micron band
+        solar_luminosity = self.sun.luminosity_for_filter(self.i1)
+
+        # Convert the flux density into a spectral luminosity
+        luminosity = fluxdensity_to_luminosity(fluxdensity, self.i1.pivotwavelength()*Unit("micron"), self.parameters.distance)
+
+        # Get the spectral luminosity in solar units
+        luminosity = (luminosity.to("W/m").value / solar_luminosity.to("W/m").value) * Unit("Lsun") # !! the unit is not really the Lsun that Astropy means
+
+        # Set the parameters of the evolved stellar component
+        self.deprojection.filename = "old_stars.fits"
+        self.deprojection.scale_height = scale_height
+        self.ski.set_stellar_component_geometry("Evolved stellar disk", self.deprojection)
+        self.ski.set_stellar_component_sed("Evolved stellar disk", disk_template, disk_age, disk_metallicity) # SED
+        self.ski.set_stellar_component_luminosity("Evolved stellar disk", luminosity, self.i1) # normalization
+
+    # -----------------------------------------------------------------
+
+    def set_young_stellar_component(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Configuring the young stellar component ...")
+
+        # Like M31
+        young_template = "BruzualCharlot"
+        young_age = 0.1
+        young_metallicity = 0.02
+
+        scale_height = 150 * Unit("pc") # first models
+        #scale_height = 190 * Unit("pc") # M31
+
+        # Get the FUV flux density
+        fuv_index = tables.find_index(self.fluxes, "FUV", "Band")
+        fluxdensity = 0.5 * self.fluxes["Flux"][fuv_index]*Unit("Jy")
+
+        # Get the luminosity of the Sun for the FUV band
+        solar_luminosity = self.sun.luminosity_for_filter(self.fuv)
+
+        # Convert the flux density into a spectral luminosity
+        luminosity = fluxdensity_to_luminosity(fluxdensity, self.fuv.pivotwavelength()*Unit("micron"), self.parameters.distance)
+
+        # Get the spectral luminosity in solar units
+        luminosity = (luminosity.to("W/m").value / solar_luminosity.to("W/m").value) * Unit("Lsun") # !! the unit is not really the Lsun that Astropy means
+
+        # Set the parameters of the young stellar component
+        self.deprojection.filename = "young_stars.fits"
+        self.deprojection.scale_height = scale_height
+        self.ski.set_stellar_component_geometry("Young stars", self.deprojection)
+        self.ski.set_stellar_component_sed("Young stars", young_template, young_age, young_metallicity) # SED
+        self.ski.set_stellar_component_luminosity("Young stars", luminosity, self.fuv) # normalization
+
+    # -----------------------------------------------------------------
+
+    def set_ionizing_stellar_component(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Configuring the ionizing stellar component ...")
+
+        # Like M51 and M31
+        ionizing_metallicity = 0.02
+        ionizing_compactness = 6
+        ionizing_pressure = 1e12 * Unit("K/m3")
+        ionizing_covering_factor = 0.2
+
+        # Get the scale height
+        scale_height = 150 * Unit("pc") # first models
+        #scale_height = 190 * Unit("pc") # M31
+
+        # Get the FUV flux density
+        #fuv_index = tables.find_index(self.fluxes, "FUV", "Band")
+        #fluxdensity = 0.8 * self.fluxes["Flux"][fuv_index]*Unit("Jy")
+
+        # Get the spectral luminosity of the Sun for the FUV band
+        #solar_luminosity = self.sun.luminosity_for_filter(self.fuv)
+
+        # Convert the flux density into a spectral luminosity
+        #luminosity = fluxdensity_to_luminosity(fluxdensity, self.fuv.pivotwavelength() * Unit("micron"), self.parameters.distance)
+
+        # Get the spectral luminosity in solar units
+        #luminosity = (luminosity.to("W/m").value / solar_luminosity.to("W/m").value) * Unit("Lsun") # !! the unit is not really the Lsun that Astropy means
+
+        sfr = 1.0 # The star formation rate
+        mappings = Mappings(ionizing_metallicity, ionizing_compactness, ionizing_pressure, ionizing_covering_factor, sfr)
+        luminosity = mappings.luminosity_for_filter(self.fuv)
+        solar_luminosity = self.sun.luminosity_for_filter(self.fuv)
+        luminosity = (luminosity.to("W/m").value / solar_luminosity.to("W/m").value) * Unit("Lsun") # !! the unit is not really the Lsun that Astropy means
+
+        # Set the parameters of the ionizing stellar component
+        self.deprojection.filename = "ionizing_stars.fits"
+        self.deprojection.scale_height = scale_height
+        self.ski.set_stellar_component_geometry("Ionizing stars", self.deprojection)
+        self.ski.set_stellar_component_mappingssed("Ionizing stars", ionizing_metallicity, ionizing_compactness, ionizing_pressure, ionizing_covering_factor) # SED
+        self.ski.set_stellar_component_luminosity("Ionizing stars", luminosity, self.fuv) # normalization
+
+    # -----------------------------------------------------------------
+
+    def set_dust_component(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Configuring the dust component ...")
+
+        scale_height = 260.5 * Unit("pc") # first models
+        dust_mass = 2e7 * Unit("Msun") # first models
+
+        #scale_height = 238 * Unit("pc") # Andromeda
+        #dust_mass = 4.3e7 * Unit("Msun") # Andromeda
+
+        hydrocarbon_pops = 25
+        enstatite_pops = 25
+        forsterite_pops = 25
+
+        # Set the parameters of the dust component
+        self.deprojection.filename = "dust.fits"
+        self.deprojection.scale_height = scale_height
+        self.ski.set_dust_component_geometry(0, self.deprojection)
+        self.ski.set_dust_component_themis_mix(0, hydrocarbon_pops, enstatite_pops, forsterite_pops) # dust mix
+        self.ski.set_dust_component_mass(0, dust_mass) # dust mass
+
+    # -----------------------------------------------------------------
+
+    def set_dust_grid(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Configuring the dust grid ...")
+
+        # Get the path to the disk region
+        path = filesystem.join(self.components_path, "disk.reg")
+        # Open the region
+        region = SkyRegion.from_file(path)
+        # Get ellipse in sky coordinates
+        scale_factor = 0.82
+        disk_ellipse = region[0] * scale_factor
+
+        major_angular = disk_ellipse.major # major axis length of the sky ellipse
+        radius_physical = (major_angular * self.parameters.distance).to("pc", equivalencies=dimensionless_angles())
+
+        min_x = - radius_physical
+        max_x = radius_physical
+        min_y = - radius_physical
+        max_y = radius_physical
+        min_z = -3. * Unit("kpc")
+        max_z = 3. * Unit("kpc")
+
+        # Set the dust grid
+        self.ski.set_binary_tree_dust_grid(min_x, max_x, min_y, max_y, min_z, max_z)
+
+    # -----------------------------------------------------------------
+
+    def calculate_weights(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Calculating the weight to give to each band ...")
+
+        # Create the table to contain the weights
+        self.weights = tables.new([[], [], []], names=["Instrument", "Band", "Weight"], dtypes=["S5", "S7", "float64"])
+
+        # Initialize lists to contain the filters of the different wavelength ranges
+        uv_bands = []
+        optical_bands = []
+        nir_bands = []
+        mir_bands = []
+        fir_bands = []
+        submm_bands = []
+
+        # Set the number of groups
+        number_of_groups = 6
+
+        # Loop over the entries in the observed fluxes table
+        for i in range(len(self.fluxes)):
+
+            instrument = self.fluxes["Instrument"][i]
+            band = self.fluxes["Band"][i]
+
+            # Construct filter
+            filter = Filter.from_instrument_and_band(instrument, band)
+
+            # Get the central wavelength
+            wavelength = filter.centerwavelength() * Unit("micron")
+
+            # Get a string identifying which portion of the wavelength spectrum this wavelength belongs to
+            spectrum = wavelengths.name_in_spectrum(wavelength)
+
+            #print(band, wavelength, spectrum)
+
+            # Determine to which group
+            if spectrum[0] == "UV": uv_bands.append(filter)
+            elif spectrum[0] == "Optical": optical_bands.append(filter)
+            elif spectrum[0] == "Optical/IR": optical_bands.append(filter)
+            elif spectrum[0] == "IR":
+                if spectrum[1] == "NIR": nir_bands.append(filter)
+                elif spectrum[1] == "MIR": mir_bands.append(filter)
+                elif spectrum[1] == "FIR": fir_bands.append(filter)
+                else: raise RuntimeError("Unknown IR range")
+            elif spectrum[0] == "Submm": submm_bands.append(filter)
+            else: raise RuntimeError("Unknown wavelength range")
+
+        # Determine the weight for each group of filters
+        uv_weight = 1. / (len(uv_bands) * number_of_groups)
+        optical_weight = 1. / (len(optical_bands) * number_of_groups)
+        nir_weight = 1. / (len(nir_bands) * number_of_groups)
+        mir_weight = 1. / (len(mir_bands) * number_of_groups)
+        fir_weight = 1. / (len(fir_bands) * number_of_groups)
+        submm_weight = 1. / (len(submm_bands) * number_of_groups)
+
+        #print("UV", len(uv_bands), uv_weight)
+        #print("Optical", len(optical_bands), optical_weight)
+        #print("NIR", len(nir_bands), nir_weight)
+        #print("MIR", len(mir_bands), mir_weight)
+        #print("FIR", len(fir_bands), fir_weight)
+        #print("Submm", len(submm_bands), submm_weight)
+
+        # Loop over the bands in each group and set the weight in the weights table
+        for filter in uv_bands: self.weights.add_row([filter.instrument, filter.band, uv_weight])
+        for filter in optical_bands: self.weights.add_row([filter.instrument, filter.band, optical_weight])
+        for filter in nir_bands: self.weights.add_row([filter.instrument, filter.band, nir_weight])
+        for filter in mir_bands: self.weights.add_row([filter.instrument, filter.band, mir_weight])
+        for filter in fir_bands: self.weights.add_row([filter.instrument, filter.band, fir_weight])
+        for filter in submm_bands: self.weights.add_row([filter.instrument, filter.band, submm_weight])
+
+    # -----------------------------------------------------------------
+
+    def write(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Writing ...")
+
+        # Write the input
+        self.write_input()
+
+        # Write the ski file
+        self.write_ski_file()
+
+        # Write the weights table
+        self.write_weights()
+
+    # -----------------------------------------------------------------
+
+    def write_input(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Writing the input ...")
 
         # -- The wavelength grid --
 
@@ -346,7 +778,9 @@ class InputInitializer(FittingComponent):
         grid_path = filesystem.join(self.fit_in_path, "wavelengths.txt")
 
         # Write the wavelength grid
-        tables.write(self.wavelength_grid, grid_path)
+        self.wavelength_grid.rename_column("Wavelength", str(len(
+            self.wavelength_grid)))  # Trick to have the number of wavelengths in the first line (required for SKIRT)
+        tables.write(self.wavelength_grid, grid_path, format="ascii")
 
         # -- The old stars map --
 
@@ -382,14 +816,82 @@ class InputInitializer(FittingComponent):
 
     # -----------------------------------------------------------------
 
-    def place_ski_file(self):
+    def write_ski_file(self):
 
         """
         This function ...
         :return:
         """
 
+        # Inform the user
+        log.info("Writing the ski file to " + self.fit_ski_path + " ...")
+
         # Save the ski file to the specified location
         self.ski.saveto(self.fit_ski_path)
+
+    # -----------------------------------------------------------------
+
+    def write_weights(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Writing the table with weights to " + self.weights_table_path + " ...")
+
+        # Write the table with weights
+        tables.write(self.weights, self.weights_table_path)
+
+# -----------------------------------------------------------------
+
+# The speed of light
+speed_of_light = constants.c
+
+# -----------------------------------------------------------------
+
+def spectral_factor_hz_to_micron(wavelength):
+
+    """
+    This function ...
+    :param wavelength:
+    :return:
+    """
+
+    wavelength_unit = "micron"
+    frequency_unit = "Hz"
+
+    # Convert string units to Unit objects
+    if isinstance(wavelength_unit, basestring): wavelength_unit = Unit(wavelength_unit)
+    if isinstance(frequency_unit, basestring): frequency_unit = Unit(frequency_unit)
+
+    conversion_factor_unit = wavelength_unit / frequency_unit
+
+    # Calculate the conversion factor
+    factor = (wavelength ** 2 / speed_of_light).to(conversion_factor_unit).value
+    return 1. / factor
+
+# -----------------------------------------------------------------
+
+def fluxdensity_to_luminosity(fluxdensity, wavelength, distance):
+
+    """
+    This function ...
+    :param fluxdensity:
+    :param wavelength:
+    :param distance:
+    :return:
+    """
+
+    luminosity = (fluxdensity * 4. * math.pi * distance ** 2.).to("W/Hz")
+
+    # 3 ways:
+    #luminosity_ = luminosity.to("W/micron", equivalencies=spectral_density(wavelength)) # does not work
+    luminosity_ = (speed_of_light * luminosity / wavelength**2).to("W/micron")
+    luminosity = luminosity.to("W/Hz").value * spectral_factor_hz_to_micron(wavelength) * Unit("W/micron")
+    #print(luminosity_, luminosity) # is OK!
+
+    return luminosity
 
 # -----------------------------------------------------------------

@@ -19,7 +19,9 @@ import tempfile
 
 # Import the relevant PTS classes and modules
 from .host import Host
+from .vpn import VPN
 from ..tools.logging import log
+from ..tools import parsing
 
 # -----------------------------------------------------------------
 
@@ -47,6 +49,9 @@ class Remote(object):
         # The host instance
         self.host = None
 
+        # The VPN service
+        self.vpn = None
+
         # A flag indicating whether the connection with the remote has been established
         self.connected = False
 
@@ -67,8 +72,13 @@ class Remote(object):
         # Create the host object
         self.host = Host(host_id, cluster)
 
+        # If a VPN connection is required for the remote host
+        if self.host.requires_vpn: self.connect_to_vpn()
+
         # Make the connection
         self.login()
+
+        # TODO: swap to cluster here?
 
         # Load the necessary modules
         if self.host.modules is not None:
@@ -90,6 +100,22 @@ class Remote(object):
 
         # Disconnect from the remote host
         self.logout()
+
+    # -----------------------------------------------------------------
+
+    def connect_to_vpn(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Connecting to vpn service '" + self.host.vpn.service + "' ...")
+
+        # Connect to the VPN service
+        self.vpn = VPN(self.host.vpn.service)
+        self.vpn.connect(self.host.vpn.user, self.host.vpn.password, self.host.vpn.secret, self.host.vpn.prompt_time_delay)
 
     # -----------------------------------------------------------------
 
@@ -123,6 +149,9 @@ class Remote(object):
 
         # Disconnect
         if self.connected: self.ssh.logout()
+
+        # Disconnect from the VPN service if necessary
+        if self.vpn is not None: self.vpn.disconnect()
 
     # -----------------------------------------------------------------
 
@@ -498,6 +527,9 @@ class Remote(object):
         :return:
         """
 
+        # If debugging is enabled, always show the scp output
+        if log.is_debug(): show_output = True
+
         # Construct the command string
         copy_command = "scp "
         if compress: copy_command += "-C "
@@ -595,6 +627,9 @@ class Remote(object):
         :param show_output:
         :return:
         """
+
+        # If debugging is enabled, always show the scp output
+        if log.is_debug(): show_output = True
 
         # Construct the command string
         copy_command = "scp "
@@ -780,6 +815,8 @@ class Remote(object):
 
         # Get the output of the 'which' command
         output = self.execute("which " + name)
+
+        if len(output) == 0: return None
 
         # Only one line is expected
         return output[0]
@@ -989,6 +1026,102 @@ class Remote(object):
 
             # Return the amount of hyperthreads or 'hardware' threads per physical core
             return threads_per_core
+
+    # -----------------------------------------------------------------
+
+    @property
+    def numa_domains(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # If the remote host uses a scheduling system, the number of numa domains is defined in the configuration
+        if self.scheduler: return self.host.clusters[self.host.cluster_name].numa_domains
+
+        # If no scheduler is used, the computing node is the actual node we are logged in to
+        else:
+
+            # Use the 'lscpu' command to get the number of NUMA domains
+            output = self.execute("lscpu | grep '^NUMA node(s):'")
+            numa_domains = int(output[0])
+
+            # Return the number of NUMA domains
+            return numa_domains
+
+    # -----------------------------------------------------------------
+
+    @property
+    def numa_cpus(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Initialize a list to contain the
+        cpus = [[] for i in range(self.numa_domains)]
+
+        # Only works for up to 10 domains!
+        output = self.execute("lscpu")
+
+        for line in output:
+
+            # Skip irrelevant lines
+            if not line.startswith("NUMA node") or line.startswith("NUMA node(s)"): continue
+
+            # Get the NUMA domain
+            domain = int(line.split("NUMA node")[1].split(" CPU")[0])
+
+            # Get the list of CPU's
+            string = line.split(": ")[1].strip()
+            cpu_list = parsing.int_list(string)
+
+            # Set the CPU list for the current NUMA domain
+            cpus[domain] = cpu_list
+
+        # Return the list of CPU lists for each NUMA domain
+        return cpus
+
+    # -----------------------------------------------------------------
+
+    def cpus_for_numa_domain(self, domain_index):
+
+        """
+        This function ...
+        :param domain_index:
+        :return:
+        """
+
+        return self.numa_cpus[domain_index]
+
+    # -----------------------------------------------------------------
+
+    @property
+    def hpc_ugent_node_status(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        lines = ["from vsc.jobs.pbs.nodes import collect_nodeinfo"]
+        lines.append("node_list, state_list, types = collect_nodeinfo()")
+        lines.append("print node_list")
+        lines.append("print state_list")
+        lines.append("print types")
+
+        # For interpreting 'types':
+        #template = "%sppn=%s, physmem=%sGB, swap=%sGB, vmem=%sGB, local disk=%sGB"
+        #for typ, nodes in sorted(types.items(), key=lambda x: len(x[1]), reverse=True):
+            # most frequent first
+            #cores, phys, swap, disk = typ
+            #txt.append(template % (offset, cores, phys, swap, phys + swap, disk))
+
+        output = self.execute_python_interactive(lines)
+
+        return output
 
     # -----------------------------------------------------------------
 

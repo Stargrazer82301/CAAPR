@@ -5,7 +5,7 @@
 # **       © Astronomical Observatory, Ghent University          **
 # *****************************************************************
 
-## \package pts.modeling.analysis.analysis Contains the ModelAnalyser class.
+## \package pts.modeling.analysis.residuals Contains the ResidualAnalyser class
 
 # -----------------------------------------------------------------
 
@@ -17,7 +17,7 @@ from .component import AnalysisComponent
 
 # -----------------------------------------------------------------
 
-class ModelAnalyser(AnalysisComponent):
+class ResidualAnalyser(AnalysisComponent):
     
     """
     This class...
@@ -32,7 +32,7 @@ class ModelAnalyser(AnalysisComponent):
         """
 
         # Call the constructor of the base class
-        super(ModelAnalyser, self).__init__(config)
+        super(ResidualAnalyser, self).__init__(config)
 
     # -----------------------------------------------------------------
 
@@ -53,7 +53,6 @@ class ModelAnalyser(AnalysisComponent):
 
         """
         This function ...
-        :param image:
         :return:
         """
 

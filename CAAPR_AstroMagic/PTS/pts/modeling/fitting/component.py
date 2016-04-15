@@ -14,7 +14,7 @@ from __future__ import absolute_import, division, print_function
 
 # Import the relevant PTS classes and modules
 from ..core.component import ModelingComponent
-from ...core.tools import filesystem
+from ...core.tools import filesystem, tables
 
 # -----------------------------------------------------------------
 
@@ -43,8 +43,29 @@ class FittingComponent(ModelingComponent):
         # The path to the fit/out directory
         self.fit_out_path = None
 
+        # The path to the fit/res directory
+        self.fit_res_path = None
+
+        # The path to the fit/plot directory
+        self.fit_plot_path = None
+
+        # The path to the fit/best directory
+        self.fit_best_path = None
+
         # The path to the ski file
         self.fit_ski_path = None
+
+        # The path to the parameter table
+        self.parameter_table_path = None
+
+        # The path to the chi squared table
+        self.chi_squared_table_path = None
+
+        # The path to the weights table
+        self.weights_table_path = None
+
+        # The path to the runtime table
+        self.runtime_table_path = None
 
     # -----------------------------------------------------------------
 
@@ -61,16 +82,57 @@ class FittingComponent(ModelingComponent):
         # Set the output path
         self.config.output_path = self.fit_path
 
-        # Set the path to the fit/in path
+        # Set the path to the fit/in directory
         self.fit_in_path = filesystem.join(self.fit_path, "in")
 
-        # Set the path to the fit/out path
+        # Set the path to the fit/out directory
         self.fit_out_path = filesystem.join(self.fit_path, "out")
 
-        # Create the fit/in and fit/out directories
-        filesystem.create_directories([self.fit_in_path, self.fit_out_path])
+        # Set the path to the fit/res directory
+        self.fit_res_path = filesystem.join(self.fit_path, "res")
+
+        # Set the path to the fit/plot directory
+        self.fit_plot_path = filesystem.join(self.fit_path, "plot")
+
+        # Set the path to the fit/best directory
+        self.fit_best_path = filesystem.join(self.fit_path, "best")
+
+        # Create the fit/in, fit/out, fit/res, fit/plot and fit/best directories
+        filesystem.create_directories([self.fit_in_path, self.fit_out_path, self.fit_res_path, self.fit_plot_path, self.fit_best_path])
+
+        # Set the path to the parameter file
+        self.parameter_table_path = filesystem.join(self.fit_path, "parameters.dat")
 
         # Determine the path to the ski file
         self.fit_ski_path = filesystem.join(self.fit_path, self.galaxy_name + ".ski")
+
+        # Set the path to the chi squared table file
+        self.chi_squared_table_path = filesystem.join(self.fit_path, "chi_squared.dat")
+
+        # Initialize the chi squared file if that hasn't been done yet
+        if not filesystem.is_file(self.chi_squared_table_path):
+
+            # Initialize
+            names = ["Simulation name", "Chi squared"]
+            data = [[], []]
+            dtypes = ["S24", "float64"]
+            table = tables.new(data, names, dtypes=dtypes)
+            tables.write(table, self.chi_squared_table_path)
+
+        # Set the path to the weights table file
+        self.weights_table_path = filesystem.join(self.fit_path, "weights.dat")
+
+        # Set the path to the runtime table file
+        self.runtime_table_path = filesystem.join(self.fit_path, "runtimes.dat")
+
+        # Initialize the runtime file if that hasn't been done yet
+        if not filesystem.is_file(self.runtime_table_path):
+
+            # Initialize
+            names = ["Simulation name", "Remote host", "Processes", "Threads", "Packages", "Runtime"]
+            data = [[], [], [], [], [], []]
+            dtypes = ["S24", "S15", "int64", "int64", "int64", "float64"]
+            table = tables.new(data, names, dtypes=dtypes)
+            tables.write(table, self.runtime_table_path)
 
 # -----------------------------------------------------------------

@@ -17,6 +17,7 @@ import numpy as np
 
 # Import astronomical modules
 from astropy.table import Table, Column
+from astropy.units import Unit
 
 # -----------------------------------------------------------------
 
@@ -24,19 +25,45 @@ def find_index(table, key, column_name=None):
 
     """
     This function ...
+    :param table:
     :param key:
+    :param column_name:
     :return:
     """
 
-    # Get first column name if none is given
-    if column_name is None: column_name = table.colnames[0]
+    if isinstance(key, list):
 
-    # Loop over all entries in the column
-    for i in range(len(table)):
+        if column_name is None: raise ValueError("Column names must be specified when specifying multiple keys")
+        if not isinstance(column_name, list): raise ValueError("If key(s) is a list, column_name(s) must also be a list")
 
-        if table[column_name][i] == key: return i
+        # Loop over all entries in the table
+        for i in range(len(table)):
 
-    return None
+            found_mismatch = False
+
+            for k, c in zip(key, column_name):
+
+                if not (table[c][i] == k):
+                    found_mismatch = True
+                    break
+
+            if not found_mismatch: return i
+
+        return None
+
+    elif isinstance(key, basestring):
+
+        # Get first column name if none is given
+        if column_name is None: column_name = table.colnames[0]
+
+        # Loop over all entries in the column
+        for i in range(len(table)):
+
+            if table[column_name][i] == key: return i
+
+        return None
+
+    else: ValueError("Invalid key: must be a list (of strings) or a string")
 
 # -----------------------------------------------------------------
 
@@ -44,7 +71,9 @@ def find_indices(table, key, column_name=None):
 
     """
     This function ...
+    :param table:
     :param key:
+    :param column_name:
     :return:
     """
 
@@ -62,28 +91,30 @@ def find_indices(table, key, column_name=None):
 
 # -----------------------------------------------------------------
 
-def write(table, path):
+def write(table, path, format="ascii.commented_header"):
 
     """
     This function ...
-    :param catalog:
+    :param table
     :param path:
+    :param format:
     :return:
     """
 
     # TODO: add metadata ?
 
     # Write the table
-    table.write(path, format="ascii.commented_header")
+    table.write(path, format=format)
 
 # -----------------------------------------------------------------
 
-def from_file(path, format="ascii.commented_header"):
+def from_file(path, format="ascii.commented_header", fix_floats=False):
 
     """
     This function ...
     :param path:
     :param format:
+    :param fix_float:
     :return:
     """
 
@@ -93,6 +124,9 @@ def from_file(path, format="ascii.commented_header"):
 
     # Fix boolean values
     fix_logical(table)
+
+    if fix_float: fix_float(table)
+    # Sometimes, a column of floats is parsed as a column of strings ... But then importing this function from the python command line and loading the same table does work ... straaange..
 
     # Return the new table
     return table
@@ -126,6 +160,7 @@ def fix_logical(table):
     
     """
     This function ...
+    :param table:
     """
 
     for column in table.columns.values():
@@ -139,13 +174,46 @@ def fix_logical(table):
 
 # -----------------------------------------------------------------
 
-def column_as_list(column, add_unit=True, unit=None):
+def fix_float(table):
+
+    """
+    This function ...
+    :param table:
+    :return:
+    """
+
+    for column in table.columns.values():
+
+        if str(column.dtype).startswith("|S"):
+
+            failed = False
+
+            values = []
+
+            for value in column:
+
+                try:
+                    value = float(value)
+                    values.append(value)
+                except ValueError:
+                    failed = True
+                    break # break the loop over the values in the column
+
+            if not failed:
+
+                float_column = Column(values)
+                table.replace_column(column.name, float_column)
+
+# -----------------------------------------------------------------
+
+def column_as_list(column, add_unit=True, unit=None, masked_value=None):
 
     """
     This function ...
     :param column:
     :param add_unit:
     :param unit:
+    :param masked_value:
     :return:
     """
 
@@ -161,7 +229,7 @@ def column_as_list(column, add_unit=True, unit=None):
     # Loop over the entries in the column
     for i in range(len(column)):
 
-        if has_mask and column.mask[i]: result.append(None)
+        if has_mask and column.mask[i]: result.append(masked_value)
         else:
 
             if has_unit:
@@ -170,8 +238,9 @@ def column_as_list(column, add_unit=True, unit=None):
                 value = column[i] * column.unit
 
                 # If a target unit is specified, convert
-                if unit is not None: value = value.to(unit).value # If converted, do not add any unit
-                elif not add_unit: value = column[i] # If not converted and add_unit is enabled, add the unit
+                if unit is not None: value = value.to(unit).value * Unit(unit) # If converted, do not add any unit
+
+                if not add_unit: value = value.value # If not converted and add_unit is enabled, add the unit
 
             else: value = column[i]
 
@@ -180,6 +249,19 @@ def column_as_list(column, add_unit=True, unit=None):
 
     # Return the list
     return result
+
+# -----------------------------------------------------------------
+
+def column_as_array(column, unit=None):
+
+    """
+    This function ...
+    :param column:
+    :param unit:
+    :return:
+    """
+
+    return np.array(column_as_list(column, unit=unit, add_unit=False, masked_value=float('nan')))
 
 # -----------------------------------------------------------------
 

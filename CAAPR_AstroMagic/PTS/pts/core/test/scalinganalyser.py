@@ -60,6 +60,7 @@ class ScalingAnalyser(Configurable):
         :param simulation:
         :param timeline_extractor:
         :param memory_extractor:
+        :param plot:
         """
 
         # 1. Call the setup function
@@ -77,6 +78,9 @@ class ScalingAnalyser(Configurable):
 
         """
         This function ...
+        :param simulation:
+        :param timeline_extractor:
+        :param memory_extractor:
         :return:
         """
 
@@ -135,6 +139,6 @@ class ScalingAnalyser(Configurable):
 
         # Create and run a ScalingPlotter object
         plotter = ScalingPlotter()
-        plotter.run(self.scaling, self.simulation.scaling_plot_path)
+        plotter.run(self.scaling, self.simulation.analysis.scaling_plot_path)
 
 # -----------------------------------------------------------------
