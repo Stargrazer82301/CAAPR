@@ -29,11 +29,13 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
 
     # Determine whether the user is specificing a directroy full of FITS files in this band (in which case use standardised filename format), or just a single FITS file
-    if os.path.isdir(band_dict['band_dir']):
-        in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
-    elif os.path.isfile(band_dict['band_dir']):
-        in_fitspath = os.path.join( band_dict['band_dir'] )
-
+    try:
+        if os.path.isdir(band_dict['band_dir']):
+            in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
+        elif os.path.isfile(band_dict['band_dir']):
+            in_fitspath = os.path.join( band_dict['band_dir'] )
+    except:
+        pdb.set_trace()
 
     # Work out whether the file extension for FITS file in question is .fits or .fits.gz
     file_found = False
@@ -48,7 +50,6 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
     if file_found==False:
         print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
         print '['+source_id+'] Assuming no data in this band for current source.'
-        #raise ValueError('No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.')
     else:
 
         # Carry out small random wait, to stop RAM checks from syncing up
@@ -84,11 +85,11 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
         pod = CAAPR_Pipeline.MapPrelim(pod)
         if pod['within_bounds']==False:
             return pod
+        CAAPR_IO.MemCheck(pod)
 
 
 
         # If star-removal is required, run pod through AstroMagic
-        CAAPR_IO.MemCheck(pod)
         if kwargs_dict['starsub']==True:
             if band_dict['remove_stars']==True:
                 if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'

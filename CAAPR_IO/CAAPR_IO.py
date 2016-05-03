@@ -129,6 +129,7 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         in_fitspath = None
         print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
         print '['+source_id+'] Assuming no data in this band for current source.'
+        return in_fitspath
     if in_fitspath!=None:
         print '['+source_id+'] Creating cutout with '+str(band_dict['make_cutout'])+' arcsec diameter.'
 
@@ -165,10 +166,10 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         if montage_installed:
             montage_wrapper.commands.mHdr(str(source_dict['ra'])+' '+str(source_dict['dec']), 1.0, os.path.join(temp_dir_path,'hdr.txt'), pix_size=in_cdelt_arcsec)
             #montage_wrapper.commands.mSubimage(in_fitspath, out_fitspath, source_dict['ra'], source_dict['dec'], float(band_dict['make_cutout'])/3600.0, hdu=0)
-            montage_wrapper.wrappers.reproject(in_fitspath, out_fitspath, header=os.path.join(temp_dir_path,'hdr.txt'), north_aligned=True, exact_size=True, hdu=0, cleanup=True, silent_cleanup=True)
+            montage_wrapper.wrappers.reproject(in_fitspath, out_fitspath, header=os.path.join(temp_dir_path,'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
             if band_dict['use_error_map']==True:
                 #montage_wrapper.commands.mSubimage(in_fitspath_error, out_fitspath_error, source_dict['ra'], source_dict['dec'], float(band_dict['make_cutout'])/3600.0, hdu=0)
-                montage_wrapper.wrappers.reproject(in_fitspath_error, out_fitspath_error, header=os.path.join(temp_dir_path,'hdr.txt'), north_aligned=True, exact_size=True, hdu=0, cleanup=True, silent_cleanup=True)
+                montage_wrapper.wrappers.reproject(in_fitspath_error, out_fitspath_error, header=os.path.join(temp_dir_path,'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
 
         # If montage isn't installed, use the ChrisFuncs cutout function instead
         elif not montage_installed:
@@ -228,7 +229,7 @@ def MemCheck(pod, thresh_fraction=0.75, thresh_factor=20.0, swap_thresh_fraction
                 if pod['verbose']: print '['+pod['id']+'] Waiting for necessary RAM to free up before continuing processing.'
                 wait_initial = False
             wait_count += 1
-            time.sleep(10.0+(10.0*np.random.rand()))
+            time.sleep(10.0+(5.0*np.random.rand()))
         else:
             break
 
@@ -457,7 +458,7 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
         aperture_index = aperture_index[0][0]
 
     # Extract aperture corresponding to current source, dealing with special case where aperture file contains only one source
-    if np.where( aperture_table['name']==source_dict['name'] )[0][0]==0:
+    if aperture_table['semimaj_arcsec'].shape==() and np.where( aperture_table['name']==source_dict['name'] )[0][0]==0:
         opt_semimaj_arcsec = aperture_table['semimaj_arcsec'].tolist()
         opt_axial_ratio = aperture_table['axial_ratio'].tolist()
         opt_angle = aperture_table['pos_angle'].tolist()

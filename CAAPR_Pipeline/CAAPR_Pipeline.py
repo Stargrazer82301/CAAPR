@@ -12,6 +12,9 @@ import shutil
 import numpy as np
 import scipy.ndimage
 import multiprocessing as mp
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import astropy.io.fits
 import congrid
 import ChrisFuncs
@@ -49,8 +52,9 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
             band_cutout_dir = CAAPR_IO.Cutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
 
             # Update current row of bands table to reflect the path of the freshly-made cutout
-            bands_dict[band]['band_dir_original'] = bands_dict[band]['band_dir']
-            bands_dict[band]['band_dir'] = band_cutout_dir
+            if band_cutout_dir!=None:
+                bands_dict[band]['band_dir_original'] = bands_dict[band]['band_dir']
+                bands_dict[band]['band_dir'] = band_cutout_dir
 
 
 
@@ -85,6 +89,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
                 aperture_output_list.append( pool.apply_async( CAAPR_Aperture.PipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
             pool.join()
+            del(pool)
             aperture_list = [output.get() for output in aperture_output_list if output.successful()==True]
             aperture_list = [aperture for aperture in aperture_list if aperture!=None]
 
@@ -127,13 +132,11 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         if kwargs_dict['parallel']==True:
             bands_dict_keys = bands_dict.keys()
             random.shuffle(bands_dict_keys)
-            del(pool)
             pool = mp.Pool(processes=kwargs_dict['n_proc'])
             for band in bands_dict_keys:
                 photom_output_list.append( pool.apply_async( CAAPR_Photom.PipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
             pool.join()
-            pdb.set_trace()
             photom_list = [output.get() for output in photom_output_list if output.successful()==True]
             photom_list = [photom for photom in photom_list if photom!=None]
 
@@ -171,9 +174,11 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
     # Tidy up temporary files
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Total time taken for souce: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-source_start,4))+' seconds.'
-    [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
+    if kwargs_dict['thumbnails']==True: [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
     if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name'])):
         shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name']))
+    if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic')):
+        shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic'))
     gc.collect()
 
 
@@ -313,8 +318,25 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
         if pod['verbose']: print '['+pod['id']+'] Background is not significnatly variable; leaving image unaltered.'
         pod['sky_poly'] = False
     return pod
-    
-    
+
+
+
+
+
+# Define function that predicts time until completion, and produces plot thereof
+def TimeEst(time_list, total, output_dir_path, source_dict, kwargs_dict):
+    time_list.append(time.time())
+    time_est = ChrisFuncs.TimeEst(time_list, total, plot=True)
+    time_remaining = time_est[0]
+    time_file = open( os.path.join(output_dir_path,'Estimated_Completion_Time.txt'), 'w')
+    time_file.write(time_remaining)
+    time_file.close()
+    time_fig = time_est[1]
+    time_fig.savefig( os.path.join(output_dir_path,'Estimated_Completion_Time.png'), dpi=150  )
+    time_fig.clf()
+    plt.close('all')
+    if kwargs_dict['verbose']: print '['+source_dict['name']+'] CAAPR estimated completion at: '+time_remaining+'.'
+
 
 
 

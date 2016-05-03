@@ -47,21 +47,10 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
 
 
 
-    # The path to the image (absolute or relative to the current working directory)
-    image_path = in_fitspath
-
-    # The path to the directory where all the output will be placed
+    # The paths to the image and output (absolute or relative to the current working directory)
     output_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'])
-    if os.path.exists(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'])):
-        pass #shutil.rmtree(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
-    else:
-        os.mkdir(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
     pickle_path = os.path.join( output_path, source_dict['name']+'_'+band_dict['band_name']+'_Preprocessed.pj' )
-
-    # Make copies of pre-fetched catalogues, to prevent simultaneous access conflicts
-    shutil.copy(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat'), os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
-    shutil.copy(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat'), os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
-
+    image_path = in_fitspath
 
 
 
@@ -74,7 +63,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
     bad_region_path = None
 
     # The FWHM of the image (if known)
-    fwhm = 2.0 * band_dict['beam_arcsec'] * Unit("arcsec")
+    fwhm = band_dict['beam_arcsec'] * Unit("arcsec")
 
     # Import the image
     importer = ImageImporter()
@@ -97,6 +86,18 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
 
 
 
+        # The path to the directory where all the output will be placed
+        if os.path.exists(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'])):
+            shutil.rmtree(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
+        else:
+            os.mkdir(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
+
+        # Make copies of pre-fetched catalogues, to prevent simultaneous access conflicts
+        shutil.copy(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat'), os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Stars.cat'))
+        shutil.copy(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat'), os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Galaxies.cat'))
+
+
+
         # Create a CatalogImporter instance, and run it to import catalogues
         catalog_importer = CatalogImporter()
         catalog_importer.config.stars.use_catalog_file = True
@@ -110,8 +111,13 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
         # Create a SourceFinder instance
         finder = SourceFinder()
 
-        # If you don't want to do the "find_other_sources" step, comment-out the line below
+        # If you don't want to do the 'find_other_sources' step, comment-out the line below
         finder.config.find_other_sources = False # default is True
+
+        # Define how stars not fit by PSF should be masked
+        finder.config.stars.source_sf_sigma_level = 3.0 # 4.0 is the default, change this to whatever value you want
+        finder.config.stars.fwhm.scale_factor = 2.0 # 1.0 is the default, change this to 2.0 for example
+        finder.config.stars.fwhm.measure = 'max' # Can change to median, mean, or max
 
 
 
@@ -171,7 +177,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
 
 
         # Only process the most conspicuous foreground stars, to save time
-        BrightestStars(saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, percentile=75.0, maxtot=75, do_sat=do_sat)
+        BrightestStars(saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, percentile=75.0, maxtot=100, do_sat=do_sat)
 
         # Region files can be adjusted by the user; if this is done, they have to be reloaded
         star_region = Region.from_file(star_region_path.replace('.reg','_revised.reg'))
@@ -226,7 +232,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
 
 
 # Define function to select only the most prominent foreground stars identified by AstroMagic
-def BrightestStars(sat_path, star_path, gal_path, image, source_dict, percentile=75.0, maxtot=75, do_sat=True):
+def BrightestStars(sat_path, star_path, gal_path, image, source_dict, percentile=50.0, maxtot=100, do_sat=True):
 
 
 

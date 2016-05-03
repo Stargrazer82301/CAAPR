@@ -33,6 +33,10 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
     # Determine whether the user is specificing a directroy full of FITS files in this band (in which case use standardised filename format), or just a single FITS file
+    try:
+        os.path.isdir(band_dict['band_dir'])
+    except:
+        pdb.set_trace()
     if os.path.isdir(band_dict['band_dir']):
         in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
     elif os.path.isfile(band_dict['band_dir']):
@@ -52,6 +56,10 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
     if file_found==False:
         print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
         print '['+source_id+'] Assuming no data in this band for current source.'
+        output_dict = {'band_name':band_dict['band_name'],
+                       'ap_sum':np.NaN,
+                       'ap_error':np.NaN}
+        return output_dict
     else:
 
         # Carry out small random wait, to stop RAM checks from syncing up
@@ -79,6 +87,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
                'in_fitspath_size':in_fitspath_size,
                'id':source_id,
                'verbose':kwargs_dict['verbose']}
+        CAAPR_IO.MemCheck(pod)
 
 
 
@@ -91,7 +100,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
             aperture_index = aperture_index[0][0]
 
         # Extract aperture corresponding to current source, dealing with special case where aperture file contains only one source
-        if np.where( aperture_table['name']==source_dict['name'] )[0][0]==0:
+        if aperture_table['semimaj_arcsec'].shape==() and np.where( aperture_table['name']==source_dict['name'] )[0][0]==0:
             opt_semimaj_arcsec = aperture_table['semimaj_arcsec']
             opt_axial_ratio = aperture_table['axial_ratio']
             opt_angle = aperture_table['pos_angle']
@@ -106,7 +115,10 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
         # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
         pod = CAAPR_Pipeline.MapPrelim(pod)
         if pod['within_bounds']==False:
-            return pod
+            output_dict = {'band_name':band_dict['band_name'],
+                       'ap_sum':np.NaN,
+                       'ap_error':np.NaN}
+            return output_dict
 
 
 
@@ -125,7 +137,6 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
         # If star-removal is required, run pod through AstroMagic
-        CAAPR_IO.MemCheck(pod)
         if kwargs_dict['starsub']==True:
             if band_dict['remove_stars']==True:
                 if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
@@ -198,9 +209,8 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
         output_dict = {'band_name':band_dict['band_name'],
                        'ap_sum':pod['ap_sum'],
                        'ap_error':pod['ap_error']}
-        print 'BLARG'
-#        gc.collect()
-#        del(pod)
+        gc.collect()
+        del(pod)
         return output_dict
 
 
@@ -256,13 +266,16 @@ def Photom(pod):
 
         # Calculate background level, and subtract from flux in source aperture to determine source flux
         bg_clip = ChrisFuncs.SigmaClip(bg_calc[2], median=False, sigma_thresh=3.0)
-        bg_avg = bg_clip[1]
+        bg_avg = bg_clip[1] * float(band_dict['subpixel_factor'])**2.0
         ap_sum = ap_calc[0] - (ap_calc[1] * bg_avg)
 
         # Save values to pod, and return
         pod['ap_sum'] = ap_sum
         pod['bg_avg'] = bg_avg
-        if pod['verbose']:print '['+pod['id']+'] Source flux is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_sum,4))+' (in map units).'
+        if np.isnan(ap_sum):
+            if pod['verbose']:print '['+pod['id']+'] Source flux is NaN.'
+        else:
+            if pod['verbose']:print '['+pod['id']+'] Source flux is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_sum,4))+' (in map units).'
         return pod
 
 

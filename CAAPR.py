@@ -12,6 +12,9 @@ import random
 import warnings
 warnings.filterwarnings('ignore')
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import multiprocessing as mp
 
 # Import ChrisFuncs and CAAPR submodules
@@ -117,15 +120,8 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
         source_dict = sources_dict[source]
         CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, kwargs_dict)
 
-        # Estimate and report time remaining until completions
-        time_list.append(time.time())
-        time_remaining = ChrisFuncs.TimeEst(time_list, len(source_dict_keys))
-        time_file = open( os.path.join(output_dir_path,'Estimated_Completion_Time.txt'), 'w')
-        time_file.write(time_remaining)
-        time_file.close()
-        if verbose: print '['+source_dict['name']+'] CAAPR estimated completion at: '+time_remaining+'.'
-
-        # Collect garbage
+        # Estimate time until completions, and collect garbage
+        CAAPR_Pipeline.TimeEst(time_list, len(source_dict_keys), output_dir_path, source_dict, kwargs_dict)
         gc.collect()
 
 
@@ -137,9 +133,9 @@ if __name__ == "__main__":
 
     # Run function
     testing = True
-    parallel = True
+    parallel = False
     if testing:
-        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=14, sources_table_path='CAAPR_Source_Table.csv', polysub=True, starsub=False, fit_apertures=True, do_photom=False, aperture_table_path=None, parallel=parallel)
+        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=18, sources_table_path='CAAPR_Source_Table_Test.csv', polysub=True, starsub=True, fit_apertures=True, do_photom=True, aperture_table_path=None, parallel=parallel)
 
         # Jubilate
         print 'All done!'
