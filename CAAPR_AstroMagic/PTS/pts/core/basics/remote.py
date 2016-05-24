@@ -25,6 +25,10 @@ from ..tools import parsing
 
 # -----------------------------------------------------------------
 
+connected_remotes = dict()
+
+# -----------------------------------------------------------------
+
 class Remote(object):
 
     """
@@ -135,6 +139,9 @@ class Remote(object):
         # Check whether connection was succesful
         if not self.connected: raise RuntimeError("Connection failed")
 
+        # If the connection was succesful, add the remote to the dictionary of currently connected remotes
+        if self.connected: connected_remotes[self.host.id] = self
+
     # -----------------------------------------------------------------
 
     def logout(self):
@@ -148,7 +155,11 @@ class Remote(object):
         log.info("Logging out from the remote environment ...")
 
         # Disconnect
-        if self.connected: self.ssh.logout()
+        if self.connected:
+
+            self.ssh.logout()
+            connected_remotes[self.host.id] = None
+            self.connected = False
 
         # Disconnect from the VPN service if necessary
         if self.vpn is not None: self.vpn.disconnect()
@@ -179,10 +190,10 @@ class Remote(object):
         self.execute("chmod +x " + remote_script_path, output=False)
 
         # Record the screen output: 'script' command
-        if screen_output_path is not None: self.execute("script " + screen_output_path)
+        #if screen_output_path is not None: self.execute("script " + screen_output_path)
 
         # Create the screen session and execute the batch script
-        self.execute("screen -S " + name + " -d -m " + remote_script_path, output=False)
+        self.execute("screen -S " + name + " -L -d -m " + remote_script_path, output=False)
 
         # Remove the remote shell script
         self.execute("rm " + remote_script_path, output=False)
@@ -350,13 +361,24 @@ class Remote(object):
         """
 
         # Initiate a remote interactive python session
-        self.execute("python", expect_eof=False, show_output=show_output)
+        #self.execute("python", expect_eof=False, show_output=show_output)
+
+        self.ssh.sendline("python")
+
+        self.ssh.expect("\r\n>>>")
 
         # Inject each line into the remote python prompt
-        for line in lines: self.execute(line, expect_eof=False, show_output=show_output)
+        #for line in lines: self.execute(line, expect_eof=False, show_output=show_output)
+
+        for line in lines:
+            self.ssh.sendline(line)
+            self.ssh.expect("\r\n>>>")
 
         # Close the remote python session
-        self.execute("exit()")
+        #self.execute("exit()")
+
+        self.ssh.sendline("exit()")
+        self.ssh.prompt()
 
     # -----------------------------------------------------------------
 
@@ -845,7 +867,7 @@ class Remote(object):
         :return:
         """
 
-        return self.cores * self.cpu_load
+        return self.cores * (1.0 - self.cpu_load)
 
     # -----------------------------------------------------------------
 
@@ -1224,5 +1246,17 @@ class Remote(object):
         """
 
         return self.host.id
+
+    # -----------------------------------------------------------------
+
+    @property
+    def cluster_name(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.host.cluster_name
 
 # -----------------------------------------------------------------

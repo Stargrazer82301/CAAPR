@@ -24,6 +24,7 @@ from ..basics.configurable import Configurable
 from ..test.resources import ResourceEstimator
 from ..tools import filesystem
 from ..tools.logging import log
+from .options import SchedulingOptions
 
 # -----------------------------------------------------------------
 
@@ -128,6 +129,9 @@ class SkirtRemoteLauncher(Configurable):
         launcher.config.analysis.misc.fluxes = arguments.fluxes
         launcher.config.analysis.misc.images = arguments.images
         launcher.config.analysis.misc.observation_filters = arguments.filters
+        launcher.config.analysis.misc.observation_instruments = arguments.instruments
+        launcher.config.analysis.misc.images_wcs = arguments.wcs
+        launcher.config.analysis.misc.images_unit = arguments.unit
 
         # Keep remote input and output
         launcher.config.keep = arguments.keep
@@ -334,7 +338,9 @@ class SkirtRemoteLauncher(Configurable):
         log.info("Performing the simulation...")
 
         # Add the walltime to the scheduling options
-        if self.config.walltime is not None: scheduling_options = {"walltime": self.config.walltime}
+        if self.config.walltime is not None:
+            scheduling_options = SchedulingOptions()
+            scheduling_options.walltime = self.config.walltime
         else: scheduling_options = None
 
         # Run the simulation

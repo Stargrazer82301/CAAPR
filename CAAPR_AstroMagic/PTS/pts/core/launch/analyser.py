@@ -15,10 +15,12 @@ from __future__ import absolute_import, division, print_function
 # Import the relevant PTS classes and modules
 from ..basics.configurable import Configurable
 from ..launch.basicanalyser import BasicAnalyser
+from ..launch.batchanalyser import BatchAnalyser
 from ..test.scalinganalyser import ScalingAnalyser
-from ...modeling.fitting.modelanalyser import ModelAnalyser
+from ...modeling.fitting.modelanalyser import FitModelAnalyser
+from ...modeling.analysis.bestmodelanalyser import BestModelAnalyser
 from ..tools.logging import log
-from ..tools import filesystem
+from ..tools import filesystem as fs
 
 # -----------------------------------------------------------------
 
@@ -46,8 +48,10 @@ class SimulationAnalyser(Configurable):
 
         # The lower-level analysers
         self.basic_analyser = BasicAnalyser()
+        self.batch_analyser = BatchAnalyser()
         self.scaling_analyser = ScalingAnalyser()
-        self.model_analyser = ModelAnalyser()
+        self.fit_model_analyser = FitModelAnalyser()
+        self.best_model_analyser = BestModelAnalyser()
 
     # -----------------------------------------------------------------
 
@@ -64,6 +68,9 @@ class SimulationAnalyser(Configurable):
 
         # 2. Run the basic analysis
         self.analyse_basic()
+
+        # 3. Run the batch analysis
+        if self.simulation.from_batch: self.analyse_batch()
 
         # 3. Analyse the scaling, if the simulation is part of a scaling test
         if self.simulation.from_scaling_test: self.analyse_scaling()
@@ -108,7 +115,8 @@ class SimulationAnalyser(Configurable):
         # Clear the analysers
         self.basic_analyser.clear()
         self.scaling_analyser.clear()
-        self.model_analyser.clear()
+        self.fit_model_analyser.clear()
+        self.best_model_analyser.clear()
 
     # -----------------------------------------------------------------
 
@@ -124,6 +132,21 @@ class SimulationAnalyser(Configurable):
 
         # Run the analyser on the simulation
         self.basic_analyser.run(self.simulation)
+
+    # -----------------------------------------------------------------
+
+    def analyse_batch(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Analysing the properties relevant for the batch of simulations ...")
+
+        # Run the batch analyser on the simulation
+        self.batch_analyser.run(self.simulation, self.basic_analyser.timeline_extractor, self.basic_analyser.memory_extractor)
 
     # -----------------------------------------------------------------
 
@@ -152,9 +175,42 @@ class SimulationAnalyser(Configurable):
         # Inform the user
         log.info("Analysing the radiative transfer model ...")
 
-        # Run the modeling analyser
-        self.model_analyser.config.path = self.simulation.analysis.modeling_path
-        self.model_analyser.run(self.simulation, self.basic_analyser.flux_calculator)
+        # Determine the path to the output directory for the analysis of the best model within the radiative transfer
+        # modeling environment
+        analysis_out_path = fs.join(self.simulation.analysis.modeling_path, "analysis", "out")
+
+        # If the output directory of the simulation corresponds to the analysis output directory, the simulation
+        # corresponds to the best model in the current state of the radiative transfer modeling
+        if self.simulation.output_path == analysis_out_path: self.analyse_best_model()
+
+        # Else, the simulation is just one of the many simulations launched during the fitting step of the modeling
+        else: self.analyse_fit_model()
+
+    # -----------------------------------------------------------------
+
+    def analyse_fit_model(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Run the fit model analyser
+        self.fit_model_analyser.config.path = self.simulation.analysis.modeling_path
+        self.fit_model_analyser.run(self.simulation, self.basic_analyser.flux_calculator)
+
+    # -----------------------------------------------------------------
+
+    def analyse_best_model(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Run the best model analyser
+        self.best_model_analyser.config.path = self.simulation.analysis.modeling_path
+        self.best_model_analyser.run(self.simulation)
 
     # -----------------------------------------------------------------
 
@@ -170,6 +226,6 @@ class SimulationAnalyser(Configurable):
         self.simulation.save()
 
         # If requested, remove the local output directory
-        if self.simulation.remove_local_output: filesystem.remove_directory(self.simulation.output_path)
+        if self.simulation.remove_local_output: fs.remove_directory(self.simulation.output_path)
 
 # -----------------------------------------------------------------

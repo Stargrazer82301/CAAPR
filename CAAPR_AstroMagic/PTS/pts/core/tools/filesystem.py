@@ -101,6 +101,19 @@ def is_file(path):
 
 # -----------------------------------------------------------------
 
+def has_file(directory, filename):
+
+    """
+    This function ...
+    :param directory:
+    :param filename:
+    :return:
+    """
+
+    return is_file(join(directory, filename))
+
+# -----------------------------------------------------------------
+
 def is_directory(path):
 
     """
@@ -236,6 +249,31 @@ def remove_file(path):
     """
 
     os.remove(path)
+
+# -----------------------------------------------------------------
+
+def size(path):
+
+    """
+    This function ...
+    :param path:
+    :return:
+    """
+
+    return os.path.getsize(path)
+
+# -----------------------------------------------------------------
+
+def ls(path=None):
+
+    """
+    This function ...
+    :param path:
+    :return:
+    """
+
+    if path is None: path = cwd()
+    return os.listdir(path)
 
 # -----------------------------------------------------------------
 

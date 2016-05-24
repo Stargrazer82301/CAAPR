@@ -69,7 +69,7 @@ class Image(object):
     # -----------------------------------------------------------------
 
     @classmethod
-    def from_file(cls, path, name=None, always_call_first_primary=True, hdulist_index=0):
+    def from_file(cls, path, name=None, always_call_first_primary=True, hdulist_index=0, no_filter=False):
 
         """
         This function ...
@@ -77,6 +77,7 @@ class Image(object):
         :param name:
         :param always_call_first_primary:
         :param hdulist_index:
+        :param no_filter:
         :return:
         """
 
@@ -90,7 +91,7 @@ class Image(object):
         image.path = path
 
         # Load the image frames
-        image.load_frames(path, always_call_first_primary=always_call_first_primary, hdulist_index=hdulist_index)
+        image.load_frames(path, always_call_first_primary=always_call_first_primary, hdulist_index=hdulist_index, no_filter=no_filter)
 
         # Return the image
         return image
@@ -244,6 +245,22 @@ class Image(object):
     # -----------------------------------------------------------------
 
     @property
+    def fwhm_pix(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Get the FWHM in sky coordinates
+        fwhm = self.fwhm
+
+        # Convert into pixels
+        return (fwhm / self.xy_average_pixelscale).to("pix").value
+
+    # -----------------------------------------------------------------
+
+    @property
     def wcs(self):
 
         """
@@ -255,6 +272,21 @@ class Image(object):
 
         # Return the wcs of the primary frame
         return self.frames.primary.wcs
+
+    # -----------------------------------------------------------------
+
+    @property
+    def coordinate_range(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        if "primary" not in self.frames: return None
+
+        # Return the coordinate range of the primary frame
+        return self.frames.primary.coordinate_range
 
     # -----------------------------------------------------------------
 
@@ -303,7 +335,7 @@ class Image(object):
         for frame_name in frame_names:
 
             # Inform the user that this frame will be saved to the image file
-            log.info("Exporting the " + frame_name + " frame to " + path)
+            log.debug("Exporting the " + frame_name + " frame to " + path)
 
             # Check if the coordinate system of this frame matches that of the other frames ?
 
@@ -323,7 +355,7 @@ class Image(object):
             for mask_name in self.masks:
 
                 # Inform the user that this mask will be saved to the image file
-                log.info("Exporting the " + mask_name + " mask to " + path)
+                log.debug("Exporting the " + mask_name + " mask to " + path)
 
                 # Add this mask to the data cube
                 datacube.append(self.masks[mask_name].astype(int))
@@ -344,11 +376,14 @@ class Image(object):
         if plane_index > 1:
             header["NAXIS"] = 3
             header["NAXIS3"] = plane_index
+        else: # only one plane
+            datacube = datacube[0]
+            header.remove("PLANE0")
 
         # Set unit, FWHM and filter description
         if self.unit is not None: header.set("SIGUNIT", str(self.unit), "Unit of the map")
         if self.fwhm is not None: header.set("FWHM", self.fwhm.to("arcsec").value, "[arcsec] FWHM of the PSF")
-        if self.filter is not None: header.set("FILTER", self.filter.description(), "Filter used for this observation")
+        if self.filter is not None: header.set("FILTER", str(self.filter), "Filter used for this observation")
 
         # Add origin description
         if origin is not None: header["ORIGIN"] = origin
@@ -364,7 +399,7 @@ class Image(object):
         self.path = path
 
         # Inform the user that the file has been created
-        log.info("File " + path + " created")
+        log.debug("File " + path + " created")
 
     # -----------------------------------------------------------------
 
@@ -460,7 +495,7 @@ class Image(object):
         for frame_name in self.frames:
 
             # Inform the user
-            log.info("Setting the unit of the " + frame_name + " frame to " + str(unit) + " ...")
+            log.debug("Setting the unit of the " + frame_name + " frame to " + str(unit) + " ...")
 
             # Set the unit for this frame
             self.frames[frame_name].unit = unit
@@ -482,7 +517,7 @@ class Image(object):
         for frame_name in self.frames:
 
             # Inform the user
-            log.info("Setting the FWHM of the " + frame_name + " frame to " + str(fwhm) + " ...")
+            log.debug("Setting the FWHM of the " + frame_name + " frame to " + str(fwhm) + " ...")
 
             # Set the unit for this frame
             self.frames[frame_name].fwhm = fwhm
@@ -490,11 +525,11 @@ class Image(object):
     # -----------------------------------------------------------------
 
     @filter.setter
-    def filter(self, filter):
+    def filter(self, fltr):
 
         """
         This function ...
-        :param filter:
+        :param fltr:
         :return:
         """
 
@@ -502,10 +537,10 @@ class Image(object):
         for frame_name in self.frames:
 
             # Inform the user
-            log.info("Setting the filter of the " + frame_name + " frame to " + filter.description() + " ...")
+            log.debug("Setting the filter of the " + frame_name + " frame to " + str(fltr) + " ...")
 
             # Set the filter for this frame
-            self.frames[frame_name].filter = filter
+            self.frames[frame_name].filter = fltr
 
     # -----------------------------------------------------------------
 
@@ -522,7 +557,7 @@ class Image(object):
         for frame_name in self.frames:
 
             # Inform the user
-            log.info("Setting the coordinate system of the " + frame_name + " frame ...")
+            log.debug("Setting the coordinate system of the " + frame_name + " frame ...")
 
             # Set the wcs for this frame
             self.frames[frame_name].wcs = wcs
@@ -540,7 +575,7 @@ class Image(object):
         if isinstance(unit, basestring): unit = Unit(unit)
 
         # Inform the user
-        log.info("Converting the unit of the image from " + str(self.unit) + " to " + str(unit) + " ...")
+        log.debug("Converting the unit of the image from " + str(self.unit) + " to " + str(unit) + " ...")
 
         # Calculate the conversion factor
         a = 1.0 * self.unit
@@ -558,21 +593,22 @@ class Image(object):
 
     # -----------------------------------------------------------------
 
-    def convolve(self, kernel):
+    def convolve(self, kernel, allow_huge=False):
 
         """
         This function ...
         :param kernel:
+        :param allow_huge:
         """
 
         # Loop over all currently selected frames
         for frame_name in self.frames:
 
             # Inform the user
-            log.info("Convolving the " + frame_name + " frame ...")
+            log.debug("Convolving the " + frame_name + " frame ...")
 
             # Convolve this frame
-            self.frames[frame_name] = self.frames[frame_name].convolved(kernel)
+            self.frames[frame_name] = self.frames[frame_name].convolved(kernel, allow_huge=allow_huge)
 
     # -----------------------------------------------------------------
 
@@ -590,7 +626,7 @@ class Image(object):
         for frame_name in self.frames:
 
             # Inform the user
-            log.info("Rebinning the " + frame_name + " frame ...")
+            log.debug("Rebinning the " + frame_name + " frame ...")
 
             # Rebin this frame (the reference wcs is automatically set in the new frame)
             self.frames[frame_name] = self.frames[frame_name].rebinned(reference_wcs)
@@ -599,7 +635,7 @@ class Image(object):
         for mask_name in self.masks:
 
             # Inform the user
-            log.info("Rebinning the " + mask_name + " mask ...")
+            log.debug("Rebinning the " + mask_name + " mask ...")
 
             # Rebin this mask
             data = transformations.new_align_and_rebin(self.masks[mask_name].astype(float), original_wcs, reference_wcs)
@@ -624,7 +660,7 @@ class Image(object):
         for frame_name in self.frames:
 
             # Inform the user
-            log.info("Cropping the " + frame_name + " frame ...")
+            log.debug("Cropping the " + frame_name + " frame ...")
 
             # Crop this frame
             self.frames[frame_name] = self.frames[frame_name].crop(x_min, x_max, y_min, y_max)
@@ -633,7 +669,7 @@ class Image(object):
         for mask_name in self.masks:
 
             # Inform the user
-            log.info("Cropping the " + mask_name + " mask ...")
+            log.debug("Cropping the " + mask_name + " mask ...")
 
             # Crop this mask
             self.masks[mask_name] = self.masks[mask_name][y_min:y_max, x_min:x_max]
@@ -642,7 +678,7 @@ class Image(object):
         for region_name in self.regions:
 
             # Inform the user
-            log.info("Cropping the " + region_name + " region ...")
+            log.debug("Cropping the " + region_name + " region ...")
 
             # Crop the region
             self.regions[region_name] = self.regions[region_name].cropped(x_min, x_max, y_min, y_max)
@@ -742,7 +778,7 @@ class Image(object):
         """
 
         # Inform the user
-        log.info("Deleting the " + frame_name + " frame ...")
+        log.debug("Deleting the " + frame_name + " frame ...")
 
         # Remove this frame from the frames dictionary
         del self.frames[frame_name]
@@ -758,7 +794,7 @@ class Image(object):
         """
 
         # Inform the user
-        log.info("Deleting the " + region_name + " region ...")
+        log.debug("Deleting the " + region_name + " region ...")
 
         # Remove this region from the regions dictionary
         del self.regions[region_name]
@@ -774,7 +810,7 @@ class Image(object):
         """
 
         # Inform the user
-        log.info("Deleting the " + mask_name + " mask ...")
+        log.debug("Deleting the " + mask_name + " mask ...")
 
         # Remove this mask from the masks dictionary
         del self.masks[mask_name]
@@ -824,7 +860,7 @@ class Image(object):
         for frame_name in self.frames:
 
             # Inform the user
-            log.info("Multiplying the " + frame_name + " frame by a factor of " + str(factor))
+            log.debug("Multiplying the " + frame_name + " frame by a factor of " + str(factor))
 
             # Multiply the frame by the given factor
             self.frames[frame_name] *= factor
@@ -858,7 +894,7 @@ class Image(object):
         for frame_name in self.frames:
 
             # Inform the user
-            log.info("Dividing the " + frame_name + " frame by a factor of " + str(factor))
+            log.debug("Dividing the " + frame_name + " frame by a factor of " + str(factor))
 
             # Divide the frame by the given factor
             self.frames[frame_name] /= factor
@@ -910,7 +946,7 @@ class Image(object):
 
     # -----------------------------------------------------------------
 
-    def load_frames(self, filename, index=None, name=None, description=None, always_call_first_primary=True, rebin_to_wcs=False, hdulist_index=0):
+    def load_frames(self, filename, index=None, name=None, description=None, always_call_first_primary=True, rebin_to_wcs=False, hdulist_index=0, no_filter=False):
 
         """
         This function ...
@@ -928,7 +964,7 @@ class Image(object):
         if not filesystem.is_file(filename): raise IOError("File " + filename + " does not exist")
 
         # Show which image we are importing
-        log.info("Reading in file " + filename + " ...")
+        log.debug("Reading in file " + filename + " ...")
 
         # Open the HDU list for the FITS file
         hdulist = fits.open(filename)
@@ -945,12 +981,16 @@ class Image(object):
         # Obtain the world coordinate system
         wcs = CoordinateSystem(flattened_header)
 
-        # Obtain the filter for this image
-        filter = headers.get_filter(self.name, self.original_header)
+        # Set the filter
+        if no_filter: fltr = None
+        else:
 
-        # Inform the user on the filter
-        if filter is not None: log.info("The filter for this image is " + filter.filterID())
-        else: log.warning("Could not determine the filter for this image")
+            # Obtain the filter for this image
+            fltr = headers.get_filter(self.name, self.original_header)
+
+            # Inform the user on the filter
+            if fltr is not None: log.debug("The filter for the '" + filename + "' image is " + str(fltr))
+            else: log.warning("Could not determine the filter for the image '" + filename + "'")
 
         # Obtain the units of this image
         unit = headers.get_unit(self.original_header)
@@ -1009,7 +1049,7 @@ class Image(object):
                                   description=description,
                                   unit=unit,
                                   zero_point=zero_point,
-                                  filter=filter,
+                                  filter=fltr,
                                   sky_subtracted=subtracted,
                                   fwhm=fwhm)
                     self.add_frame(frame, name)
@@ -1060,7 +1100,7 @@ class Image(object):
                               description=description,
                               unit=unit,
                               zero_point=zero_point,
-                              filter=filter,
+                              filter=fltr,
                               sky_subtracted=sky_subtracted,
                               fwhm=fwhm)
                 # Add the primary image frame
@@ -1094,7 +1134,7 @@ class Image(object):
         """
 
         # Inform the user
-        log.info("Adding '" + name + "' to the set of frames ...")
+        log.debug("Adding '" + name + "' to the set of frames ...")
 
         # Check whether a frame with this name already exists
         if name in self.frames and not overwrite: raise RuntimeError("A frame with this name already exists")
@@ -1119,7 +1159,7 @@ class Image(object):
         :return:
         """
 
-        if isinstance(names, basestring): names = []
+        if isinstance(names, basestring): names = [names]
 
         # Loop over all frames
         for frame_name in list(self.frames.keys()):
@@ -1141,7 +1181,7 @@ class Image(object):
         """
 
         # Inform the user
-        log.info("Removing the '" + name + "' frame ...")
+        log.debug("Removing the '" + name + "' frame ...")
 
         # Check whether a frame with this name exists
         if name not in self.frames: raise RuntimeError("A frame with this name does not exist")
@@ -1174,7 +1214,7 @@ class Image(object):
         """
 
         # Inform the user
-        log.info("Adding '" + name + "' to the set of regions ...")
+        log.debug("Adding '" + name + "' to the set of regions ...")
 
         # Check whether a region with this name already exists
         if name in self.regions and not overwrite: raise RuntimeError("A region with this name already exists")
@@ -1214,7 +1254,7 @@ class Image(object):
         """
 
         # Inform the user
-        log.info("Removing the '" + name + "' region ...")
+        log.debug("Removing the '" + name + "' region ...")
 
         # Check whether a region with this name exists
         if name not in self.regions: raise RuntimeError("A region with this name does not exist")
@@ -1247,7 +1287,7 @@ class Image(object):
         """
 
         # Inform the user
-        log.info("Adding '" + name + "' to the set of masks ...")
+        log.debug("Adding '" + name + "' to the set of masks ...")
 
         # Check whether a mask with this name already exists
         if name in self.masks and not overwrite: raise RuntimeError("A mask with this name already exists")
@@ -1290,7 +1330,7 @@ class Image(object):
         """
 
         # Inform the user
-        log.info("Removing the '" + name + "' mask ...")
+        log.debug("Removing the '" + name + "' mask ...")
 
         # Check whether a mask with this name exists
         if name not in self.masks: raise RuntimeError("A mask with this name does not exist")

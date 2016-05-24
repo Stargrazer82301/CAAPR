@@ -22,7 +22,8 @@ from astropy import constants
 
 # Import the relevant PTS classes and modules
 from .component import FittingComponent
-from ...core.tools import inspection, tables, filesystem
+from ...core.tools import inspection, tables
+from ...core.tools import filesystem as fs
 from ...core.simulation.skifile import SkiFile
 from ...core.basics.filter import Filter
 from ..basics.models import SersicModel, DeprojectionModel
@@ -34,10 +35,11 @@ from ..core.sun import Sun
 from ..core.mappings import Mappings
 from ...magic.tools import wavelengths
 from ...core.tools.logging import log
+from ...core.simulation.wavelengthgrid import WavelengthGrid
 
 # -----------------------------------------------------------------
 
-template_ski_path = filesystem.join(inspection.pts_dat_dir("modeling"), "ski", "template.ski")
+template_ski_path = fs.join(inspection.pts_dat_dir("modeling"), "ski", "template.ski")
 
 # -----------------------------------------------------------------
 
@@ -88,8 +90,9 @@ class InputInitializer(FittingComponent):
         self.i1 = None
         self.fuv = None
 
-        # Solar properties
-        self.sun = None
+        # Solar luminosity units
+        self.sun_fuv = None
+        self.sun_i1 = None
 
         # Coordinate system
         self.reference_wcs = None
@@ -151,7 +154,7 @@ class InputInitializer(FittingComponent):
         # 2. Load the template ski file
         self.load_template()
 
-        # 3. Load the structural parameters for the galaxy
+        # 3. Load the structural parameters of the galaxy
         self.load_parameters()
 
         # 4. Load the fluxes
@@ -195,11 +198,13 @@ class InputInitializer(FittingComponent):
         self.fuv = Filter.from_string("FUV")
 
         # Solar properties
-        self.sun = Sun()
+        sun = Sun()
+        self.sun_fuv = sun.luminosity_for_filter_as_unit(self.fuv) # Get the luminosity of the Sun in the FUV band
+        self.sun_i1 = sun.luminosity_for_filter_as_unit(self.i1)   # Get the luminosity of the Sun in the IRAC I1 band
 
         # Reference coordinate system
         reference_image = "Pacs red"
-        reference_path = filesystem.join(self.truncation_path, reference_image + ".fits")
+        reference_path = fs.join(self.truncation_path, reference_image + ".fits")
         self.reference_wcs = CoordinateSystem.from_file(reference_path)
 
     # -----------------------------------------------------------------
@@ -230,7 +235,7 @@ class InputInitializer(FittingComponent):
         log.info("Loading the decomposition parameters ...")
 
         # Determine the path to the parameters file
-        path = filesystem.join(self.components_path, "parameters.dat")
+        path = fs.join(self.components_path, "parameters.dat")
 
         # Load the parameters
         self.parameters = load_parameters(path)
@@ -248,10 +253,10 @@ class InputInitializer(FittingComponent):
         log.info("Loading the observed fluxes table ...")
 
         # Determine the path to the fluxes table
-        fluxes_path = filesystem.join(self.phot_path, "fluxes.dat")
+        fluxes_path = fs.join(self.phot_path, "fluxes.dat")
 
         # Load the fluxes table
-        self.fluxes = tables.from_file(fluxes_path)
+        self.fluxes = tables.from_file(fluxes_path, format="ascii.ecsv")
 
     # -----------------------------------------------------------------
 
@@ -298,7 +303,7 @@ class InputInitializer(FittingComponent):
             if wavelength > self.config.wavelengths.max_zoom: total_grid.append(wavelength)
 
         # Create table for the wavelength grid
-        self.wavelength_grid = tables.new([total_grid], names=["Wavelength"])
+        self.wavelength_grid = WavelengthGrid.from_wavelengths(total_grid)
 
     # -----------------------------------------------------------------
 
@@ -456,14 +461,11 @@ class InputInitializer(FittingComponent):
         # Get the flux density of the bulge
         fluxdensity = self.parameters.bulge.fluxdensity # In Jy
 
-        # Get the luminosity of the Sun for the 3.6 micron band
-        solar_luminosity = self.sun.luminosity_for_filter(self.i1)
-
         # Convert the flux density into a spectral luminosity
         luminosity = fluxdensity_to_luminosity(fluxdensity, self.i1.pivotwavelength() * Unit("micron"), self.parameters.distance)
 
         # Get the spectral luminosity in solar units
-        luminosity = (luminosity.to("W/m").value / solar_luminosity.to("W/m").value ) * Unit("Lsun") # !! the unit is not really the Lsun that Astropy means
+        luminosity = luminosity.to(self.sun_i1).value
 
         # Set the parameters of the bulge
         self.ski.set_stellar_component_geometry("Evolved stellar bulge", self.bulge)
@@ -489,20 +491,16 @@ class InputInitializer(FittingComponent):
 
         # Get the scale height
         scale_height = 521. * Unit("pc") # first models
-        #scale_height = 538 * Unit("pc")  # M31
 
         # Get the 3.6 micron flux density with the bulge subtracted
         i1_index = tables.find_index(self.fluxes, "I1", "Band")
         fluxdensity = self.fluxes["Flux"][i1_index]*Unit("Jy") - self.parameters.bulge.fluxdensity
 
-        # Get the luminosity of the Sun for the 3.6 micron band
-        solar_luminosity = self.sun.luminosity_for_filter(self.i1)
-
         # Convert the flux density into a spectral luminosity
-        luminosity = fluxdensity_to_luminosity(fluxdensity, self.i1.pivotwavelength()*Unit("micron"), self.parameters.distance)
+        luminosity = fluxdensity_to_luminosity(fluxdensity, self.i1.pivotwavelength() * Unit("micron"), self.parameters.distance)
 
         # Get the spectral luminosity in solar units
-        luminosity = (luminosity.to("W/m").value / solar_luminosity.to("W/m").value) * Unit("Lsun") # !! the unit is not really the Lsun that Astropy means
+        luminosity = luminosity.to(self.sun_i1).value
 
         # Set the parameters of the evolved stellar component
         self.deprojection.filename = "old_stars.fits"
@@ -528,21 +526,18 @@ class InputInitializer(FittingComponent):
         young_age = 0.1
         young_metallicity = 0.02
 
+        # Get the scale height
         scale_height = 150 * Unit("pc") # first models
-        #scale_height = 190 * Unit("pc") # M31
 
         # Get the FUV flux density
         fuv_index = tables.find_index(self.fluxes, "FUV", "Band")
-        fluxdensity = 0.5 * self.fluxes["Flux"][fuv_index]*Unit("Jy")
-
-        # Get the luminosity of the Sun for the FUV band
-        solar_luminosity = self.sun.luminosity_for_filter(self.fuv)
+        fluxdensity = 5. * self.fluxes["Flux"][fuv_index]*Unit("Jy")
 
         # Convert the flux density into a spectral luminosity
-        luminosity = fluxdensity_to_luminosity(fluxdensity, self.fuv.pivotwavelength()*Unit("micron"), self.parameters.distance)
+        luminosity = fluxdensity_to_luminosity(fluxdensity, self.fuv.pivotwavelength() * Unit("micron"), self.parameters.distance)
 
         # Get the spectral luminosity in solar units
-        luminosity = (luminosity.to("W/m").value / solar_luminosity.to("W/m").value) * Unit("Lsun") # !! the unit is not really the Lsun that Astropy means
+        luminosity = luminosity.to(self.sun_fuv).value
 
         # Set the parameters of the young stellar component
         self.deprojection.filename = "young_stars.fits"
@@ -571,26 +566,12 @@ class InputInitializer(FittingComponent):
 
         # Get the scale height
         scale_height = 150 * Unit("pc") # first models
-        #scale_height = 190 * Unit("pc") # M31
 
-        # Get the FUV flux density
-        #fuv_index = tables.find_index(self.fluxes, "FUV", "Band")
-        #fluxdensity = 0.8 * self.fluxes["Flux"][fuv_index]*Unit("Jy")
-
-        # Get the spectral luminosity of the Sun for the FUV band
-        #solar_luminosity = self.sun.luminosity_for_filter(self.fuv)
-
-        # Convert the flux density into a spectral luminosity
-        #luminosity = fluxdensity_to_luminosity(fluxdensity, self.fuv.pivotwavelength() * Unit("micron"), self.parameters.distance)
-
-        # Get the spectral luminosity in solar units
-        #luminosity = (luminosity.to("W/m").value / solar_luminosity.to("W/m").value) * Unit("Lsun") # !! the unit is not really the Lsun that Astropy means
-
+        # Convert the SFR into a FUV luminosity
         sfr = 1.0 # The star formation rate
         mappings = Mappings(ionizing_metallicity, ionizing_compactness, ionizing_pressure, ionizing_covering_factor, sfr)
         luminosity = mappings.luminosity_for_filter(self.fuv)
-        solar_luminosity = self.sun.luminosity_for_filter(self.fuv)
-        luminosity = (luminosity.to("W/m").value / solar_luminosity.to("W/m").value) * Unit("Lsun") # !! the unit is not really the Lsun that Astropy means
+        luminosity = luminosity.to(self.sun_fuv).value
 
         # Set the parameters of the ionizing stellar component
         self.deprojection.filename = "ionizing_stars.fits"
@@ -612,10 +593,7 @@ class InputInitializer(FittingComponent):
         log.info("Configuring the dust component ...")
 
         scale_height = 260.5 * Unit("pc") # first models
-        dust_mass = 2e7 * Unit("Msun") # first models
-
-        #scale_height = 238 * Unit("pc") # Andromeda
-        #dust_mass = 4.3e7 * Unit("Msun") # Andromeda
+        dust_mass = 2.e7 * Unit("Msun") # first models
 
         hydrocarbon_pops = 25
         enstatite_pops = 25
@@ -641,7 +619,7 @@ class InputInitializer(FittingComponent):
         log.info("Configuring the dust grid ...")
 
         # Get the path to the disk region
-        path = filesystem.join(self.components_path, "disk.reg")
+        path = fs.join(self.components_path, "disk.reg")
         # Open the region
         region = SkyRegion.from_file(path)
         # Get ellipse in sky coordinates
@@ -717,12 +695,13 @@ class InputInitializer(FittingComponent):
             else: raise RuntimeError("Unknown wavelength range")
 
         # Determine the weight for each group of filters
-        uv_weight = 1. / (len(uv_bands) * number_of_groups)
-        optical_weight = 1. / (len(optical_bands) * number_of_groups)
-        nir_weight = 1. / (len(nir_bands) * number_of_groups)
-        mir_weight = 1. / (len(mir_bands) * number_of_groups)
-        fir_weight = 1. / (len(fir_bands) * number_of_groups)
-        submm_weight = 1. / (len(submm_bands) * number_of_groups)
+        number_of_data_points = len(self.fluxes)
+        uv_weight = 1. / (len(uv_bands) * number_of_groups) * number_of_data_points
+        optical_weight = 1. / (len(optical_bands) * number_of_groups) * number_of_data_points
+        nir_weight = 1. / (len(nir_bands) * number_of_groups) * number_of_data_points
+        mir_weight = 1. / (len(mir_bands) * number_of_groups) * number_of_data_points
+        fir_weight = 1. / (len(fir_bands) * number_of_groups) * number_of_data_points
+        submm_weight = 1. / (len(submm_bands) * number_of_groups) * number_of_data_points
 
         #print("UV", len(uv_bands), uv_weight)
         #print("Optical", len(optical_bands), optical_weight)
@@ -772,47 +751,104 @@ class InputInitializer(FittingComponent):
         # Inform the user
         log.info("Writing the input ...")
 
-        # -- The wavelength grid --
+        # Write the wavelength grid
+        self.write_wavelength_grid()
+
+        # Write the old stellar map
+        self.write_old_stars()
+
+        # Write the map of young stars
+        self.write_young_stars()
+
+        # Write the map of ionizing stars
+        self.write_ionizing_stars()
+
+        # Write the dust map
+        self.write_dust()
+
+    # -----------------------------------------------------------------
+
+    def write_wavelength_grid(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Writing the wavelength grid ...")
 
         # Determine the path to the wavelength grid file
-        grid_path = filesystem.join(self.fit_in_path, "wavelengths.txt")
+        grid_path = fs.join(self.fit_in_path, "wavelengths.txt")
 
         # Write the wavelength grid
-        self.wavelength_grid.rename_column("Wavelength", str(len(
-            self.wavelength_grid)))  # Trick to have the number of wavelengths in the first line (required for SKIRT)
-        tables.write(self.wavelength_grid, grid_path, format="ascii")
+        self.wavelength_grid.to_skirt_input(grid_path)
 
-        # -- The old stars map --
+    # -----------------------------------------------------------------
+
+    def write_old_stars(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Copying the map of old stars to the input directory ...")
 
         # Determine the path to the old stars map
-        old_stars_path = filesystem.join(self.maps_path, "old_stars.fits")
+        old_stars_path = fs.join(self.maps_path, "old_stars.fits")
 
         # Copy the map
-        filesystem.copy_file(old_stars_path, self.fit_in_path)
+        fs.copy_file(old_stars_path, self.fit_in_path)
 
-        # -- The young stars map --
+    # -----------------------------------------------------------------
+
+    def write_young_stars(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Copying the map of young stars to the input directory ...")
 
         # Determine the path to the young stars map
-        young_stars_path = filesystem.join(self.maps_path, "young_stars.fits")
+        young_stars_path = fs.join(self.maps_path, "young_stars.fits")
 
         # Copy the map
-        filesystem.copy_file(young_stars_path, self.fit_in_path)
+        fs.copy_file(young_stars_path, self.fit_in_path)
 
-        # -- The ionizing stars map --
+    # -----------------------------------------------------------------
+
+    def write_ionizing_stars(self):
+
+        """
+        This function ...
+        :return:
+        """
 
         # Determine the path to the ionizing stars map
-        ionizing_stars_path = filesystem.join(self.maps_path, "ionizing_stars.fits")
+        ionizing_stars_path = fs.join(self.maps_path, "ionizing_stars.fits")
 
         # Copy the map
-        filesystem.copy_file(ionizing_stars_path, self.fit_in_path)
+        fs.copy_file(ionizing_stars_path, self.fit_in_path)
 
-        # -- The dust map --
+    # -----------------------------------------------------------------
+
+    def write_dust(self):
+
+        """
+        This function ...
+        :return:
+        """
 
         # Determine the path to the dust map
-        dust_path = filesystem.join(self.maps_path, "dust.fits")
+        dust_path = fs.join(self.maps_path, "dust.fits")
 
         # Copy the map
-        filesystem.copy_file(dust_path, self.fit_in_path)
+        fs.copy_file(dust_path, self.fit_in_path)
 
     # -----------------------------------------------------------------
 
@@ -842,7 +878,7 @@ class InputInitializer(FittingComponent):
         log.info("Writing the table with weights to " + self.weights_table_path + " ...")
 
         # Write the table with weights
-        tables.write(self.weights, self.weights_table_path)
+        tables.write(self.weights, self.weights_table_path, format="ascii.ecsv")
 
 # -----------------------------------------------------------------
 

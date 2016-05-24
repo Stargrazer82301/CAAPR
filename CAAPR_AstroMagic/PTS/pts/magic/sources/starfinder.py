@@ -14,7 +14,6 @@ from __future__ import absolute_import, division, print_function
 
 # Import standard modules
 import numpy as np
-import pdb
 
 # Import astronomical modules
 from astropy.units import Unit
@@ -218,7 +217,7 @@ class StarFinder(Configurable):
         # Keep track of the distances between the stars and the galaxies
         distances = []
 
-        on_galaxy_column = [False]*len(self.catalog)
+        on_galaxy_column = [False] * len(self.catalog)
 
         # Create the list of stars
         for i in range(len(self.catalog)):
@@ -452,8 +451,12 @@ class StarFinder(Configurable):
         # Inform the user
         log.info("Looking for saturated stars ...")
 
+        # Check whether sources are found
+        with_source = self.have_source
+        if with_source == 0: raise RuntimeError("Not a single source was found")
+
         # Inform the user on the number of stars that have a source
-        log.debug("Number of stars with source = " + str(self.have_source))
+        log.debug("Number of stars with source = " + str(with_source))
 
         # Calculate the default FWHM, for the stars for which a model was not found
         default_fwhm = self.fwhm_pix
@@ -965,11 +968,11 @@ class StarFinder(Configurable):
 
         # Determine the default FWHM and return it
         if self.config.fwhm.measure == "max":
-            return max(fwhm_values) * Unit("arcsec")
+            return max(fwhm_values) * Unit("arcsec") * self.config.fwhm.scale_factor
         elif self.config.fwhm.measure == "mean":
-            return np.mean(fwhm_values) * Unit("arcsec")
+            return np.mean(fwhm_values) * Unit("arcsec") * self.config.fwhm.scale_factor
         elif self.config.fwhm.measure == "median":
-            return np.median(fwhm_values) * Unit("arcsec")
+            return np.median(fwhm_values) * Unit("arcsec") * self.config.fwhm.scale_factor
         else: raise ValueError("Unkown measure for determining the default FWHM")
 
     # -----------------------------------------------------------------

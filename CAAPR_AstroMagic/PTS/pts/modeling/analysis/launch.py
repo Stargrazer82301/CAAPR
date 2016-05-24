@@ -21,13 +21,22 @@ from astropy.coordinates import Angle
 
 # Import the relevant PTS classes and modules
 from .component import AnalysisComponent
-from ...core.tools import filesystem, tables
+from ...core.tools import tables, time
+from ...core.tools import filesystem as fs
 from ...core.simulation.skifile import SkiFile
 from ...core.tools.logging import log
 from ..basics.instruments import FullInstrument
 from ...magic.basics.vector import Position
 from ...core.launch.options import AnalysisOptions
+from ...core.launch.options import SchedulingOptions
 from ...core.simulation.arguments import SkirtArguments
+from ...core.launch.runtime import RuntimeEstimator
+from ...core.launch.parallelization import Parallelization
+from ..decomposition.decomposition import load_parameters
+from ...magic.basics.coordinatesystem import CoordinateSystem
+from ...core.simulation.remote import SkirtRemote
+from ...core.simulation.wavelengthgrid import WavelengthGrid
+from ...magic.misc.kernels import AnianoKernels
 
 # -----------------------------------------------------------------
 
@@ -50,6 +59,9 @@ class BestModelLauncher(AnalysisComponent):
 
         # -- Attributes --
 
+        # Create the SKIRT remote execution context
+        self.remote = SkirtRemote()
+
         # The path to the directory with the best model parameters
         self.best_path = None
 
@@ -59,8 +71,23 @@ class BestModelLauncher(AnalysisComponent):
         # The wavelength grid
         self.wavelength_grid = None
 
+        # The structural parameters
+        self.parameters = None
+
+        # Coordinate system
+        self.reference_wcs = None
+
         # The instruments
         self.instruments = dict()
+
+        # The parallelization scheme
+        self.parallelization = None
+
+        # The scheduling options
+        self.scheduling_options = None
+
+        # The analysis options
+        self.analysis_options = None
 
     # -----------------------------------------------------------------
 
@@ -97,19 +124,31 @@ class BestModelLauncher(AnalysisComponent):
         # 2. Load the ski file describing the best model
         self.load_ski()
 
-        # 3. Create the wavelength grid
+        # 3. Load the structural parameters for the galaxy
+        self.load_parameters()
+
+        # 4. Create the wavelength grid
         self.create_wavelength_grid()
 
-        # 4. Create the instruments
+        # 5. Create the instruments
         self.create_instruments()
 
-        # 5. Adjust the ski file
+        # 6. Adjust the ski file
         self.adjust_ski()
 
-        # 6. Writing
+        # 7. Set parallelization
+        self.set_parallelization()
+
+        # 8. Estimate the runtime for the simulation
+        if self.remote.scheduler: self.estimate_runtime()
+
+        # 9. Set the analysis options
+        self.set_analysis_options()
+
+        # 10. Writing
         self.write()
 
-        # 7. Launch the simulation
+        # 11. Launch the simulation
         self.launch()
 
     # -----------------------------------------------------------------
@@ -124,8 +163,32 @@ class BestModelLauncher(AnalysisComponent):
         # Call the setup function of the base class
         super(BestModelLauncher, self).setup()
 
+        # Setup the remote execution environment
+        self.remote.setup(self.config.remote)
+
         # The path to the directory with the best model parameters
-        self.best_path = filesystem.join(self.fit_path, "best")
+        self.best_path = fs.join(self.fit_path, "best")
+
+        # Reference coordinate system
+        self.reference_wcs = CoordinateSystem.from_file(self.reference_path)
+
+    # -----------------------------------------------------------------
+
+    def load_parameters(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Loading the decomposition parameters ...")
+
+        # Determine the path to the parameters file
+        path = fs.join(self.components_path, "parameters.dat")
+
+        # Load the parameters
+        self.parameters = load_parameters(path)
 
     # -----------------------------------------------------------------
 
@@ -140,7 +203,7 @@ class BestModelLauncher(AnalysisComponent):
         log.info("Loading the ski file for the best fitting model ...")
 
         # Determine the path to the best model ski file
-        path = filesystem.join(self.best_path, self.galaxy_name + ".ski")
+        path = fs.join(self.best_path, self.galaxy_name + ".ski")
 
         # Load the ski file
         self.ski = SkiFile(path)
@@ -192,8 +255,8 @@ class BestModelLauncher(AnalysisComponent):
         for wavelength in base_grid:
             if wavelength > self.config.wavelengths.max_zoom: total_grid.append(wavelength)
 
-        # Create table for the wavelength grid
-        self.wavelength_grid = tables.new([total_grid], names=["Wavelength"])
+        # Create the wavelength grid
+        self.wavelength_grid = WavelengthGrid.from_wavelengths(total_grid)
 
     # -----------------------------------------------------------------
 
@@ -265,7 +328,147 @@ class BestModelLauncher(AnalysisComponent):
         self.ski.setpackages(self.config.packages)
 
         # Enable all writing options for analysis
-        self.ski.enable_all_writing_options()
+        #self.ski.enable_all_writing_options()
+
+    # -----------------------------------------------------------------
+
+    def set_parallelization(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Determining the parallelization scheme ...")
+
+        # Get the remote host
+        host = self.remote.host
+
+        # If the host uses a scheduling system
+        if host.scheduler:
+
+            # Get the number of cores per node for this host
+            cores_per_node = host.clusters[host.cluster_name].cores
+
+            # Determine the number of cores corresponding to 4 full nodes
+            cores = cores_per_node * 4
+
+            # Use 1 core for each process (assume there is enough memory)
+            processes = cores
+
+            # Determine the number of threads per core
+            if host.use_hyperthreading: threads_per_core = host.clusters[host.cluster_name].threads_per_core
+            else: threads_per_core = 1
+
+            # Create a Parallelization instance
+            self.parallelization = Parallelization(cores, threads_per_core, processes)
+
+        # If the remote host does not use a scheduling system
+        else:
+
+            # Use 4 cores per process
+            #cores_per_process = 4
+
+            # Use 10 cores per process
+            cores_per_process = 10
+
+            # Get the amount of (currently) free cores on the remote host
+            cores = int(self.remote.free_cores)
+
+            # Determine the number of thread to be used per core
+            threads_per_core = self.remote.threads_per_core if self.remote.use_hyperthreading else 1
+
+            # Create the parallelization object
+            self.parallelization = Parallelization.from_free_cores(cores, cores_per_process, threads_per_core)
+
+        # Debugging
+        log.debug("Parallelization scheme that will be used: " + str(self.parallelization))
+
+    # -----------------------------------------------------------------
+
+    def estimate_runtime(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Estimating the runtime for the simulation ...")
+
+        # Debugging
+        log.debug("Loading the table with the total runtimes of previous simulations ...")
+
+        # Load the timing table
+        timing_table = tables.from_file(self.timing_table_path, format="ascii.ecsv")
+
+        # Create a RuntimeEstimator instance
+        estimator = RuntimeEstimator(timing_table)
+
+        # Estimate the runtime for the configured number of photon packages and the configured remote host
+        runtime = estimator.runtime_for(self.config.remote, self.config.packages, self.parallelization)
+
+        # Create the scheduling options, set the walltime
+        self.scheduling_options = SchedulingOptions()
+        self.scheduling_options.walltime = runtime
+
+    # -----------------------------------------------------------------
+
+    def set_analysis_options(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Get the names of the filters for which we have photometry
+        filter_names = self.get_filter_names()
+
+        # Set the paths to the for each image (except for the SPIRE images)
+        kernel_paths = dict()
+        aniano = AnianoKernels()
+        pacs_red_psf_path = aniano.get_psf_path("PACS_160")
+        for filter_name in filter_names:
+            if "SPIRE" in filter_name: continue
+            kernel_paths[filter_name] = pacs_red_psf_path
+
+        # Analysis options
+        self.analysis_options = AnalysisOptions()
+
+        # Set options for extraction
+        self.analysis_options.extraction.path = self.analysis_extr_path
+        self.analysis_options.extraction.progress = True
+        self.analysis_options.extraction.timeline = True
+        self.analysis_options.extraction.memory = True
+
+        # Set options for plotting
+        self.analysis_options.plotting.path = self.analysis_plot_path
+        self.analysis_options.plotting.progress = True
+        self.analysis_options.plotting.timeline = True
+        self.analysis_options.plotting.seds = True
+        self.analysis_options.plotting.grids = True
+        self.analysis_options.plotting.reference_sed = fs.join(self.phot_path, "fluxes.dat")
+
+        # Set miscellaneous options
+        self.analysis_options.misc.path = self.analysis_misc_path
+        self.analysis_options.misc.rgb = True
+        self.analysis_options.misc.wave = True
+        self.analysis_options.misc.fluxes = True
+        self.analysis_options.misc.images = True
+        self.analysis_options.misc.observation_filters = filter_names
+        self.analysis_options.misc.observation_instruments = ["earth"]
+        self.analysis_options.misc.make_images_remote = ["nancy"]
+        self.analysis_options.misc.images_wcs = self.reference_path
+        self.analysis_options.misc.images_kernels = kernel_paths
+        self.analysis_options.misc.images_unit = "MJy/sr"
+
+        # Set the paths of the timing and memory table files
+        self.analysis_options.timing_table_path = self.timing_table_path
+        self.analysis_options.memory_table_path = self.memory_table_path
+
+        # Set the modeling path
+        self.analysis_options.modeling_path = self.config.path
 
     # -----------------------------------------------------------------
 
@@ -312,9 +515,8 @@ class BestModelLauncher(AnalysisComponent):
         # Inform the user
         log.info("Writing the wavelength grid ...")
 
-        # Write the wavelength table
-        self.wavelength_grid.rename_column("Wavelength", str(len(self.wavelength_grid)))  # Trick to have the number of wavelengths in the first line (required for SKIRT)
-        tables.write(self.wavelength_grid, self.analysis_wavelengths_path, format="ascii")
+        # Write the wavelength grid
+        self.wavelength_grid.to_skirt_input(self.analysis_wavelengths_path)
 
     # -----------------------------------------------------------------
 
@@ -329,17 +531,17 @@ class BestModelLauncher(AnalysisComponent):
         log.info("Copying the input maps ...")
 
         # Determine the paths to the input maps in the fit/in directory
-        fit_in_path = filesystem.join(self.fit_path, "in")
-        old_path = filesystem.join(fit_in_path, "old_stars.fits")
-        young_path = filesystem.join(fit_in_path, "young_stars.fits")
-        ionizing_path = filesystem.join(fit_in_path, "ionizing_stars.fits")
-        dust_path = filesystem.join(fit_in_path, "dust.fits")
+        fit_in_path = fs.join(self.fit_path, "in")
+        old_path = fs.join(fit_in_path, "old_stars.fits")
+        young_path = fs.join(fit_in_path, "young_stars.fits")
+        ionizing_path = fs.join(fit_in_path, "ionizing_stars.fits")
+        dust_path = fs.join(fit_in_path, "dust.fits")
 
-        # Copy the files to the analysis/in directory
-        filesystem.copy_file(old_path, self.analysis_in_path)
-        filesystem.copy_file(young_path, self.analysis_in_path)
-        filesystem.copy_file(ionizing_path, self.analysis_in_path)
-        filesystem.copy_file(dust_path, self.analysis_in_path)
+        # Copy the files to the analysis/in directory (if necessary)
+        if not fs.has_file(self.analysis_in_path, fs.name(old_path)): fs.copy_file(old_path, self.analysis_in_path)
+        if not fs.has_file(self.analysis_in_path, fs.name(young_path)): fs.copy_file(young_path, self.analysis_in_path)
+        if not fs.has_file(self.analysis_in_path, fs.name(ionizing_path)): fs.copy_file(ionizing_path, self.analysis_in_path)
+        if not fs.has_file(self.analysis_in_path, fs.name(dust_path)): fs.copy_file(dust_path, self.analysis_in_path)
 
     # -----------------------------------------------------------------
 
@@ -365,43 +567,6 @@ class BestModelLauncher(AnalysisComponent):
         :return:
         """
 
-        # Get the names of the filters for which we have photometry
-        filter_names = []
-        fluxes_table_path = filesystem.join(self.phot_path, "fluxes.dat")
-        fluxes_table = tables.from_file(fluxes_table_path)
-        # Loop over the entries in the fluxes table, get the filter
-        for entry in fluxes_table:
-            # Get the filter
-            filter_id = entry["Instrument"] + "." + entry["Band"]
-            filter_names.append(filter_id)
-
-        # Scheduling options
-        scheduling_options = None
-
-        # Analysis options
-        analysis_options = AnalysisOptions()
-
-        # Set options for extraction
-        analysis_options.extraction.path = self.analysis_extr_path
-        analysis_options.extraction.progress = True
-        analysis_options.extraction.timeline = True
-
-        # Set options for plotting
-        analysis_options.plotting.path = self.analysis_plot_path
-        analysis_options.plotting.progress = True
-        analysis_options.plotting.timeline = True
-        analysis_options.plotting.seds = True
-        analysis_options.plotting.grids = True
-        analysis_options.plotting.reference_sed = filesystem.join(self.phot_path, "fluxes.dat")
-
-        # Set miscellaneous options
-        analysis_options.misc.path = self.analysis_misc_path
-        analysis_options.misc.rgb = True
-        analysis_options.misc.wave = True
-        analysis_options.misc.fluxes = True
-        analysis_options.misc.images = True
-        analysis_options.misc.observation_filters = filter_names
-
         # Create the SKIRT arguments object
         arguments = SkirtArguments()
 
@@ -411,8 +576,26 @@ class BestModelLauncher(AnalysisComponent):
         arguments.input_path = self.analysis_in_path
         arguments.output_path = self.analysis_out_path
         arguments.logging.verbose = True
+        arguments.logging.memory = True
+
+        # Set the parallelization options
+        arguments.parallel.processes = self.parallelization.processes
+        arguments.parallel.threads = self.parallelization.threads
+
+        # Debugging: save the screen output in a text file
+        remote_skirt_dir_path = self.remote.skirt_dir
+        remote_skirt_run_debug_path = fs.join(remote_skirt_dir_path, "run-debug")
+        if not self.remote.is_directory(remote_skirt_run_debug_path): self.remote.create_directory(remote_skirt_run_debug_path)
+        screen_output_path = fs.join(remote_skirt_run_debug_path, time.unique_name("screen") + ".txt")
 
         # Run the simulation
-        simulation = self.remote.run(arguments, scheduling_options=scheduling_options, analysis_options=analysis_options)
+        simulation = self.remote.run(arguments, scheduling_options=self.scheduling_options,
+                                     analysis_options=self.analysis_options, screen_output_path=screen_output_path)
+
+        # Set the retrieve types
+        simulation.retrieve_types = ["log", "sed", "image-total"]
+
+        # Save the simulation file
+        simulation.save()
 
 # -----------------------------------------------------------------

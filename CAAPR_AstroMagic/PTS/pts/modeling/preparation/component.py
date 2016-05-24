@@ -14,7 +14,8 @@ from __future__ import absolute_import, division, print_function
 
 # Import the relevant PTS classes and modules
 from ..core.component import ModelingComponent
-from ...core.tools import filesystem, tables
+from ...core.tools import tables
+from ...core.tools import filesystem as fs
 
 # -----------------------------------------------------------------
 
@@ -37,20 +38,17 @@ class PreparationComponent(ModelingComponent):
 
         # -- Attributes --
 
-        # The path to the info file
-        self.info_path = None
-
         # The names of the different images for the preparation components
-        self.prep_names = {}
+        self.prep_names = dict()
 
         # The original names of the different images, based on the preparation names
-        self.original_names = {}
+        self.original_names = dict()
 
         # The paths to the preparation subdirectories for each image
-        self.prep_paths = {}
+        self.prep_paths = dict()
 
         # The original paths of the different images
-        self.original_paths = {}
+        self.original_paths = dict()
 
     # -----------------------------------------------------------------
 
@@ -67,11 +65,11 @@ class PreparationComponent(ModelingComponent):
         # Set the output path (= the preparation directory)
         self.config.output_path = self.prep_path
 
-        # Set the info path
-        self.info_path = filesystem.join(self.data_path, "info.dat")
+        # Determine the path to the preparation info table
+        info_path = fs.join(self.prep_path, "prep_info.dat")
 
-        # Load the info file
-        info = tables.from_file(self.info_path)
+        # Load the info table
+        info = tables.from_file(info_path, format="ascii.ecsv")
 
         # Set the image names
         for i in range(len(info)):
@@ -82,10 +80,10 @@ class PreparationComponent(ModelingComponent):
 
             self.prep_names[original_name] = prep_name
             self.original_names[prep_name] = original_name
-            self.prep_paths[prep_name] = filesystem.join(self.prep_path, prep_name)
+            self.prep_paths[prep_name] = fs.join(self.prep_path, prep_name)
             self.original_paths[prep_name] = original_path
 
         # Create the preparation subdirectories for each image
-        filesystem.create_directories(self.prep_paths.values())
+        fs.create_directories(self.prep_paths.values())
 
 # -----------------------------------------------------------------

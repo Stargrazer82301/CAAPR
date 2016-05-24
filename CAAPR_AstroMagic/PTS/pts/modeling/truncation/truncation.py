@@ -21,12 +21,12 @@ from ...magic.core.frame import Frame
 from ...magic.basics.skyregion import SkyRegion
 from ...magic.basics.mask import Mask
 from .component import TruncationComponent
-from ...core.tools import filesystem
+from ...core.tools import filesystem as fs
 from ...core.tools.logging import log
 
 # -----------------------------------------------------------------
 
-# TODO: also crop the FITS files to the bounding box of the disk ellipse
+# TODO: also crop the FITS files to the bounding box of the disk ellipse?
 
 # -----------------------------------------------------------------
 
@@ -101,7 +101,7 @@ class Truncator(TruncationComponent):
         # 4. Truncate the images
         self.truncate()
 
-        # 7. Writing
+        # 5. Writing
         self.write()
 
     # -----------------------------------------------------------------
@@ -129,17 +129,17 @@ class Truncator(TruncationComponent):
         log.info("Loading the images ...")
 
         # Loop over all directories in the preparation directory
-        for directory_path, directory_name in filesystem.directories_in_path(self.prep_path, returns=["path", "name"]):
+        for directory_path, directory_name in fs.directories_in_path(self.prep_path, returns=["path", "name"]):
 
             # Look for a file called 'result.fits'
-            image_path = filesystem.join(directory_path, "result.fits")
-            if not filesystem.is_file(image_path):
+            image_path = fs.join(directory_path, "result.fits")
+            if not fs.is_file(image_path):
                 log.warning("Prepared image could not be found for " + directory_name)
                 continue
 
             # If the truncated image is already present, skip it
-            truncated_path = filesystem.join(self.truncation_path, directory_name + ".fits")
-            if filesystem.is_file(truncated_path): continue
+            truncated_path = fs.join(self.truncation_path, directory_name + ".fits")
+            if fs.is_file(truncated_path): continue
 
             # Open the prepared image
             image = Image.from_file(image_path)
@@ -151,15 +151,15 @@ class Truncator(TruncationComponent):
             self.images.append(image)
 
         # Load the disk image
-        disk_path = filesystem.join(self.components_path, "disk.fits")
+        disk_path = fs.join(self.components_path, "disk.fits")
         self.disk = Frame.from_file(disk_path)
 
         # Load the bulge image
-        bulge_path = filesystem.join(self.components_path, "bulge.fits")
+        bulge_path = fs.join(self.components_path, "bulge.fits")
         self.bulge = Frame.from_file(bulge_path)
 
         # Load the model image
-        model_path = filesystem.join(self.components_path, "model.fits")
+        model_path = fs.join(self.components_path, "model.fits")
         self.model = Frame.from_file(model_path)
 
     # -----------------------------------------------------------------
@@ -171,8 +171,11 @@ class Truncator(TruncationComponent):
         :return:
         """
 
+        # Inform the user
+        log.info("Loading the region that describes the projected disk component ...")
+
         # Get the path to the disk region
-        path = filesystem.join(self.components_path, "disk.reg")
+        path = fs.join(self.components_path, "disk.reg")
 
         # Open the region
         region = SkyRegion.from_file(path)
@@ -255,21 +258,34 @@ class Truncator(TruncationComponent):
         :return:
         """
 
+        # Inform the user
+        log.info("Writing the truncated images ...")
+
         # Loop over all images
         for image in self.images:
 
             # Determine the path to the truncated image
-            truncated_path = filesystem.join(self.truncation_path, image.name + ".fits")
+            truncated_path = fs.join(self.truncation_path, image.name + ".fits")
+
+            # Debugging
+            log.debug("Writing the truncated " + image.name + " image to '" + truncated_path + "' ...")
 
             # Save the image
             image.save(truncated_path)
 
-        # Write the bulge, disk and total model images
-        disk_path = filesystem.join(self.truncation_path, "disk.fits")
+        # Write the disk image
+        disk_path = fs.join(self.truncation_path, "disk.fits")
+        log.debug("Writing the truncated disk image to '" + disk_path + "' ...")
         self.disk.save(disk_path)
-        bulge_path = filesystem.join(self.truncation_path, "bulge.fits")
+
+        # Write the bulge image
+        bulge_path = fs.join(self.truncation_path, "bulge.fits")
+        log.debug("Writing the truncated bulge image to '" + bulge_path + "' ...")
         self.bulge.save(bulge_path)
-        model_path = filesystem.join(self.truncation_path, "model.fits")
+
+        # Write the model image
+        model_path = fs.join(self.truncation_path, "model.fits")
+        log.debug("Writing the truncated model image to '" + model_path + "' ...")
         self.model.save(model_path)
 
 # -----------------------------------------------------------------

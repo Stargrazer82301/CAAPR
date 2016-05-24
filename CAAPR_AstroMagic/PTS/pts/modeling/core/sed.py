@@ -128,25 +128,21 @@ class ObservedSED(object):
         # Create a new observed SED
         sed = cls()
 
-        # Open the SED table (does not work (anymore), does not see the values as floats but as strings!!)
-        #sed.table = tables.from_file(path, format="ascii.commented_header")
-        #sed.table["Wavelength"].unit = Unit("micron")
-        #sed.table["Flux"].unit = Unit("Jy")
-        #sed.table["Error-"].unit = Unit("Jy")
-        #sed.table["Error+"].unit = Unit("Jy")
 
-        names = ["Observatory", "Instrument", "Band", "Wavelength", "Flux", "Error-", "Error+"]
-        #dtypes = [str, str, str, float, float, float, float]
-        observatory_column, instrument_column, band_column, wavelength_column, flux_column, error_min_column, error_plus_column = np.loadtxt(path, unpack=True, dtype=str)
-        wavelength_column = wavelength_column.astype(float)
-        flux_column = flux_column.astype(float)
-        error_min_column = error_min_column.astype(float)
-        error_plus_column = error_plus_column.astype(float)
-        sed.table = tables.new([observatory_column, instrument_column, band_column, wavelength_column, flux_column, error_min_column, error_plus_column], names)
-        sed.table["Wavelength"].unit = "micron"
-        sed.table["Flux"].unit = "Jy"
-        sed.table["Error-"].unit = "Jy"
-        sed.table["Error+"].unit = "Jy"
+        #names = ["Observatory", "Instrument", "Band", "Wavelength", "Flux", "Error-", "Error+"]
+        #observatory_column, instrument_column, band_column, wavelength_column, flux_column, error_min_column, error_plus_column = np.loadtxt(path, unpack=True, dtype=str)
+        #wavelength_column = wavelength_column.astype(float)
+        #flux_column = flux_column.astype(float)
+        #error_min_column = error_min_column.astype(float)
+        #error_plus_column = error_plus_column.astype(float)
+        #sed.table = tables.new([observatory_column, instrument_column, band_column, wavelength_column, flux_column, error_min_column, error_plus_column], names)
+        #sed.table["Wavelength"].unit = "micron"
+        #sed.table["Flux"].unit = "Jy"
+        #sed.table["Error-"].unit = "Jy"
+        #sed.table["Error+"].unit = "Jy"
+
+        # New
+        sed.table = tables.from_file(path, format="ascii.ecsv")
 
         # Return the observed SED
         return sed
@@ -372,7 +368,7 @@ class ObservedSED(object):
         self.table.sort("Wavelength")
 
         # Write the observed SED
-        tables.write(self.table, path)
+        tables.write(self.table, path, format="ascii.ecsv")
 
 # -----------------------------------------------------------------
 
@@ -450,21 +446,51 @@ class SED(object):
     # -----------------------------------------------------------------
 
     @classmethod
-    def from_file(cls, path, skiprows=0):
+    def from_file(cls, path):
 
         """
         This function ...
         :param path:
-        :param skiprows:
         :return:
         """
 
         # Create a new SED
         sed = cls()
 
-        # From SKIRT:
+        # New
+        sed.table = tables.from_file(path, format="ascii.ecsv")
+
+        # Return the SED
+        return sed
+
+    # -----------------------------------------------------------------
+
+    @classmethod
+    def from_skirt(cls, path, skiprows=0, contribution="total"):
+
+        """
+        This function ...
+        :param path:
+        :param skiprows:
+        :param contribution:
+        :return:
+        """
+
+        # Create a new SED
+        sed = cls()
+
+        # SEDInstrument:
         # column 1: lambda (micron)
         # column 2: total flux; lambda*F_lambda (W/m2)
+
+        # From FullInstrument:
+        # column 1: lambda (micron)
+        # column 2: total flux; lambda*F_lambda (W/m2)
+        # column 3: direct stellar flux; lambda*F_lambda (W/m2)
+        # column 4: scattered stellar flux; lambda*F_lambda (W/m2)
+        # column 5: total dust emission flux; lambda*F_lambda (W/m2)
+        # column 6: dust emission scattered flux; lambda*F_lambda (W/m2)
+        # column 7: transparent flux; lambda*F_lambda (W/m2)
 
         from ..preparation import unitconversion
 
@@ -473,7 +499,16 @@ class SED(object):
         #sed.table.rename_column("col1", "Wavelength")
         #sed.table.rename_column("col2", "Flux")
 
-        wavelength_column, flux_column = np.loadtxt(path, dtype=float, unpack=True, skiprows=skiprows)
+        if contribution == "total": columns = (0,1)
+        elif contribution == "direct": columns = (0,2)
+        elif contribution == "scattered": columns = (0,3)
+        elif contribution == "dust": columns = (0,4)
+        elif contribution == "dustscattered": columns = (0,5)
+        elif contribution == "transparent": columns = (0,6)
+        else: raise ValueError("Wrong value for 'contribution': should be 'total', 'direct', 'scattered', 'dust', 'dustscattered' or 'transparent'")
+
+        wavelength_column, flux_column = np.loadtxt(path, dtype=float, unpack=True, skiprows=skiprows, usecols=columns)
+
         sed.table = tables.new([wavelength_column, flux_column], ["Wavelength", "Flux"])
         sed.table["Wavelength"].unit = Unit("micron")
 
@@ -511,6 +546,6 @@ class SED(object):
         """
 
         # Write the SED table to file
-        tables.write(self.table, path)
+        tables.write(self.table, path, format="ascii.ecsv")
 
 # -----------------------------------------------------------------

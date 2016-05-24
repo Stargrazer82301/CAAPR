@@ -14,7 +14,10 @@ from __future__ import absolute_import, division, print_function
 
 # Import the relevant PTS classes and modules
 from ..core.component import ModelingComponent
-from ...core.tools import filesystem, tables
+from ...core.tools import filesystem as fs
+from ...core.tools import tables
+from ...core.launch.timing import TimingTable
+from ...core.launch.memory import MemoryTable
 
 # -----------------------------------------------------------------
 
@@ -37,6 +40,9 @@ class FittingComponent(ModelingComponent):
 
         # -- Attributes --
 
+        # The names of the fit parameters
+        self.parameter_names = ["FUV young", "FUV ionizing", "Dust mass"]
+
         # The path to the fit/in directory
         self.fit_in_path = None
 
@@ -52,6 +58,9 @@ class FittingComponent(ModelingComponent):
         # The path to the fit/best directory
         self.fit_best_path = None
 
+        # The path to the fit/prob directory
+        self.fit_prob_path = None
+
         # The path to the ski file
         self.fit_ski_path = None
 
@@ -64,8 +73,17 @@ class FittingComponent(ModelingComponent):
         # The path to the weights table
         self.weights_table_path = None
 
-        # The path to the runtime table
-        self.runtime_table_path = None
+        # The path to the timing table
+        self.timing_table_path = None
+
+        # The path to the memory table
+        self.memory_table_path = None
+
+        # The path to the scripts directory
+        self.fit_scripts_path = None
+
+        # The paths to the probability distribution tables
+        self.distribution_table_paths = dict()
 
     # -----------------------------------------------------------------
 
@@ -83,56 +101,87 @@ class FittingComponent(ModelingComponent):
         self.config.output_path = self.fit_path
 
         # Set the path to the fit/in directory
-        self.fit_in_path = filesystem.join(self.fit_path, "in")
+        self.fit_in_path = fs.join(self.fit_path, "in")
 
         # Set the path to the fit/out directory
-        self.fit_out_path = filesystem.join(self.fit_path, "out")
+        self.fit_out_path = fs.join(self.fit_path, "out")
 
         # Set the path to the fit/res directory
-        self.fit_res_path = filesystem.join(self.fit_path, "res")
+        self.fit_res_path = fs.join(self.fit_path, "res")
 
         # Set the path to the fit/plot directory
-        self.fit_plot_path = filesystem.join(self.fit_path, "plot")
+        self.fit_plot_path = fs.join(self.fit_path, "plot")
 
         # Set the path to the fit/best directory
-        self.fit_best_path = filesystem.join(self.fit_path, "best")
+        self.fit_best_path = fs.join(self.fit_path, "best")
 
-        # Create the fit/in, fit/out, fit/res, fit/plot and fit/best directories
-        filesystem.create_directories([self.fit_in_path, self.fit_out_path, self.fit_res_path, self.fit_plot_path, self.fit_best_path])
+        # Set the path to the fit/prob directory
+        self.fit_prob_path = fs.join(self.fit_path, "prob")
+
+        # Create the fit/in, fit/out, fit/res, fit/plot, fit/best and fit/prob directories
+        fs.create_directories([self.fit_in_path, self.fit_out_path, self.fit_res_path, self.fit_plot_path, self.fit_best_path, self.fit_prob_path])
+
+        # Set the path to the fit/scripts directory
+        self.fit_scripts_path = fs.join(self.fit_path, "scripts")
+
+        # Create the fit/scripts directory
+        if not fs.is_directory(self.fit_scripts_path): fs.create_directory(self.fit_scripts_path)
 
         # Set the path to the parameter file
-        self.parameter_table_path = filesystem.join(self.fit_path, "parameters.dat")
+        self.parameter_table_path = fs.join(self.fit_path, "parameters.dat")
+
+        # Initialize the parameter file if that hasn't been done yet
+        if not fs.is_file(self.parameter_table_path):
+
+            # Create the table
+            names = ["Simulation name", "FUV young", "FUV ionizing", "Dust mass"]
+            data = [[], [], [], []]
+            dtypes = ["S24", "float64", "float64", "float64"]
+            table = tables.new(data, names, dtypes=dtypes)
+
+            # Create the (empty) table
+            tables.write(table, self.parameter_table_path, format="ascii.ecsv")
 
         # Determine the path to the ski file
-        self.fit_ski_path = filesystem.join(self.fit_path, self.galaxy_name + ".ski")
+        self.fit_ski_path = fs.join(self.fit_path, self.galaxy_name + ".ski")
 
         # Set the path to the chi squared table file
-        self.chi_squared_table_path = filesystem.join(self.fit_path, "chi_squared.dat")
+        self.chi_squared_table_path = fs.join(self.fit_path, "chi_squared.dat")
 
         # Initialize the chi squared file if that hasn't been done yet
-        if not filesystem.is_file(self.chi_squared_table_path):
+        if not fs.is_file(self.chi_squared_table_path):
 
-            # Initialize
+            # Create the table
             names = ["Simulation name", "Chi squared"]
             data = [[], []]
             dtypes = ["S24", "float64"]
             table = tables.new(data, names, dtypes=dtypes)
-            tables.write(table, self.chi_squared_table_path)
+
+            # Write the (empty) table
+            tables.write(table, self.chi_squared_table_path, format="ascii.ecsv")
 
         # Set the path to the weights table file
-        self.weights_table_path = filesystem.join(self.fit_path, "weights.dat")
+        self.weights_table_path = fs.join(self.fit_path, "weights.dat")
 
-        # Set the path to the runtime table file
-        self.runtime_table_path = filesystem.join(self.fit_path, "runtimes.dat")
+        # Set the path to the timing table file
+        self.timing_table_path = fs.join(self.fit_path, "timing.dat")
 
-        # Initialize the runtime file if that hasn't been done yet
-        if not filesystem.is_file(self.runtime_table_path):
+        # Initialize the timing table
+        timing_table = TimingTable(self.timing_table_path)
 
-            # Initialize
-            names = ["Simulation name", "Remote host", "Processes", "Threads", "Packages", "Runtime"]
-            data = [[], [], [], [], [], []]
-            dtypes = ["S24", "S15", "int64", "int64", "int64", "float64"]
-            table = tables.new(data, names, dtypes=dtypes)
-            tables.write(table, self.runtime_table_path)
+        # Set the path to the memory table file
+        self.memory_table_path = fs.join(self.fit_path, "memory.dat")
+
+        # Initialize the memory table
+        memory_table = MemoryTable(self.memory_table_path)
+
+        # Set the paths to the probability distribution tables
+        for parameter_name in self.parameter_names:
+
+            # Determine the path to the table
+            path = fs.join(self.fit_prob_path, parameter_name.lower() + ".dat")
+
+            # Set the path
+            self.distribution_table_paths[parameter_name] = path
 
 # -----------------------------------------------------------------

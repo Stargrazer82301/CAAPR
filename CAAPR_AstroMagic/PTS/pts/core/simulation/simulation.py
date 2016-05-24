@@ -530,6 +530,10 @@ class RemoteSimulation(SkirtSimulation):
 
         # -- Attributes --
 
+        # Properties of the remote host on which the simulation was run
+        self.host_id = None
+        self.cluster_name = None
+
         # The simulation file path
         self.path = None
 
@@ -548,14 +552,18 @@ class RemoteSimulation(SkirtSimulation):
         # The options for analysing the simulation output
         self.analysis = AnalysisOptions()
 
+        # The parallelization properties
+        self.parallelization = None
+
         # Options for removing remote or local input and output
         self.remove_remote_input = True                 # After retrieval
         self.remove_remote_output = True                # After retrieval
         self.remove_remote_simulation_directory = True  # After retrieval
         self.remove_local_output = False                # After analysis
 
-        # Screen session name
+        # Screen session name and remote screen output path
         self.screen_name = None
+        self.remote_screen_output_path = None
 
         # Flag indicating whether this simulation has been retrieved or not
         self.retrieved = False
@@ -582,6 +590,18 @@ class RemoteSimulation(SkirtSimulation):
 
         # Return the simulation object
         return simulation
+
+    # -----------------------------------------------------------------
+
+    @property
+    def from_batch(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.analysis.timing_table_path is not None or self.analysis.memory_table_path is not None
 
     # -----------------------------------------------------------------
 
@@ -628,13 +648,16 @@ class RemoteSimulation(SkirtSimulation):
     def set_analysis_options(self, options):
 
         """
-        This function allows setting the analysi options from a dictionary
+        This function allows setting the analysis options from a dictionary (or an actual AnalysisOptions object)
         :param options:
         :return:
         """
 
+        # If the options is an actual AnalysisOptions object, set the analysis attribute directly
+        if isinstance(options, AnalysisOptions): self.analysis = options
+
         # Load the options into the AnalysisOptions object
-        self.analysis.set_options(options)
+        else: self.analysis.set_options(options)
 
     # -----------------------------------------------------------------
 

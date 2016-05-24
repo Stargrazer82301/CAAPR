@@ -205,17 +205,17 @@ class Filter:
         irac_i4_names = ["IRAC.I4", "IRAC I4", "IRAC 8.0", "IRAC 8.0um", "IRAC 8.0mu", "I4", "IRAC4", "IRAC-4", "the IRAC-4 band"]
         wise_w1_names = ["WISE.W1", "WISE W1", "W1", "WISE1", "WISE-1", "the WISE-1 band", "w1"]
         wise_w2_names = ["WISE.W2", "WISE W2", "W2", "WISE2", "WISE-2", "the WISE-2 band", "w2"]
-        wise_w3_names = ["WISE.W3", "wISE W3", "W3", "WISE3", "WISE-3", "the WISE-3 band", "w3"]
+        wise_w3_names = ["WISE.W3", "WISE W3", "W3", "WISE3", "WISE-3", "the WISE-3 band", "w3"]
         wise_w4_names = ["WISE.W4", "WISE W4", "W4", "WISE4", "WISE-4", "the WISE-4 band", "w4"]
         mips_24_names = ["MIPS.24mu", "MIPS.24um", "MIPS.24", "MIPS 24mu", "MIPS 24um", "MIPS 24", "24mu", "24um", "MIPS-24", "the MIPS-24 band"]
         mips_70_names = ["MIPS.70mu", "MIPS.70um", "MIPS.70", "MIPS 70mu", "MIPS 70um", "MIPS 70", "MIPS-70", "the MIPS-70 band"]
         mips_160_names = ["MIPS.160mu", "MIPS.160um", "MIPS.160", "MIPS 160mu", "MIPS 160um", "MIPS 160", "MIPS-160", "the MIPS-160 band"]
-        pacs_blue_names = ["Pacs.blue", "PACS.BLUE", "PACS blue", "PACS BLUE", "Pacs 70mu", "Pacs 70um", "PACS 70mu", "PACS 70um", "PACS-70", "the PACS-70 band", "Pacs 70"]
-        pacs_green_names = ["Pacs.green", "PACS.GREEN", "PACS green", "PACS GREEN", "Pacs 100mu", "Pacs 100um", "PACS 100mu", "PACS 100um", "PACS-100", "the PACS-100 band", "Pacs 100"]
-        pacs_red_names = ["Pacs.red", "PACS.RED", "PACS red", "PACS RED", "Pacs 160mu", "Pacs 160um", "PACS 160mu", "PACS 160um", "PACS-160", "the PACS-160 band", "Pacs 160"]
-        spire_psw_names = ["SPIRE.PSW", "SPIRE PSW", "SPIRE 250mu", "SPIRE 250um", "SPIRE-250", "the SPIRE-250 band", "SPIRE.PSW_ext", "SPIRE 250"]
-        spire_pmw_names = ["SPIRE.PMW", "SPIRE PMW", "SPIRE 350mu", "SPIRE 350um", "SPIRE-350", "the SPIRE-250 band", "SPIRE.PMW_ext", "SPIRE 350"]
-        spire_plw_names = ["SPIRE.PLW", "SPIRE PLW", "SPIRE 500mu", "SPIRE 500um", "SPIRE-500", "the SPIRE-500 band", "SPIRE.PLW_ext", "SPIRE 500"]
+        pacs_blue_names = ["Pacs.blue", "PACS.BLUE", "PACS blue", "PACS BLUE", "Pacs 70mu", "Pacs 70um", "PACS 70mu", "PACS 70um", "PACS-70", "the PACS-70 band", "Pacs 70", "Pacs blue"]
+        pacs_green_names = ["Pacs.green", "PACS.GREEN", "PACS green", "PACS GREEN", "Pacs 100mu", "Pacs 100um", "PACS 100mu", "PACS 100um", "PACS-100", "the PACS-100 band", "Pacs 100", "Pacs green"]
+        pacs_red_names = ["Pacs.red", "PACS.RED", "PACS red", "PACS RED", "Pacs 160mu", "Pacs 160um", "PACS 160mu", "PACS 160um", "PACS-160", "the PACS-160 band", "Pacs 160", "Pacs red"]
+        spire_psw_names = ["SPIRE.PSW", "SPIRE PSW", "SPIRE 250mu", "SPIRE 250um", "SPIRE-250", "the SPIRE-250 band", "SPIRE.PSW_ext", "SPIRE 250", "SPIRE PSW_ext"]
+        spire_pmw_names = ["SPIRE.PMW", "SPIRE PMW", "SPIRE 350mu", "SPIRE 350um", "SPIRE-350", "the SPIRE-250 band", "SPIRE.PMW_ext", "SPIRE 350", "SPIRE PMW_ext"]
+        spire_plw_names = ["SPIRE.PLW", "SPIRE PLW", "SPIRE 500mu", "SPIRE 500um", "SPIRE-500", "the SPIRE-500 band", "SPIRE.PLW_ext", "SPIRE 500", "SPIRE PLW_ext"]
 
         # Generic filters
         johnson_u_names = ["Johnson U", "U"]
@@ -231,7 +231,12 @@ class Filter:
         iras_100_names = ["IRAS 100", "IRAS 100", "IRAS.100um", "IRAS 100um", "IRAS.100mu", "IRAS 100mu"]
 
         # Ha
-        ha_names = ["Ha", "H alpha", "H-alpha", "H-a"]
+        ha_names = ["Ha", "H alpha", "H-alpha", "H-a", "Halpha"]
+
+        # SWIFT UVOT filters
+        uvot_uvw2_names = ["UVOT W2", "UVW2", "W2", "Swift W2", "SWIFT W2"]
+        uvot_uvm2_names = ["UVOT M2", "UVM2", "M2", "Swift M2", "SWIFT M2"]
+        uvot_uvw1_names = ["UVOT W1", "UVW1", "W1", "Swift W1", "SWIFT W1"]
 
         # Select the right filter
         if name in galex_fuv_names: return cls("GALEX.FUV")
@@ -271,6 +276,9 @@ class Filter:
         elif name in iras_60_names: return cls("IRAS.60mu")
         elif name in iras_100_names: return cls("IRAS.100mu")
         elif name in ha_names: return cls("Halpha")
+        elif name in uvot_uvw2_names: return cls("UVOT.UVW2")
+        elif name in uvot_uvm2_names: return cls("UVOT.UVM2")
+        elif name in uvot_uvw1_names: return cls("UVOT.UVW1")
         else: raise ValueError("No corresponding filter found")
 
     @classmethod
@@ -304,6 +312,30 @@ class Filter:
         else: raise ValueError("The band " +  self.name + " is not defined in SKIRT")
 
     @property
+    def aniano_name(self): # Returns the name as appearing in the Aniano kernel and psf FITS files
+
+        if self.name == "GALEX.FUV": return "GALEX_FUV"
+        elif self.name == "GALEX.NUV": return "GALEX_NUV"
+        elif self.name == "IRAC.I1": return "IRAC_3.6"
+        elif self.name == "IRAC.I2": return "IRAC_4.5"
+        elif self.name == "IRAC.I3": return "IRAC_5.8"
+        elif self.name == "IRAC.I4": return "IRAC_8.0"
+        elif self.name == "WISE.W1": return "WISE_FRAME_3.4"
+        elif self.name == "WISE.W2": return "WISE_FRAME_4.6"
+        elif self.name == "WISE.W3": return "WISE_FRAME_11.6"
+        elif self.name == "WISE.W4": return "WISE_FRAME_22.1"
+        elif self.name == "MIPS.24mu": return "MIPS_24"
+        elif self.name == "MIPS.70mu": return "MIPS_70"
+        elif self.name == "MIPS.160mu": return "MIPS_160"
+        elif self.name == "Pacs.blue": return "PACS_70"
+        elif self.name == "Pacs.green": return "PACS_100"
+        elif self.name == "Pacs.red": return "PACS_160"
+        elif self.name == "SPIRE.PSW_ext": return "SPIRE_250"
+        elif self.name == "SPIRE.PMW_ext": return "SPIRE_350"
+        elif self.name == "SPIRE.PLW_ext": return "SPIRE_500"
+        else: raise ValueError("The band " + self.name + " is not defined for the Aniano set of kernels")
+
+    @property
     def name(self): return self._FilterID.split("/")[1]
 
     @property
@@ -313,7 +345,10 @@ class Filter:
     def instrument(self): return self._FilterID.split("/")[1].split(".")[0]
 
     @property
-    def band(self): return self._FilterID.split("/")[1].split(".")[1]
+    def band(self): return self._FilterID.split("/")[1].split(".")[1].replace("_ext", "")
+
+    ## This function returns the filter in string format ('instrument' 'band')
+    def __str__(self): return self.instrument + " " + self.band
 
     ## This function returns a unique identifier for the filter.
     def filterID(self):
@@ -427,10 +462,8 @@ class Filter:
         T = np.exp(np.interp(np.log(w), np.log(wb), _log(self._Transmission), left=0., right=0.))
 
         # perform the integration
-        if self._PhotonCounter:
-            return np.trapz(x=w, y=w * F * T) / self._IntegratedTransmission
-        else:
-            return np.trapz(x=w, y=F * T) / self._IntegratedTransmission
+        if self._PhotonCounter: return np.trapz(x=w, y=w * F * T)
+        else: return np.trapz(x=w, y=F * T)
 
 ## This private helper function returns the natural logarithm for positive values, and a large negative number
 # (but not infinity) for zero or negative values.

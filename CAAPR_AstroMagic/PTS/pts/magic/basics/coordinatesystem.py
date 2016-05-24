@@ -134,7 +134,7 @@ class CoordinateSystem(wcs.WCS):
         x_pixelscale = abs(pixelscale.x.to("arcsec/pix"))
         y_pixelscale = abs(pixelscale.y.to("arcsec/pix"))
 
-        if not np.isclose(x_pixelscale.value, y_pixelscale.value, rtol=0.0005):
+        if not np.isclose(x_pixelscale.value, y_pixelscale.value, rtol=0.001):
             log.warning("Averaging the pixelscale over the x and y direction may not be a good approximation:")
             log.warning("  * x pixelscale (absolute value) = " + str(x_pixelscale))
             log.warning("  * y pixelscale (absolute value) = " + str(y_pixelscale))
@@ -191,6 +191,39 @@ class CoordinateSystem(wcs.WCS):
         """
 
         return (self.pixel_scale_matrix[0,0] >= 0) == (self.pixel_scale_matrix[1,1] >= 0)
+
+    # -----------------------------------------------------------------
+
+    def __eq__(self, other_wcs):
+
+        """
+        This function ...
+        :param other_wcs:
+        :return:
+        """
+
+        # Check whether the CRPIX is equal
+        if not self.wcs.crpix[0] == other_wcs.wcs.crpix[0]: return False
+        if not self.wcs.crpix[1] == other_wcs.wcs.crpix[1]: return False
+
+        # Check whether the pixel scale is equal
+        for element_self, element_other in zip(list(self.pixel_scale_matrix.flatten()), list(other_wcs.pixel_scale_matrix.flatten())):
+            #print(element_self, element_other)
+            if not element_self == element_other: return False
+
+        # Check whether the CRVAL is equal
+        if not self.wcs.crval[0] == other_wcs.wcs.crval[0]: return False
+        if not self.wcs.crval[1] == other_wcs.wcs.crval[1]: return False
+
+        # Check whether the number of axis is equal
+        if not self.naxis == other_wcs.naxis: return False
+
+        # Check whether the axis sizes are equal
+        if not self.naxis1 == other_wcs.naxis1: return False
+        if not self.naxis2 == other_wcs.naxis2: return False
+
+        # If all of the above tests succeeded, the coordinate systems may be considered equal
+        return True
 
     # -----------------------------------------------------------------
 
@@ -374,8 +407,6 @@ class CoordinateSystem(wcs.WCS):
 
         return alignment
 
-        #return ra_alignment, dec_alignment
-
     # -----------------------------------------------------------------
 
     @property
@@ -450,8 +481,12 @@ class CoordinateSystem(wcs.WCS):
 
         header = super(CoordinateSystem, self).to_header(relax, key)
 
-        header["NAXIS1"] = self._naxis1
-        header["NAXIS2"] = self._naxis2
+        #header["NAXIS1"] = self._naxis1
+        #header["NAXIS2"] = self._naxis2
+
+        # Add the cards to the beginning
+        header.insert(0, ("NAXIS2", self._naxis2))
+        header.insert(0, ("NAXIS1", self._naxis1))
 
         return header
 

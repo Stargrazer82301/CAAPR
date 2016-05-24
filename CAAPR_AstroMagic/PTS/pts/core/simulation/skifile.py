@@ -16,6 +16,7 @@ import os.path
 from datetime import datetime
 from lxml import etree
 from numpy import arctan
+import warnings
 
 # Import the relevant PTS classes and modules
 from .units import SkirtUnits
@@ -99,7 +100,7 @@ class SkiFile:
         # number of points directly from the tree) or a FileWavelengthGrid is used (in which case we raise an error)
         entry = self.tree.xpath("//wavelengthGrid/*[1]")[0]
         if entry.tag == 'FileWavelengthGrid':
-            raise ValueError("The number of wavelengths is not defined within the ski file. Call wavelengthsfile().")
+            raise ValueError("The number of wavelengths is not defined within the ski file. Call nwavelengthsfile().")
         else:
             return int(entry.get("points"))
 
@@ -108,6 +109,14 @@ class SkiFile:
         entry = self.tree.xpath("//FileWavelengthGrid")
         if entry: return entry[0].get("filename")
         else: return None
+
+    ## This function returns the number of wavelength points as defined in the wavelengths file
+    def nwavelengthsfile(self, input_path):
+        wavelengths_filename = self.wavelengthsfile()
+        wavelengths_path = os.path.join(input_path, wavelengths_filename)
+        with open(wavelengths_path, 'r') as f: first_line = f.readline()
+        nwavelengths = int(first_line.split("\n")[0])
+        return nwavelengths
 
     ## This function returns the number of photon packages per wavelength
     def packages(self):
@@ -259,6 +268,136 @@ class SkiFile:
 
         # Disable dust self-absorption
         dust_system.set("selfAbsorption", "false")
+
+    def enable_all_dust_system_writing_options(self):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Loop over all elements of the dust system
+        for element in dust_system.getiterator():
+
+            # Check if any of the settings of this element is a writing option
+            for setting_name, setting_value in element.items():
+
+                # Skip settings that are not writing settings
+                if not setting_name.startswith("write"): continue
+
+                # Set the setting to true
+                element.set(setting_name, "true")
+
+    def set_write_convergence(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeConvergence' setting to true
+        dust_system.set("writeConvergence", str_from_bool(value))
+
+    def set_write_density(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeDensity' setting to true
+        dust_system.set("writeDensity", str_from_bool(value))
+
+    def set_write_depth_map(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeDepthMap' setting to true
+        dust_system.set("writeDepthMap", str_from_bool(value))
+
+    def set_write_quality(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeQuality' setting to true
+        dust_system.set("writeQuality", str_from_bool(value))
+
+    def set_write_cell_properties(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeCellProperties' setting to true
+        dust_system.set("writeCellProperties", str_from_bool(value))
+
+    def set_write_stellar_density(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeStellarDensity' setting to true
+        dust_system.set("writeStellarDensity", str_from_bool(value))
+
+    def set_write_cells_crossed(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeCellsCrossed' setting to true
+        dust_system.set("writeCellsCrossed", str_from_bool(value))
+
+    def set_write_emissivity(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeEmissivity' setting to true
+        dust_system.set("writeEmissivity", str_from_bool(value))
+
+    def set_write_temperature(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeTemperature' setting to true
+        dust_system.set("writeTemperature", str_from_bool(value))
+
+    def set_write_isrf(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeISRF' setting to true
+        dust_system.set("writeISRF", str_from_bool(value))
+
+    def set_write_absorption(self, value=True):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Set the 'writeAbsorption' setting to true
+        dust_system.set("writeAbsorption", str_from_bool(value))
+
+    def set_write_grid(self, value=True):
+
+        # Get the dust grid
+        grid = self.get_dust_grid()
+
+        # Set the 'writeGrid' setting to true
+        grid.set("writeGrid", str_from_bool(value))
+
+    def disable_all_dust_system_writing_options(self):
+
+        # Get the dust system
+        dust_system = self.get_dust_system()
+
+        # Loop over all elements of the dust system
+        for element in dust_system.getiterator():
+
+            # Check if any of the settings of this element is a writing option
+            for setting_name, setting_value in element.items():
+
+                # Skip settings that are not writing settings
+                if not setting_name.startswith("write"): continue
+
+                # Set the setting to true
+                element.set(setting_name, "false")
 
     def enable_all_writing_options(self):
 
@@ -708,7 +847,85 @@ class SkiFile:
         # Invalid component id
         else: raise ValueError("Invalid component identifier (should be integer or string)")
 
-    ## This functino returns all properties of the stellar component with the specified id
+    ## This functions removes the stellar component with the specified ID
+    def remove_stellar_component(self, component_id):
+
+        # Get the stellar component with the specified ID
+        component = self.get_stellar_component(component_id)
+
+        # Get the previous item
+        previous = component.getprevious()
+
+        # Get the parent
+        parent = component.getparent()
+
+        # Check whether the previous item is a comment
+        if previous.tag is etree.Comment:
+
+            # If the comment states the component ID, remove it
+            if previous.text.strip() == component_id: parent.remove(previous)
+
+            # If the comment preceeding the component does not have the name of that component (it must by definition),
+            # something strange is going on ...
+            else: raise ValueError("Something is wrong with the ski file")
+
+        # Remove the stellar component
+        parent.remove(component)
+
+    ## This function removes the dust component with the specified ID
+    def remove_dust_component(self, component_id):
+
+        # Get the dust component with the specified ID
+        component = self.get_dust_component(component_id)
+
+        # Get the previous item
+        previous = component.getprevious()
+
+        # Get the parent
+        parent = component.getparent()
+
+        # Check whether the previous item is a comment
+        if previous.tag is etree.Comment:
+
+            # If the comment states the component ID, remove it
+            if previous.text.strip() == component_id: parent.remove(previous)
+
+            # If the comment preceeding the component does not have the name of that component (it must by definition),
+            # something strange is going on ...
+            else: raise ValueError("Something is wrong with the ski file")
+
+        # Remove the dust component
+        parent.remove(component)
+
+    ## This function removes the stellar components except for the component(s) with the specified ID(s)
+    def remove_stellar_components_except(self, component_ids):
+
+        if isinstance(component_ids, basestring): component_ids = [component_ids]
+
+        # Loop over the stellar component IDs
+        for id_i in self.get_stellar_component_ids():
+
+            # Skip IDs that are specified by the user
+            if id_i in component_ids: continue
+
+            # Remove all other stellar components
+            self.remove_stellar_component(id_i)
+
+    ## This function removes the dust components except for the component(s) with the specified ID(s)
+    def remove_dust_components_except(self, component_ids):
+
+        if isinstance(component_ids, basestring): component_ids = [component_ids]
+
+        # Loop over the stellar component IDs
+        for id_i in self.get_dust_component_ids():
+
+            # Skip IDs that are specified by the user
+            if id_i in component_ids: continue
+
+            # Remove all other dust components
+            self.remove_dust_component(id_i)
+
+    ## This function returns all properties of the stellar component with the specified id
     def get_stellar_component_properties(self, component_id):
 
         # Get the stellar component
@@ -761,7 +978,7 @@ class SkiFile:
         elif normalization.tag == "LuminosityStellarCompNormalization":
 
             # Return the luminosity and the corresponding band
-            return get_quantity(normalization, "luminosity", default_unit="Lsun"), Filter.from_string(normalization.get("band"))
+            return get_quantity(normalization, "luminosity"), Filter.from_string(normalization.get("band"))
 
         elif normalization.tag == "SpectralLuminosityStellarCompNormalization":
 
@@ -802,7 +1019,7 @@ class SkiFile:
             parent.remove(normalization)
 
             # Make and add the new normalization element
-            attrs = {"luminosity" : str_from_quantity(luminosity)}
+            attrs = {"luminosity" : str_from_quantity(luminosity, unit="Lsun")}
             parent.append(parent.makeelement("BolLuminosityStellarCompNormalization", attrs))
 
         # Filter is defined, use LuminosityStellarCompNormalization
@@ -815,7 +1032,7 @@ class SkiFile:
             parent.remove(normalization)
 
             # Make and add the new normalization element
-            attrs = {"luminosity": str_from_quantity(luminosity, unit="Lsun"), "band": filter_or_wavelength.skirt_description}
+            attrs = {"luminosity": str_from_quantity(luminosity), "band": filter_or_wavelength.skirt_description}
             parent.append(parent.makeelement("LuminosityStellarCompNormalization", attrs))
 
         # Wavelength is defined as an Astropy quantity, use SpectralLuminosityStellarCompNormalization
@@ -934,6 +1151,23 @@ class SkiFile:
                  "maxWavelengthSubGrid": str_from_quantity(max_lambda_sub), "pointsSubGrid": str(points_sub),
                  "writeWavelengths": str_from_bool(write)}
         parent.append(parent.makeelement("NestedLogWavelengthGrid", attrs))
+
+    ## This functions sets the wavelength grid to a LogWavelengthGrid
+    def set_log_wavelength_grid(self, min_lambda, max_lambda, points, write):
+
+        # Get the wavelength grid
+        wavelength_grid = self.get_wavelength_grid()
+
+        # Get the parent
+        parent = wavelength_grid.getparent()
+
+        # Remove the old wavelength grid
+        parent.remove(wavelength_grid)
+
+        # Make and add the new wavelength grid
+        attrs = {"minWavelength": str_from_quantity(min_lambda), "maxWavelength": str_from_quantity(max_lambda),
+                 "points": str(points), "writeWavelengths": str_from_bool(write)}
+        parent.append(parent.makeelement("LogWavelengthGrid", attrs))
 
     ## This function returns the geometry of the stellar component with the specified id
     def get_stellar_component_geometry(self, component_id):
@@ -1869,10 +2103,21 @@ def str_from_angle(angle):
 
 def str_from_quantity(quantity, unit=None):
 
-    if unit is not None: return str(quantity.to(unit).value)
+    if unit is not None:
 
-    to_string = str(quantity.value) + " " + str(quantity.unit).replace(" ", "")
-    return to_string.replace("solMass", "Msun").replace("solLum", "Lsun")
+        if not quantity.__class__.__name__ == "Quantity": raise ValueError("Value is not a quantity, so unit cannot be converted")
+        return str(quantity.to(unit).value)
+
+    elif quantity.__class__.__name__ == "Quantity":
+
+        to_string = str(quantity.value) + " " + str(quantity.unit).replace(" ", "")
+        return to_string.replace("solMass", "Msun").replace("solLum", "Lsun")
+
+    else:
+
+        warnings.warn("The given value is not a quantity but a scalar value. No guarantee can be given that the parameter value"
+                      "is specified in the correct unit")
+        return str(quantity)
 
 # -----------------------------------------------------------------
 

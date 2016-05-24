@@ -11,7 +11,7 @@
 from __future__ import absolute_import, division, print_function
 
 # Import astronomical units
-from astropy import units as u
+from astropy.units import Unit
 
 # -----------------------------------------------------------------
 
@@ -23,6 +23,6 @@ def parse(unit):
     :return:
     """
 
-    return u.Unit(unit)
+    return Unit(unit)
     
 # -----------------------------------------------------------------

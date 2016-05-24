@@ -48,6 +48,9 @@ class SourceFinder(Configurable):
         # The image frame
         self.frame = None
 
+        # The original WCS
+        self.original_wcs = None
+
         # The galactic and stellar catalog
         self.galactic_catalog = None
         self.stellar_catalog = None
@@ -56,6 +59,9 @@ class SourceFinder(Configurable):
         self.special_mask = None
         self.ignore_mask = None
         self.bad_mask = None
+
+        # The animation
+        self.animation = None
 
         # The output mask
         self.mask = None
@@ -87,6 +93,9 @@ class SourceFinder(Configurable):
             finder.config.catalogs.stars.use_catalog_file = True
             finder.config.catalogs.stars.catalog_path = "stars.cat"
 
+        # Set the downsample factor
+        if arguments.downsample is not None: finder.config.downsample_factor = arguments.downsample
+
         # Return the new instance
         return finder
 
@@ -100,7 +109,22 @@ class SourceFinder(Configurable):
         :return:
         """
 
+        if self.downsampled:
+            sky_region = self.galaxy_sky_region
+            return sky_region.to_pixel(self.original_wcs) if sky_region is not None else None
         return self.galaxy_finder.region
+
+    # -----------------------------------------------------------------
+
+    @property
+    def galaxy_sky_region(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.galaxy_finder.region.to_sky(self.frame.wcs)
 
     # -----------------------------------------------------------------
 
@@ -112,7 +136,22 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        return self.star_finder.star_region
+        if self.downsampled:
+            sky_region = self.star_sky_region
+            return sky_region.to_pixel(self.original_wcs) if sky_region is not None else None
+        else: return self.star_finder.star_region
+
+    # -----------------------------------------------------------------
+
+    @property
+    def star_sky_region(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.star_finder.star_region.to_sky(self.frame.wcs)
 
     # -----------------------------------------------------------------
 
@@ -124,7 +163,22 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        return self.star_finder.saturation_region
+        if self.downsampled:
+            sky_region = self.saturation_sky_region
+            return sky_region.to_pixel(self.original_wcs) if sky_region is not None else None
+        else: return self.star_finder.saturation_region
+
+    # -----------------------------------------------------------------
+
+    @property
+    def saturation_sky_region(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.star_finder.saturation_region.to_sky(self.frame.wcs)
 
     # -----------------------------------------------------------------
 
@@ -136,7 +190,22 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        return self.trained_finder.region
+        if self.downsampled:
+            sky_region = self.other_sky_region
+            return sky_region.to_pixel(self.original_wcs) if sky_region is not None else None
+        else: return self.trained_finder.region
+
+    # -----------------------------------------------------------------
+
+    @property
+    def other_sky_region(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.trained_finder.region.to_sky(self.frame.wcs) if self.trained_finder.region is not None else None
 
     # -----------------------------------------------------------------
 
@@ -148,7 +217,8 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        return self.galaxy_finder.segments
+        if self.downsampled: return self.galaxy_finder.segments.upsampled(self.config.downsample_factor, integers=True) if self.galaxy_finder.segments is not None else None
+        else: return self.galaxy_finder.segments
 
     # -----------------------------------------------------------------
 
@@ -160,7 +230,8 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        return self.star_finder.segments
+        if self.downsampled: return self.star_finder.segments.upsampled(self.config.downsample_factor, integers=True) if self.star_finder.segments is not None else None
+        else: return self.star_finder.segments
 
     # -----------------------------------------------------------------
 
@@ -172,6 +243,7 @@ class SourceFinder(Configurable):
         :return:
         """
 
+        if self.downsampled: return self.trained_finder.segments.upsampled(self.config.downsample_factor, integers=True) if self.trained_finder.segments is not None else None
         return self.trained_finder.segments
 
     # -----------------------------------------------------------------
@@ -188,7 +260,7 @@ class SourceFinder(Configurable):
 
     # -----------------------------------------------------------------
 
-    def run(self, frame, galactic_catalog, stellar_catalog, special_region=None, ignore_region=None, bad_mask=None):
+    def run(self, frame, galactic_catalog, stellar_catalog, special_region=None, ignore_region=None, bad_mask=None, animation=None):
 
         """
         This function ...
@@ -198,11 +270,12 @@ class SourceFinder(Configurable):
         :param special_region:
         :param ignore_region:
         :param bad_mask:
+        :param animation:
         :return:
         """
 
         # 1. Call the setup function
-        self.setup(frame, galactic_catalog, stellar_catalog, special_region, ignore_region, bad_mask)
+        self.setup(frame, galactic_catalog, stellar_catalog, special_region, ignore_region, bad_mask, animation)
 
         # 2. Find the galaxies
         self.find_galaxies()
@@ -228,27 +301,21 @@ class SourceFinder(Configurable):
         # Base class implementation removes the children
         super(SourceFinder, self).clear()
 
-        # The image frame
+        # Set default values for all attributes
         self.frame = None
-
-        # The galactic and stellar catalog
+        self.original_wcs = None
         self.galactic_catalog = None
         self.stellar_catalog = None
-
-        # The mask covering pixels that should be ignored throughout the entire extraction procedure
         self.special_mask = None
         self.ignore_mask = None
         self.bad_mask = None
-
-        # The output mask
+        self.animation = None
         self.mask = None
-
-        # The name of the principal galaxy
         self.galaxy_name = None
 
     # -----------------------------------------------------------------
 
-    def setup(self, frame, galactic_catalog, stellar_catalog, special_region, ignore_region, bad_mask=None):
+    def setup(self, frame, galactic_catalog, stellar_catalog, special_region, ignore_region, bad_mask=None, animation=None):
 
         """
         This function ...
@@ -258,6 +325,7 @@ class SourceFinder(Configurable):
         :param special_region:
         :param ignore_region:
         :param bad_mask:
+        :param animation:
         :return:
         """
 
@@ -277,8 +345,11 @@ class SourceFinder(Configurable):
         # Inform the user
         log.info("Setting up the source finder ...")
 
-        # Make a local reference to the image frame
-        self.frame = frame
+        # Downsample or just make a local reference to the image frame
+        if self.downsampled:
+            self.frame = frame.downsampled(self.config.downsample_factor)
+            self.original_wcs = frame.wcs
+        else: self.frame = frame
 
         # Set the galactic and stellar catalog
         self.galactic_catalog = galactic_catalog
@@ -290,6 +361,21 @@ class SourceFinder(Configurable):
 
         # Set a reference to the mask of bad pixels
         self.bad_mask = bad_mask
+
+        # Make a reference to the animation
+        self.animation = animation
+
+    # -----------------------------------------------------------------
+
+    @property
+    def downsampled(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.config.downsample_factor is not None and self.config.downsample != 1
 
     # -----------------------------------------------------------------
 
@@ -454,5 +540,22 @@ class SourceFinder(Configurable):
 
         # Write the catalog to file
         tables.write(self.catalog_builder.stellar_catalog, path)
+
+    # -----------------------------------------------------------------
+
+    def write_statistics(self, path):
+
+        """
+        This function ...
+        :param path:
+        :return:
+        """
+
+        # Inform the user
+        log.info("Writing statistics to '" + path + "' ...")
+
+        # Open the file, write the info
+        with open(path, 'w') as statistics_file:
+            statistics_file.write("FWHM: " + str(self.fwhm) + "\n")
 
 # -----------------------------------------------------------------

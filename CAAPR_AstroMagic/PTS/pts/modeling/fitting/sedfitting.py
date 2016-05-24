@@ -15,13 +15,21 @@ from __future__ import absolute_import, division, print_function
 # Import standard modules
 import numpy as np
 import imageio
-from scipy import interpolate
-from scipy import integrate
+from matplotlib import pyplot as plt
 
 # Import the relevant PTS classes and modules
 from .component import FittingComponent
-from ...core.tools import tables, filesystem
+from ...core.tools import tables, time
+from ...core.tools import filesystem as fs
 from ...core.tools.logging import log
+from ...core.basics.distribution import Distribution
+from ...core.basics.animatedgif import AnimatedGif
+
+# -----------------------------------------------------------------
+
+descriptions = {"FUV young": "FUV luminosity of the young stars",
+                "FUV ionizing": "FUV luminosity of the ionizing stars",
+                "Dust mass": "dust mass"}
 
 # -----------------------------------------------------------------
 
@@ -50,6 +58,17 @@ class SEDFitter(FittingComponent):
         # The model parameter table
         self.parameters = None
 
+        # The best parameter values
+        self.best_fuv_young = None
+        self.best_fuv_ionizing = None
+        self.best_dust_mass = None
+
+        # The tables with the probability distributions for the different fit parameters
+        self.distributions = dict()
+
+        # The animation
+        self.animation = None
+
     # -----------------------------------------------------------------
 
     @classmethod
@@ -66,6 +85,9 @@ class SEDFitter(FittingComponent):
 
         # Set the modeling path
         fitter.config.path = arguments.path
+
+        # Make visualisations
+        fitter.config.visualise = arguments.visualise
 
         # Return the new instance
         return fitter
@@ -85,16 +107,16 @@ class SEDFitter(FittingComponent):
         # 2. Load the chi squared table
         self.load_chi_squared()
 
-        # Load the parameter table
+        # 3. Load the parameter table
         self.load_parameters()
 
-        # 3. Calculate the probability distributions
-        self.calculate_probabilities()
+        # 4. Calculate the probability distributions
+        self.calculate_distributions()
 
-        # 4. Make an animation of the fitting procedure
-        self.animate()
+        # 5. Make an animation of the fitting procedure
+        if self.config.visualise: self.animate()
 
-        # Writing
+        # 6. Writing
         self.write()
 
     # -----------------------------------------------------------------
@@ -122,7 +144,7 @@ class SEDFitter(FittingComponent):
         log.info("Loading the table with the chi squared value for each model ...")
 
         # Load the chi squared table
-        self.chi_squared = tables.from_file(self.chi_squared_table_path)
+        self.chi_squared = tables.from_file(self.chi_squared_table_path, format="ascii.ecsv")
 
         # Check whether the table is non-empty
         if len(self.chi_squared) == 0: raise RuntimeError("Could not find any chi squared value, it appears no simulations have been run yet")
@@ -144,11 +166,11 @@ class SEDFitter(FittingComponent):
         log.info("Loading the table with the model parameters ...")
 
         # Load the parameter table
-        self.parameters = tables.from_file(self.parameter_table_path)
+        self.parameters = tables.from_file(self.parameter_table_path, format="ascii.ecsv")
 
     # -----------------------------------------------------------------
 
-    def calculate_probabilities(self):
+    def calculate_distributions(self):
 
         """
         This function ...
@@ -158,32 +180,75 @@ class SEDFitter(FittingComponent):
         # Inform the user
         log.info("Calculating the probability distributions for each parameter ...")
 
-        return
+        # Get the chi squared values
+        chi_squared_values = self.chi_squared["Chi squared"]
 
-        # Degrees of freedom = datapoints - free parameters - 1
-        dof = 9. - 3. - 1.
+        # Calculate the probability for each model
+        probabilities = np.exp(-0.5 * chi_squared_values)
 
-        params, probabilities = getPDFs(chi2list, parList, dof)
+        # Initialize lists to contain the parameter values for each simulation
+        young_lum_of_simulations = []
+        ionizing_lum_of_simulations = []
+        dust_mass_of_simulations = []
 
-        MdustProb = np.array(probabilities1[0]) + np.array(probabilities2[0])
-        FyoungProb = np.array(probabilities1[1]) + np.array(probabilities2[1])
-        FionizedProb = np.array(probabilities1[2] + probabilities2[2])
+        # From the parameters table, get the entries that correspond to simulations that
+        # are finished (and for which a chi squared value has been calculated)
+        for i in range(len(self.chi_squared)):
 
-        MdustProb = MdustProb / np.sum(MdustProb)
-        FyoungProb = FyoungProb / np.sum(FyoungProb)
-        FionizedProb = FionizedProb / np.sum(FionizedProb)
+            # Get the name of the simulation
+            simulation_name = self.chi_squared["Simulation name"][i]
 
-        if 1:
-            fig = plt.figure(figsize=(10, 4))
-            plotPDFs(fig, params1, MdustProb, FyoungProb, FionizedProb, correction)
-            fig.savefig(outpath + "plotPDFs.pdf", format='pdf')
+            # Find the index of this simulation in the parameters table
+            j = tables.find_index(self.parameters, simulation_name)
 
-        if 0:
-            "THIS DOES NOT WORK!"
-            "Need to interpolate somehow because the 3 parameter vectors have different lengths..."
-            fig = plt.figure(figsize=(10, 4))
-            plotContours(fig, params1, MdustProb, FyoungProb, FionizedProb, correction)
-            fig.savefig(outpath + "plotChi2Contours.pdf", format='pdf')
+            # "FUV young" "FUV ionizing" "Dust mass"
+            young_lum_of_simulations.append(self.parameters["FUV young"][j])
+            ionizing_lum_of_simulations.append(self.parameters["FUV ionizing"][j])
+            dust_mass_of_simulations.append(self.parameters["Dust mass"][j])
+
+        # Convert into NumPy arrays
+        young_lum_of_simulations = np.array(young_lum_of_simulations)
+        ionizing_lum_of_simulations = np.array(ionizing_lum_of_simulations)
+        dust_mass_of_simulations = np.array(dust_mass_of_simulations)
+
+        # FUV luminosity of young stellar population
+        young_lum_unique = sorted(list(set(young_lum_of_simulations)))
+
+        # FUV luminosity of ionizing stellar population
+        ionizing_lum_unique = sorted(list(set(ionizing_lum_of_simulations)))
+
+        # Dust mass
+        dust_mass_unique = sorted(list(set(dust_mass_of_simulations)))
+
+        # Initialize lists to contain the probability for each unique parameter value
+        young_lum_probabilities = []
+        ionizing_lum_probabilities = []
+        dust_mass_probabilities = []
+
+        # Loop over all unique parameter values of the FUV luminosity of the young stars
+        for young_lum in young_lum_unique:
+            simulation_indices = young_lum_of_simulations == young_lum
+            young_lum_probabilities.append(np.sum(probabilities[simulation_indices]))
+
+        # Loop over all unique parameter values of the FUV luminosity of the ionizing stars
+        for ionizing_lum in ionizing_lum_unique:
+            simulation_indices = ionizing_lum_of_simulations == ionizing_lum
+            ionizing_lum_probabilities.append(np.sum(probabilities[simulation_indices]))
+
+        # Loop over all unique parameter values of the dust mass
+        for dust_mass in dust_mass_unique:
+            simulation_indices = dust_mass_of_simulations == dust_mass
+            dust_mass_probabilities.append(np.sum(probabilities[simulation_indices]))
+
+        # Convert the probability lists into NumPy arrays and normalize them
+        young_lum_probabilities = np.array(young_lum_probabilities) / sum(young_lum_probabilities)
+        ionizing_lum_probabilities = np.array(ionizing_lum_probabilities) / sum(ionizing_lum_probabilities)
+        dust_mass_probabilities = np.array(dust_mass_probabilities) / sum(dust_mass_probabilities)
+
+        # Create the probability distributions for the different parameters
+        self.distributions["FUV young"] = Distribution.from_probabilities(young_lum_probabilities, young_lum_unique, "FUV young")
+        self.distributions["FUV ionizing"] = Distribution.from_probabilities(ionizing_lum_probabilities, ionizing_lum_unique, "FUV ionizing")
+        self.distributions["Dust mass"] = Distribution.from_probabilities(dust_mass_probabilities, dust_mass_unique, "Dust mass")
 
     # -----------------------------------------------------------------
 
@@ -197,8 +262,8 @@ class SEDFitter(FittingComponent):
         # Inform the user
         log.info("Creating an animation of the SED fitting procedure ...")
 
-        # Initialize a list to contain the frames of the animation
-        frames = []
+        # Create an AnimatedGif instance
+        self.animation = AnimatedGif()
 
         # Loop over the entries of the chi squared table (sorted by decreasing chi squared)
         for i in range(len(self.chi_squared)):
@@ -207,19 +272,13 @@ class SEDFitter(FittingComponent):
             simulation_name = self.chi_squared["Simulation name"][i]
 
             # Determine the path to the corresponding SED plot file
-            path = filesystem.join(self.fit_plot_path, simulation_name, "sed.png")
+            path = fs.join(self.fit_plot_path, simulation_name, "sed.png")
 
             # Load the image (as a NumPy array)
             image = imageio.imread(path)
 
-            # Add the image to the list of frames
-            frames.append(image)
-
-        # Determine the path to the animation file
-        path = self.full_output_path("fitting.gif")
-
-        # Create and write the GIF file
-        imageio.mimwrite(path, frames)
+            # Add the image to the animation
+            self.animation.add_frame(image)
 
     # -----------------------------------------------------------------
 
@@ -235,6 +294,15 @@ class SEDFitter(FittingComponent):
 
         # Write the ski file of the best simulation
         self.write_best()
+
+        # Write the probability distributions in table format
+        self.write_distributions()
+
+        # Plot the probability distributions as histograms
+        self.plot_distributions()
+
+        # Write the animated GIF
+        if self.config.visualise: self.write_animation()
 
     # -----------------------------------------------------------------
 
@@ -252,140 +320,116 @@ class SEDFitter(FittingComponent):
         simulation_name = self.chi_squared["Simulation name"][len(self.chi_squared)-1]
 
         # Determine the path to the simulation's ski file
-        ski_path = filesystem.join(self.fit_out_path, simulation_name, self.galaxy_name + ".ski")
+        ski_path = fs.join(self.fit_out_path, simulation_name, self.galaxy_name + ".ski")
 
         # Copy the ski file to the fit/best directory
-        filesystem.copy_file(ski_path, self.fit_best_path)
+        fs.copy_file(ski_path, self.fit_best_path)
 
         # Find the corresponding index in the parameter table
         index = tables.find_index(self.parameters, simulation_name, "Simulation name")
 
         # Get the best parameter values
-        fuv_young = self.parameters["FUV young"][index]
-        fuv_ionizing = self.parameters["FUV ionizing"][index]
-        dust_mass = self.parameters["Dust mass"][index]
+        self.best_fuv_young = self.parameters["FUV young"][index]
+        self.best_fuv_ionizing = self.parameters["FUV ionizing"][index]
+        self.best_dust_mass = self.parameters["Dust mass"][index]
 
         # Write a file with the best parameter values
-        path = filesystem.join(self.fit_best_path, "parameters.dat")
+        path = fs.join(self.fit_best_path, "parameters.dat")
         with open(path, 'w') as best_parameters:
-            best_parameters.write("FUV young: " + str(fuv_young) + "\n")
-            best_parameters.write("FUV ionizing: " + str(fuv_ionizing) + "\n")
-            best_parameters.write("Dust mass: " + str(dust_mass) + "\n")
+            best_parameters.write("FUV young: " + str(self.best_fuv_young) + "\n")
+            best_parameters.write("FUV ionizing: " + str(self.best_fuv_ionizing) + "\n")
+            best_parameters.write("Dust mass: " + str(self.best_dust_mass) + "\n")
+
+    # -----------------------------------------------------------------
+
+    def write_distributions(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Writing the probability distributions ...")
+
+        # Loop over the entries in the 'probabilities' table
+        for parameter_name in self.distributions:
+
+            # Debugging
+            log.debug("Writing the probability distribution of the " + descriptions[parameter_name] + " ...")
+
+            # Determine the path to the resulting table file
+            path = fs.join(self.fit_prob_path, parameter_name + ".dat")
+
+            # Write the table of probabilities for this parameter
+            self.distributions[parameter_name].save(path)
+
+    # -----------------------------------------------------------------
+
+    def plot_distributions(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Plotting the probability distributions ...")
+
+        # Loop over the different fit parameters
+        for parameter_name in self.distributions:
+
+            # Debugging
+            log.debug("Plotting the probability distribution of the " + descriptions[parameter_name] + " ...")
+
+            # Get the probability distributinon for
+            distribution = self.distributions[parameter_name]
+            description = descriptions[parameter_name]
+
+            # Create a plot file for the probability distribution
+            path = fs.join(self.fit_prob_path, parameter_name + ".pdf")
+            distribution.plot(title="Probability of the " + description, path=path, logscale=True)
+
+    # -----------------------------------------------------------------
+
+    def write_animation(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Writing the animation ...")
+
+        # Determine the path to the new animation
+        path = fs.join(self.visualisation_path, time.unique_name("sedfitting") + ".gif")
+
+        # Write the animation
+        self.animation.save(path)
 
 # -----------------------------------------------------------------
 
-def getPDFs(chi2file, parfile,dof):
-
-    input = np.loadtxt(chi2file)
-    chi2list = input[:,1]/dof
-
-    probabilities = np.exp(-0.5*chi2list)
-
-    params = []
-    data = open(parfile)
-    for line in data:
-        if line[0] != '#':
-            strings = line.split()
-            params.append(map(float, strings[1:4]))
-
-    params = np.array(params)
-
-    parSets = [[]]
-    parSetProbabilities = [[]]
-    for i in range(0, len(params[0,:])):
-        parameter = params[:,i]
-        parset = list(set(parameter))
-        parset.sort()
-
-        setProbabilities = []
-        for j in range(0,len(parset)):
-            idx = (parameter == parset[j])
-            setProbabilities.append(np.sum(probabilities[idx]))
-
-        parSets.append(parset)
-        parSetProbabilities.append(setProbabilities)
-
-    return parSets[1:], parSetProbabilities[1:]
+#if False:
+#    "THIS DOES NOT WORK!"
+#    "Need to interpolate somehow because the 3 parameter vectors have different lengths..."
+#    fig = plt.figure(figsize=(10, 4))
+#    plotContours(params1, MdustProb, FyoungProb, FionizedProb)
+#    fig.savefig(outpath + "plotChi2Contours.pdf", format='pdf')
 
 # -----------------------------------------------------------------
 
-def plotPDFs(fig, params, MdustProb, FyoungProb, FionizedProb, correction):
-
-    MdustScale     = 1.e7 # in 1e7 Msun
-    LyoungScale    = 3.846e26 / (1.425e21*0.153) * 1e8 # in 1e8 Lsun
-    #LionizingScale = 3.53e14 # in Msun/yr
-    LionizingScale = 3.846e26 / (1.425e21*0.153) * 1e8 # in 1e8 Lsun
-
-
-    MdustBestFit    = 69079833.3333     / MdustScale * correction
-    FyoungBestFit   = 1.69488344353e+15 / LyoungScale
-    FionizedBestFit = 3.53e+14          / LionizingScale
-
-    Mdust_50 = findPercentile(params[0],MdustProb, 50.) / MdustScale * correction
-    Mdust_16 = findPercentile(params[0],MdustProb, 16.) / MdustScale * correction
-    Mdust_84 = findPercentile(params[0],MdustProb, 84.) / MdustScale * correction
-
-    Fyoung_50 = findPercentile(params[1],FyoungProb, 50.) / LyoungScale
-    Fyoung_16 = findPercentile(params[1],FyoungProb, 16.) / LyoungScale
-    Fyoung_84 = findPercentile(params[1],FyoungProb, 84.) / LyoungScale
-
-    Fionized_50 = findPercentile(params[2],FionizedProb, 50.) / LionizingScale
-    Fionized_16 = findPercentile(params[2],FionizedProb, 16.) / LionizingScale
-    Fionized_84 = findPercentile(params[2],FionizedProb, 84.) / LionizingScale
-
-    locplot = [[0.07,0.15,0.305,0.81],[0.375,0.15,0.305,0.81],[0.68,0.15,0.305,0.81]]
-
-    fig_a = plt.axes(locplot[0])
-    fig_a.set_ylabel('Probability',fontsize=18)
-    fig_a.set_xlabel('M$_\mathrm{dust}\, [10^7 M_\odot]$',fontsize=18)
-    abcissa = np.array(params[0])/MdustScale * correction
-    width = 0.3
-    fig_a.bar(abcissa-0.5*width, MdustProb,width=width, color='g',ec='k')
-    fig_a.plot([MdustBestFit,MdustBestFit],[0,1],'k--')
-    fig_a.plot([Mdust_50,Mdust_50],[0,1],'r--')
-    fig_a.set_xlim(2.5,6.4)
-    fig_a.set_ylim(0,0.4)
-
-    fig_b = plt.axes(locplot[1])
-    fig_b.set_ylabel('Probability',fontsize=18)
-    fig_b.set_xlabel('$\lambda L_\lambda^{\mathrm{young}} \, [10^8 L_\odot]$',fontsize=18)
-    abcissa = np.array(params[1])/LyoungScale
-    width = 1.05
-    fig_b.bar(abcissa-0.5*width, FyoungProb,width=width, color='g',ec='k')
-    fig_b.plot([FyoungBestFit,FyoungBestFit],[0,1],'k--')
-    fig_b.plot([Fyoung_50,Fyoung_50],[0,1],'r--')
-    fig_b.set_xlim(6,19.5)
-    fig_b.set_ylim(0,0.4)
-    fig_b.get_yaxis().set_visible(False)
-
-    fig_c = plt.axes(locplot[2])
-    fig_c.set_ylabel('Probability',fontsize=18)
-    fig_c.set_xlabel('$\lambda L_\lambda^{\mathrm{ion.}} \, [10^8 L_\odot]$',fontsize=18)
-    abcissa = np.array(params[2])/LionizingScale
-    width = 0.10
-    fig_c.bar(abcissa-0.5*width, FionizedProb,width=width, color='g',ec='k')
-    fig_c.plot([FionizedBestFit,FionizedBestFit],[0,1],'k--')
-    fig_c.plot([Fionized_50,Fionized_50],[0,1],'r--')
-    fig_c.set_xlim(0.001,2.9)
-    fig_c.set_ylim(0,0.4)
-    fig_c.get_yaxis().set_visible(False)
-
-    print('Parameter  50th        16th        84th percentile')
-    print('Mdust     '+str(Mdust_50)+'  '+str(Mdust_16)+'  '+str(Mdust_84))
-    print('Fyoung    '+str(Fyoung_50)+'  '+str(Fyoung_16)+'  '+str(Fyoung_84))
-    print('Fionized  '+str(Fionized_50)+'  '+str(Fionized_16)+'  '+str(Fionized_84))
-    print('\nThis corresponds to the following input parameters for Mdust, Fyoung and Fionized:\n')
-    print(str(Mdust_50*MdustScale)+'    '+str(Fyoung_50*LyoungScale)+'    '+str(Fionized_50*LionizingScale))
+# PLOT CONTOURS: http://stackoverflow.com/questions/13781025/matplotlib-contour-from-xyz-data-griddata-invalid-index
 
 # -----------------------------------------------------------------
 
-def plotContours(fig, params, MdustProb, FyoungProb, FionizedProb, correction):
+def plotContours(params, MdustProb, FyoungProb, FionizedProb):
 
     MdustScale     = 1.e7 # in 1e7 Msun
     LyoungScale    = 3.846e26 / (1.425e21*0.153) * 1e8 # in 1e8 Lsun
     LionizingScale = 3.53e14 # in Msun/yr
 
-    MdustBestFit    = 69079833.3333     / MdustScale * correction
+    MdustBestFit    = 69079833.3333     / MdustScale
     FyoungBestFit   = 1.69488344353e+15 / LyoungScale
     FionizedBestFit = 3.53e+14          / LionizingScale
 
@@ -398,8 +442,8 @@ def plotContours(fig, params, MdustProb, FyoungProb, FionizedProb, correction):
     fig_a = plt.axes(locplot[0])
     fig_a.set_ylabel('SFR $[M_\odot \mathrm{yr}^{-1} ]$',fontsize=18)
     fig_a.set_xlabel('M$_\mathrm{dust} [10^7 M_\odot]$',fontsize=18)
-    x = np.array(params[0])/MdustScale * correction
-    y = np.array(params[2])/LionizingScale
+    x = np.array(params[0]) / MdustScale
+    y = np.array(params[2]) / LionizingScale
     fig_a.imshow(p1, cmap='gray', interpolation=None,
                origin='lower', extent=[x[0],x[-1],y[0],y[-1]] )
     fig_a.set_aspect('auto')
@@ -407,8 +451,8 @@ def plotContours(fig, params, MdustProb, FyoungProb, FionizedProb, correction):
     fig_b = plt.axes(locplot[1])
     fig_b.set_ylabel('SFR $[M_\odot \mathrm{yr}^{-1} ]$',fontsize=18)
     fig_b.set_xlabel('F$^{FUV}_\mathrm{young} [10^8 L_\odot]$',fontsize=18)
-    x = np.array(params[1])/LyoungScale
-    y = np.array(params[2])/LionizingScale
+    x = np.array(params[1]) / LyoungScale
+    y = np.array(params[2]) / LionizingScale
     fig_b.imshow(p2, cmap='gray', interpolation=None,
                  origin='lower', extent=[x[0],x[-1],y[0],y[-1]] )
     fig_b.set_aspect('auto')
@@ -416,31 +460,10 @@ def plotContours(fig, params, MdustProb, FyoungProb, FionizedProb, correction):
     fig_c = plt.axes(locplot[2])
     fig_c.set_ylabel('F$^{FUV}_\mathrm{young} [10^8 L_\odot]$',fontsize=18)
     fig_c.set_xlabel('M$_\mathrm{dust} [10^7 M_\odot]$',fontsize=18)
-    x = np.array(params[0])/MdustScale * correction
+    x = np.array(params[0])/MdustScale
     y = np.array(params[1])/LyoungScale
     fig_c.imshow(p3, cmap='gray', interpolation=None,
                  origin='lower', extent=[x[0],x[-1],y[0],y[-1]] )
     fig_c.set_aspect('auto')
-
-# -----------------------------------------------------------------
-
-def findPercentile(parameter, probability, percentile):
-
-    npoints = 10000
-    interpfunc = interpolate.interp1d(parameter,probability, kind='linear')
-
-    parRange = np.linspace(min(parameter),max(parameter),npoints)
-    interProb = interpfunc(parRange)
-
-
-    cumInteg = np.zeros(npoints-1)
-
-    for i in range(1,npoints-1):
-        cumInteg[i] = cumInteg[i-1] + (0.5*(interProb[i+1] + interProb[i]) * (parRange[i+1] - parRange[i]))
-
-    cumInteg = cumInteg / cumInteg[-1]
-    idx = (np.abs(cumInteg-percentile/100.)).argmin()
-
-    return parRange[idx]
 
 # -----------------------------------------------------------------

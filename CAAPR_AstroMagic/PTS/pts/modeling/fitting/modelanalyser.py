@@ -5,7 +5,7 @@
 # **       © Astronomical Observatory, Ghent University          **
 # *****************************************************************
 
-## \package pts.modeling.fitting.modelanalyser Contains the ModelAnalyser class, used for analysing the goodness
+## \package pts.modeling.fitting.modelanalyser Contains the FitModelAnalyser class, used for analysing the goodness
 #  of the radiative transfer model.
 
 # -----------------------------------------------------------------
@@ -19,12 +19,13 @@ import numpy as np
 # Import the relevant PTS classes and modules
 from .component import FittingComponent
 from ...core.tools.logging import log
-from ...core.tools import filesystem, tables
+from ...core.tools import filesystem as fs
+from ...core.tools import tables
 from ..core.sed import ObservedSED
 
 # -----------------------------------------------------------------
 
-class ModelAnalyser(FittingComponent):
+class FitModelAnalyser(FittingComponent):
 
     """
     This class ...
@@ -39,18 +40,12 @@ class ModelAnalyser(FittingComponent):
         """
 
         # Call the constructor of the base class
-        super(ModelAnalyser, self).__init__(config)
+        super(FitModelAnalyser, self).__init__(config)
 
         # -- Attributes --
 
         # The simulation object
         self.simulation = None
-
-        # The log file of the simulation
-        self.log_file = None
-
-        # The ski file corresponding to the simulation
-        self.ski = None
 
         # The flux calculator
         self.flux_calculator = None
@@ -106,12 +101,10 @@ class ModelAnalyser(FittingComponent):
         """
 
         # Inform the user
-        log.info("Clearing the model analyser ...")
+        log.info("Clearing the fit model analyser ...")
 
         # Set the attributes to default values
         self.simulation = None
-        self.log_file = None
-        self.ski = None
         self.flux_calculator = None
         self.fluxes = None
         self.differences = None
@@ -129,7 +122,7 @@ class ModelAnalyser(FittingComponent):
         """
 
         # Call the setup function of the base class
-        super(ModelAnalyser, self).setup()
+        super(FitModelAnalyser, self).setup()
 
         # Make a local reference to the simulation object
         self.simulation = simulation
@@ -141,28 +134,14 @@ class ModelAnalyser(FittingComponent):
         self.flux_calculator = flux_calculator
 
         # Load the weights table
-        self.weights = tables.from_file(self.weights_table_path, fix_floats=True) # For some reason, the weights are parsed as strings instead of floats (but not from the command line!!??)
+        #self.weights = tables.from_file(self.weights_table_path, fix_floats=True) # For some reason, the weights are parsed as strings instead of floats (but not from the command line!!??)
+        self.weights = tables.from_file(self.weights_table_path, format="ascii.ecsv")
 
         # Initialize the differences table
         names = ["Instrument", "Band", "Flux difference", "Relative difference", "Chi squared term"]
         data = [[], [], [], [], []]
         dtypes = ["S5", "S7", "float64", "float64", "float64"]
         self.differences = tables.new(data, names, dtypes=dtypes)
-
-        # Load the ski file
-        self.ski = self.simulation.parameters()
-
-    # -----------------------------------------------------------------
-
-    def load_log_file(self):
-
-        """
-        This function ...
-        :return:
-        """
-
-        # Get the log file produced by the simulation
-        self.log_file = self.simulation.log_file
 
     # -----------------------------------------------------------------
 
@@ -177,7 +156,7 @@ class ModelAnalyser(FittingComponent):
         log.info("Loading the observed SED ...")
 
         # Determine the path to the fluxes table
-        fluxes_path = filesystem.join(self.phot_path, "fluxes.dat")
+        fluxes_path = fs.join(self.phot_path, "fluxes.dat")
 
         # Load the observed SED
         self.fluxes = ObservedSED.from_file(fluxes_path)
@@ -250,8 +229,12 @@ class ModelAnalyser(FittingComponent):
         # Inform the user
         log.info("Calculating the chi squared value for this model ...")
 
-        # The chi squared value is the sum of all the terms (for each band)
-        self.chi_squared = np.sum(self.differences["Chi squared term"])
+        # Calculate the degrees of freedom
+        dof = len(self.fluxes.table) - 3. - 1.  # number of data points - number of fitted parameters - 1
+
+        # The (reduced) chi squared value is the sum of all the terms (for each band),
+        # divided by the number of degrees of freedom
+        self.chi_squared = np.sum(self.differences["Chi squared term"]) / dof
 
         # Debugging
         log.debug("Found a chi squared value of " + str(self.chi_squared))
@@ -268,50 +251,11 @@ class ModelAnalyser(FittingComponent):
         # Inform the user
         log.info("Writing ...")
 
-        # Write the runtime
-        self.write_runtime()
-
         # Write the flux differences
         self.write_differences()
 
         # Write the chi-squared value
         self.write_chi_squared()
-
-    # -----------------------------------------------------------------
-
-    def write_runtime(self):
-
-        """
-        This function ...
-        :return:
-        """
-
-        # Inform the user
-        log.info("Writing the runtime of this simulation ...")
-
-        # Get the name of the host on which the simulation was run
-        host = self.log_file.host
-
-        # Get the number of processes and threads
-        processes = self.log_file.processes
-        threads = self.log_file.threads
-
-        # Get the runtime in seconds
-        runtime = self.log_file.total_runtime
-
-        # Get the number of photon packages
-        packages = self.ski.packages()
-
-        # Open the runtime file (in 'append' mode)
-        runtimefile = open(self.runtime_table_path, 'a')
-
-        # Add a line to the table file containing the simulation name, the host on which it was run, the number of
-        # processes and threads, the number of photon packages and at last, the runtime in seconds
-        runtimefile.write(self.simulation.name + " " + host + " " + str(processes) + " " + str(threads) + " "
-                          + str(packages) + " " + str(runtime) + "\n")
-
-        # Close the file
-        runtimefile.close()
 
     # -----------------------------------------------------------------
 
@@ -326,10 +270,10 @@ class ModelAnalyser(FittingComponent):
         log.info("Writing the table with the flux-density differences for the current model ...")
 
         # Determine the path to the differences table
-        path = filesystem.join(self.fit_res_path, self.simulation.name, "differences.dat")
+        path = fs.join(self.fit_res_path, self.simulation.name, "differences.dat")
 
         # Save the differences table
-        tables.write(self.differences, path)
+        tables.write(self.differences, path, format="ascii.ecsv")
 
     # -----------------------------------------------------------------
 

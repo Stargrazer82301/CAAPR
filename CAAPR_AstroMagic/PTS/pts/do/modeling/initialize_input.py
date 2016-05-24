@@ -5,7 +5,7 @@
 # **       © Astronomical Observatory, Ghent University          **
 # *****************************************************************
 
-## \package pts.do.modeling.initializeinput Initialize the input directory for the fitting procedure.
+## \package pts.do.modeling.initialize_input Initialize the input directory for the fitting procedure.
 
 # -----------------------------------------------------------------
 
@@ -17,13 +17,13 @@ import argparse
 
 # Import the relevant PTS classes and modules
 from pts.modeling.fitting.initialization import InputInitializer
-from pts.core.tools import logging, time, filesystem, parsing
+from pts.core.tools import logging, time, parsing
+from pts.core.tools import filesystem as fs
 
 # -----------------------------------------------------------------
 
 # Create the command-line parser
 parser = argparse.ArgumentParser()
-parser.add_argument("path", type=str, nargs='?', help="the modeling path")
 parser.add_argument("--nlambda", type=int, help="the total number of wavelengths")
 parser.add_argument("--lambda_minmax", type=parsing.float_tuple, help="the minimum and maximum wavelength of the total grid")
 parser.add_argument("--lambda_minmax_zoom", type=parsing.float_tuple, help="the minimum and maximum wavelength of the zoomed-in grid")
@@ -39,12 +39,12 @@ arguments = parser.parse_args()
 # -----------------------------------------------------------------
 
 # Set the modeling path
-if arguments.path is None: arguments.path = filesystem.cwd()
+arguments.path = fs.cwd()
 
 # -----------------------------------------------------------------
 
 # Determine the log file path
-logfile_path = filesystem.join(arguments.path, time.unique_name("initialization") + ".txt") if arguments.report else None
+logfile_path = fs.join(arguments.path, time.unique_name("initialization") + ".txt") if arguments.report else None
 
 # Determine the log level
 level = "DEBUG" if arguments.debug else "INFO"

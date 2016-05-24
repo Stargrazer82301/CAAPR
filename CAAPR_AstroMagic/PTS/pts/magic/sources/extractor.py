@@ -12,12 +12,26 @@
 # Ensure Python 3 compatibility
 from __future__ import absolute_import, division, print_function
 
+# Import standard modules
+import io
+import imageio
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle as plt_Rectangle
+from matplotlib.patches import Ellipse as plt_Ellipse
+
+# Import astronomical modules
+#import wcsaxes
+from astropy.visualization import SqrtStretch, LogStretch
+from astropy.visualization.mpl_normalize import ImageNormalize
+
 # Import the relevant PTS classes and modules
 from ..basics.mask import Mask
 from ..basics.geometry import Ellipse
 from ..core.source import Source
 from ...core.tools.logging import log
 from ...core.basics.configurable import Configurable
+from ..tools import plotting
 
 # -----------------------------------------------------------------
 
@@ -54,6 +68,9 @@ class SourceExtractor(Configurable):
         self.saturation_region = None
         self.other_region = None
 
+        # The animation
+        self.animation = None
+
         # Segmentation maps
         self.galaxy_segments = None
         self.star_segments = None
@@ -84,7 +101,7 @@ class SourceExtractor(Configurable):
 
     # -----------------------------------------------------------------
 
-    def run(self, frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments):
+    def run(self, frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments, animation=None):
 
         """
         This function ...
@@ -96,11 +113,12 @@ class SourceExtractor(Configurable):
         :param galaxy_segments:
         :param star_segments:
         :param other_segments:
+        :param animation:
         :return:
         """
 
         # 1. Call the setup function
-        self.setup(frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments)
+        self.setup(frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments, animation)
 
         # 2. Load the sources
         self.load_sources()
@@ -113,7 +131,7 @@ class SourceExtractor(Configurable):
 
     # -----------------------------------------------------------------
 
-    def setup(self, frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments):
+    def setup(self, frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments, animation=None):
 
         """
         This function ...
@@ -122,8 +140,10 @@ class SourceExtractor(Configurable):
         :param star_region:
         :param saturation_region:
         :param other_region:
+        :param galaxy_segments:
         :param star_segments:
         :param other_segments:
+        :param animation:
         :return:
         """
 
@@ -147,6 +167,9 @@ class SourceExtractor(Configurable):
         # Create a mask of the pixels that are NaNs
         self.nan_mask = Mask.is_nan(self.frame)
         self.frame[self.nan_mask] = 0.0
+
+        # Make a reference to the animation
+        self.animation = animation
 
     # -----------------------------------------------------------------
 
@@ -279,7 +302,7 @@ class SourceExtractor(Configurable):
 
                 # Replace the source mask
                 segments_cutout = self.other_segments[source.y_slice, source.x_slice]
-                source.mask = Mask(segments_cutout == label)
+                source.mask = Mask(segments_cutout == label).fill_holes()
 
             # This is a shape drawn by the user and added to the other sources region
             else:
@@ -302,17 +325,23 @@ class SourceExtractor(Configurable):
         # Inform the user
         log.info("Interpolating the frame over the masked pixels ...")
 
-        # Interpolate
-        #self.frame[:] = interpolation.inpaint_biharmonic(self.frame, self.mask)
-
         nsources = len(self.sources)
         count = 0
+
+        if self.animation is not None:
+            principal_ellipse = self.principal_ellipse
+            principal_mask = principal_ellipse.to_mask(self.frame.xsize, self.frame.ysize)
+            animated = 0
+        else:
+            principal_ellipse = None
+            principal_mask = None
+            animated = None
 
         # Loop over all sources and remove them from the frame
         for source in self.sources:
 
             # Debugging
-            log.debug("Estimating background and replacing the frame pixels of source " + str(count) + " of " + str(nsources) + " ...")
+            log.debug("Estimating background and replacing the frame pixels of source " + str(count+1) + " of " + str(nsources) + " ...")
 
             # Estimate the background
             try:
@@ -329,11 +358,117 @@ class SourceExtractor(Configurable):
                 count += 1
                 continue
 
-            # Replace the pixels by the background
-            source.background.replace(self.frame, where=source.mask)
-
             # Adapt the mask
             self.mask[source.y_slice, source.x_slice] += source.mask
+
+            # Add frame to the animation
+            if self.animation is not None and principal_mask.masks(source.center) and animated <= 20:
+
+                # Create buffer and figure
+                buf = io.BytesIO()
+                fig = plt.figure(figsize=(15, 15))
+
+                # Add first subplot
+                ax = fig.add_subplot(2, 3, 1)
+
+                # Plot the frame (before removal)
+                norm = ImageNormalize(stretch=LogStretch())
+                norm_residual = ImageNormalize(stretch=LogStretch())
+                min_value = np.nanmin(self.frame)
+                max_value = 0.5*(np.nanmax(self.frame)+min_value)
+
+                ax.imshow(self.frame, origin="lower", interpolation="nearest", vmin=min_value, vmax=max_value, norm=norm)
+
+                r = plt_Rectangle((source.x_min, source.y_min), source.xsize, source.ysize, edgecolor="yellow", facecolor="none", lw=5)
+                ax.add_patch(r)
+
+                ell = plt_Ellipse((principal_ellipse.center.x, principal_ellipse.center.y),
+                                  2.0 * principal_ellipse.radius.x, 2.0 * principal_ellipse.radius.y,
+                                  principal_ellipse.angle.to("deg").value, edgecolor="red", facecolor="none", lw=5)
+                ax.add_patch(ell)
+
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
+
+                # Add the second subplot
+                ax = fig.add_subplot(2, 3, 2)
+
+                frame_xsize = self.frame.xsize
+                frame_ysize = self.frame.ysize
+
+                new_xmin = int(source.center.x - 0.1 * frame_xsize)
+                new_xmax = int(source.center.x + 0.1 * frame_xsize)
+                new_ymin = int(source.center.y - 0.1 * frame_ysize)
+                new_ymax = int(source.center.y + 0.1 * frame_ysize)
+
+                if new_xmin < 0: new_xmin = 0
+                if new_ymin < 0: new_ymin = 0
+                if new_xmax > frame_xsize: new_xmax = frame_xsize
+                if new_ymax > frame_ysize: new_ymax = frame_ysize
+
+                ax.imshow(self.frame[new_ymin:new_ymax, new_xmin:new_xmax], origin="lower", interpolation="nearest", vmin=min_value, vmax=max_value, norm=norm)
+                r = plt_Rectangle((source.x_min-new_xmin, source.y_min-new_ymin), source.xsize, source.ysize, edgecolor="yellow", facecolor="none", lw=5)
+                ax.add_patch(r)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
+
+                # Add the third subplot
+                ax = fig.add_subplot(2, 3, 3)
+
+                # Plot the mask
+                #ax.imshow(self.mask[new_ymin:new_ymax, new_xmin:new_xmax], origin="lower", cmap='Greys')
+                ax.imshow(self.mask, origin="lower", cmap="Greys")
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
+
+                # Add the fourth subplot
+                ax = fig.add_subplot(2, 3, 4)
+
+                # Plot the source cutout
+                #ax.imshow(source.cutout, origin="lower", interpolation="nearest", vmin=min_value, vmax=max_value, norm=norm)
+                ax.imshow(np.ma.MaskedArray(source.cutout, mask=source.background_mask), origin="lower", interpolation="nearest", vmin=min_value, vmax=max_value, norm=norm)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
+
+                #ell = plt_Ellipse((source.center.x-source.x_min, source.center.y-source.y_min), 2.0*source.radius.x, 2.0*source.radius.y, edgecolor="yellow", facecolor="none", lw=5)
+                #ax.add_patch(ell)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
+
+                # Add the fourth subplot
+                ax = fig.add_subplot(2, 3, 5)
+
+                # Plot the source background
+                #ax.imshow(np.ma.MaskedArray(source.cutout, mask=source.mask), origin="lower", interpolation="nearest", vmin=min_value, vmax=max_value, norm=norm)
+                new_cutout = source.cutout.copy()
+                new_cutout[source.mask] = source.background[source.mask]
+                ax.imshow(new_cutout, origin="lower", interpolation="nearest", vmin=min_value, vmax=max_value, norm=norm)
+                #ell = plt_Ellipse((source.center.x-source.x_min, source.center.y-source.y_min), 2.0 * source.radius.x, 2.0 * source.radius.y, edgecolor="yellow", facecolor="none", lw=5)
+                #ax.add_patch(ell)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
+
+                # Add the sixth subplot
+                ax = fig.add_subplot(2, 3, 6)
+
+                # Plot the residual cutout (background removed)
+                ax.imshow(source.subtracted, origin="lower", interpolation="nearest", vmin=0.0, vmax=max_value, norm=norm_residual)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
+
+                plt.tight_layout()
+
+                plt.savefig(buf, format="png")
+                plt.close()
+                buf.seek(0)
+                im = imageio.imread(buf)
+                buf.close()
+                self.animation.add_frame(im)
+
+                animated += 1
+
+            # Replace the pixels by the background
+            source.background.replace(self.frame, where=source.mask)
 
             count += 1
 

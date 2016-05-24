@@ -12,11 +12,17 @@
 # Ensure Python 3 compatibility
 from __future__ import absolute_import, division, print_function
 
+# Import standard modules
+from collections import defaultdict
+
 # Import the relevant PTS classes and modules
 from ..basics.configurable import Configurable
 from ..simulation.remote import SkirtRemote
-from ..tools import inspection, filesystem
+from ..tools import inspection, time
+from ..tools import filesystem as fs
 from ..tools.logging import log
+from ..basics.host import Host
+from .parallelization import Parallelization
 
 # -----------------------------------------------------------------
 
@@ -45,15 +51,22 @@ class BatchLauncher(Configurable):
         # The queue
         self.queue = []
 
-        # The scheduling options for (some of) the simulations, accesed by keys that are the names given to the
-        # simulations (see 'name' parameter of 'add_to_queue')
-        self.scheduling_options = dict()
+        # The scheduling options for (some of) the simulations and (some of) the remote hosts. This is a nested
+        # dictionary where the first key represents the remote host ID and the next key represents the name of the
+        # simulation (see 'name' parameter of 'add_to_queue')
+        self.scheduling_options = defaultdict(dict)
 
-        # The assignment from items in the queue to the different remotes
+        # The assignment from items in the queue to the different remote hosts
         self.assignment = None
 
-        # The parallelization scheme for the different remotes
+        # The parallelization scheme for the different remote hosts
         self.parallelization = dict()
+
+        # The paths to the directories for placing the (screen/job) scripts (for manual inspection) for the different remote hosts
+        self.script_paths = dict()
+
+        # The list of remote hosts for which the screen output should be saved remotely (for debugging)
+        self.save_screen_output = []
 
         # The simulations that have been retrieved
         self.simulations = []
@@ -71,8 +84,6 @@ class BatchLauncher(Configurable):
 
         # Create a new BatchLauncher instance
         launcher = cls()
-
-        ## Adjust the configuration settings according to the command-line arguments
 
         # Return the new batch launcher
         return launcher
@@ -93,16 +104,157 @@ class BatchLauncher(Configurable):
 
     # -----------------------------------------------------------------
 
-    def set_scheduling_options(self, name, options):
+    def set_scheduling_options(self, host_id, name, options):
 
         """
         This function ...
         :param name:
+        :param host_id:
         :param options:
         :return:
         """
 
-        self.scheduling_options[name] = options
+        # Set the scheduling options for the specified host and for the specified simulation
+        self.scheduling_options[host_id][name] = options
+
+    # -----------------------------------------------------------------
+
+    @property
+    def host_ids(self):
+
+        """
+        This function returns the IDs of the hosts that will be used by the batch launcher
+        :return:
+        """
+
+        # If the setup has not been called yet
+        if len(self.remotes) == 0:
+
+            # If a list of remotes is defined
+            if self.config.remotes is not None: host_ids = self.config.remotes
+
+            # If a list of remotes is not defined, create a remote for all of the hosts that have a configuration file
+            else: host_ids = inspection.remote_host_ids()
+
+            # Return the list of host IDs
+            return host_ids
+
+        # If the setup has already been called
+        else: return [remote.host_id for remote in self.remotes]
+
+    # -----------------------------------------------------------------
+
+    @property
+    def hosts(self):
+
+        """
+        This function returns the Host objects for all the hosts that will be used by the batch launcher
+        :return:
+        """
+
+        # If the setup has not been called yet
+        if len(self.remotes) == 0:
+
+            # Create the list of hosts
+            hosts = []
+            for host_id in self.host_ids: hosts.append(Host(host_id))
+
+            # Return the list of hosts
+            return hosts
+
+        # If the setup has already been called
+        else: return [remote.host for remote in self.remotes]
+
+    # -----------------------------------------------------------------
+
+    @property
+    def scheduler_host_ids(self):
+
+        """
+        This function returns just the IDS of the hosts which use a scheduling system. This is useful for when example
+        the user wants to specify the parallelization scheme only for these hosts, while the parallelization strategy
+        for the other hosts can be left up to the BatchLauncher class based on the current load of that system.
+        :return:
+        """
+
+        # If the setup has not been called yet
+        if len(self.remotes) == 0:
+
+            # Initialize a list to contain the host IDs
+            host_ids = []
+
+            # Loop over the IDs of all the hosts used by the BatchLauncher
+            for host_id in self.host_ids:
+
+                # Create Host instance
+                host = Host(host_id)
+
+                # If it's a scheduler, add it to the list
+                if host.scheduler: host_ids.append(host_id)
+
+            # Return the list of hosts which use a scheduling system
+            return host_ids
+
+        # If the setup has already been called
+        else: return [remote.host_id for remote in self.remotes if remote.scheduler]
+
+    # -----------------------------------------------------------------
+
+    @property
+    def scheduler_hosts(self):
+
+        """
+        This function is similar to 'scheduler_host_ids' but returns the Host objects instead of just the IDs of these
+        hosts.
+        :return:
+        """
+
+        # If the setup has not been called yet
+        if len(self.remotes) == 0:
+
+            # Initialize a list to contain the hosts
+            hosts = []
+
+            # Loop over the IDs of all the hosts used by the BatchLauncher
+            for id in self.host_ids:
+
+                # Create a Host instance
+                host = Host(id)
+
+                # If it's a scheulder, add it to the list
+                if host.scheduler: hosts.append(host)
+
+            # Return the list of hosts
+            return hosts
+
+        # If the setup has already been called
+        else: return [remote.host for remote in self.remotes if remote.scheduler]
+
+    # -----------------------------------------------------------------
+
+    def set_parallelization_for_host(self, host_id, parallelization):
+
+        """
+        This function ...
+        :param host_id:
+        :param parallelization:
+        :return:
+        """
+
+        # Set the parallelization properties for the specified host
+        self.parallelization[host_id] = parallelization
+
+    # -----------------------------------------------------------------
+
+    def parallelization_for_host(self, host_id):
+
+        """
+        This function ...
+        :param host_id:
+        :return:
+        """
+
+        return self.parallelization[host_id] if host_id in self.parallelization else None
 
     # -----------------------------------------------------------------
 
@@ -119,7 +271,7 @@ class BatchLauncher(Configurable):
         # 2. Determine how many simulations are assigned to each remote
         self.assign()
 
-        # 3. Set the parallelization scheme for the different remotes
+        # 3. Set the parallelization scheme for the remote hosts for which this was not specified by the user
         self.set_parallelization()
 
         # 4. Launch the simulations
@@ -131,7 +283,7 @@ class BatchLauncher(Configurable):
         # 6. Analyse the output of the retrieved simulations
         self.analyse()
 
-        # Return the simulations that are just scheduled
+        # 7. Return the simulations that are just scheduled
         return simulations
 
     # -----------------------------------------------------------------
@@ -153,13 +305,16 @@ class BatchLauncher(Configurable):
         self.queue = []
 
         # Clear the scheduling options
-        self.scheduling_options = dict()
+        self.scheduling_options = defaultdict(dict())
 
         # Clear the assignment
         self.assignment = None
 
         # Clear the simulations
         self.simulations = []
+
+        # Clear the script path dictionary
+        self.script_paths = dict()
 
     # -----------------------------------------------------------------
 
@@ -227,29 +382,63 @@ class BatchLauncher(Configurable):
         # Loop over the different remote hosts
         for remote in self.remotes:
 
+            # Check whether the parallelization has already been defined by the user for this remote host
+            if remote.host_id in self.parallelization: continue
+
             # Debugging
             log.debug("Setting the parallelization scheme for host '" + remote.host_id + "' ...")
 
-            # Fix the number of processes to 16
-            processes = 16
+            # Get the number of cores per process as defined in the configuration
+            cores_per_process = self.config.cores_per_process
 
-            # Calculate the maximum number of threads per process based on the current cpu load of the system
-            threads = int(remote.free_cores / processes)
+            # Get the amount of (currently) free cores on the remote host
+            cores = int(remote.free_cores)
 
-            # If hyperthreading should be used for the remote host, we can even use more threads
-            if remote.use_hyperthreading: threads *= remote.threads_per_core
+            # Determine the number of thread to be used per core
+            threads_per_core = remote.threads_per_core if remote.use_hyperthreading else 1
 
-            # If there are too little free cpus for the amount of processes, the number of threads will be smaller than one
-            if threads < 1:
-
-                processes = int(remote.free_cores)
-                threads = 1
+            # Create the parallelization object
+            parallelization = Parallelization.from_free_cores(cores, cores_per_process, threads_per_core)
 
             # Debugging
-            log.debug("Using " + str(processes) + " processes and " + str(threads) + " threads per process on this remote")
+            log.debug("Using " + str(parallelization.processes) + " processes and " + str(parallelization.threads) + " threads per process on this remote")
+            log.debug("Parallelization scheme: " + str(parallelization))
 
             # Set the parallelization scheme for this host
-            self.parallelization[remote.host_id] = (processes, threads)
+            self.parallelization[remote.host_id] = parallelization
+
+    # -----------------------------------------------------------------
+
+    def set_script_path(self, host_id, path):
+
+        """
+        This function ...
+        :param host_id:
+        :param path:
+        :return:
+        """
+
+        # Debugging
+        log.debug("Setting the local script path for remote host '" + host_id + "' to '" + path + "' ...")
+
+        # Set the path to the script paths dictionary for the remote host
+        self.script_paths[host_id] = path
+
+    # -----------------------------------------------------------------
+
+    def enable_screen_output(self, host_id):
+
+        """
+        This function ...
+        :param host_id:
+        :return:
+        """
+
+        # Debugging
+        log.debug("Saving the screen output remotely will be enabled for remote host '" + host_id + "' ...")
+
+        # Add the ID of the host to the list
+        self.save_screen_output.append(host_id)
 
     # -----------------------------------------------------------------
 
@@ -259,6 +448,9 @@ class BatchLauncher(Configurable):
         This function ...
         :return:
         """
+
+        # Inform the user
+        log.info("Launching the simulations ...")
 
         # The remote input path
         remote_input_path = None
@@ -270,7 +462,9 @@ class BatchLauncher(Configurable):
         for remote in self.remotes:
 
             # Get the parallelization scheme for this remote host
-            processes, threads = self.parallelization[remote.host_id]
+            parallellization = self.parallelization[remote.host_id]
+            processes = parallellization.processes
+            threads = parallellization.threads
 
             # Cache the simulation objects scheduled to the current remote
             simulations_remote = []
@@ -285,15 +479,20 @@ class BatchLauncher(Configurable):
                 arguments.parallel.processes = processes
                 arguments.parallel.threads = threads
 
-                # Check whether scheduling options are defined for this simulation
-                scheduling_options = self.scheduling_options[name] if name in self.scheduling_options else None
+                # Check whether scheduling options are defined for this simulation and for this remote host
+                if remote.host_id in self.scheduling_options and name in self.scheduling_options[remote.host_id]:
+                    scheduling_options = self.scheduling_options[remote.host_id][name]
+                else: scheduling_options = None
 
                 # Queue the simulation
                 simulation = remote.add_to_queue(arguments, name=name, scheduling_options=scheduling_options, remote_input_path=remote_input_path)
                 simulations_remote.append(simulation)
 
-                # If the input directory is shared between the different simulations,
+                # If the input directory is shared between the different simulations
                 if self.config.shared_input and remote_input_path is None: remote_input_path = simulation.remote_input_path
+
+                # Set the parallelization properties for the simulation (this is actually already done by SkirtRemote in the add_to_queue function)
+                simulation.parallelization = parallellization
 
                 # Set the analysis options for the simulation
                 self.set_analysis_options(simulation)
@@ -301,16 +500,27 @@ class BatchLauncher(Configurable):
                 # Save the simulation object
                 simulation.save()
 
-            # Start the queue if the remote host does not use a scheduling system
-            if not remote.scheduler:
+            # Set a path for the script file to be saved to locally (for manual inspection)
+            if remote.host_id in self.script_paths:
+                local_script_path = fs.join(self.script_paths[remote.host_id], time.unique_name() + ".sh")
+            else: local_script_path = None
 
-                # Start the queue
-                screen_name = remote.start_queue()
+            # Set a path for the screen output to be saved remotely (for debugging)
+            if remote.host_id in self.save_screen_output:
+                remote_skirt_dir_path = remote.skirt_dir
+                remote_skirt_run_debug_path = fs.join(remote_skirt_dir_path, "run-debug")
+                if not remote.is_directory(remote_skirt_run_debug_path): remote.create_directory(remote_skirt_run_debug_path)
+                screen_output_path = fs.join(remote_skirt_run_debug_path, time.unique_name("screen") + ".txt")
+            else: screen_output_path = None
 
-                # Set the screen name for all of the simulation objects
-                for simulation in simulations_remote:
-                    simulation.screen_name = screen_name
-                    simulation.save()
+            # Start the queue
+            screen_name = remote.start_queue(group_simulations=self.config.group_simulations, local_script_path=local_script_path, screen_output_path=screen_output_path)
+
+            # Set the screen name for all of the simulation objects
+            for simulation in simulations_remote:
+                simulation.screen_name = screen_name
+                simulation.remote_screen_output_path = screen_output_path
+                simulation.save()
 
             # Add the simulations of this remote to the total list of simulations
             simulations += simulations_remote
@@ -375,24 +585,24 @@ class BatchLauncher(Configurable):
         simulation.set_analysis_options(self.config.analysis)
 
         # Determine the extraction directory for this simulation (and create it if necessary)
-        if self.config.analysis.extraction.path is not None: extraction_path = filesystem.join(self.config.analysis.extraction.path, simulation.name)
-        else: extraction_path = filesystem.join(simulation.output_path, "extr")
+        if self.config.analysis.extraction.path is not None: extraction_path = fs.join(self.config.analysis.extraction.path, simulation.name)
+        else: extraction_path = fs.join(simulation.output_path, "extr")
         if simulation.analysis.any_extraction:
-            if not filesystem.is_directory(extraction_path): filesystem.create_directory(extraction_path, recursive=True)
+            if not fs.is_directory(extraction_path): fs.create_directory(extraction_path, recursive=True)
             simulation.analysis.extraction.path = extraction_path
 
         # Determine the plotting directory for this simulation (and create it if necessary)
-        if self.config.analysis.plotting.path is not None: plotting_path = filesystem.join(self.config.analysis.plotting.path, simulation.name)
-        else: plotting_path = filesystem.join(simulation.output_path, "plot")
+        if self.config.analysis.plotting.path is not None: plotting_path = fs.join(self.config.analysis.plotting.path, simulation.name)
+        else: plotting_path = fs.join(simulation.output_path, "plot")
         if simulation.analysis.any_plotting:
-            if not filesystem.is_directory(plotting_path): filesystem.create_directory(plotting_path, recursive=True)
+            if not fs.is_directory(plotting_path): fs.create_directory(plotting_path, recursive=True)
             simulation.analysis.plotting.path = plotting_path
 
         # Determine the 'misc' directory for this simulation (and create it if necessary)
-        if self.config.analysis.misc.path is not None: misc_path = filesystem.join(self.config.analysis.misc.path, simulation.name)
-        else: misc_path = filesystem.join(simulation.output_path, "misc")
+        if self.config.analysis.misc.path is not None: misc_path = fs.join(self.config.analysis.misc.path, simulation.name)
+        else: misc_path = fs.join(simulation.output_path, "misc")
         if simulation.analysis.any_misc:
-            if not filesystem.is_directory(misc_path): filesystem.create_directory(misc_path, recursive=True)
+            if not fs.is_directory(misc_path): fs.create_directory(misc_path, recursive=True)
             simulation.analysis.misc.path = misc_path
 
         # Remove remote files

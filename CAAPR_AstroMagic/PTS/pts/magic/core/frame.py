@@ -13,6 +13,7 @@
 from __future__ import absolute_import, division, print_function
 
 # Import standard modules
+import copy
 import numpy as np
 from scipy import ndimage
 
@@ -30,6 +31,7 @@ from ..basics.coordinatesystem import CoordinateSystem
 from ..tools import coordinates, cropping, transformations, interpolation, headers, fitting
 from ...core.tools import filesystem
 from ...core.tools.logging import log
+from ..basics.mask import Mask
 
 # -----------------------------------------------------------------
 
@@ -73,7 +75,7 @@ class Frame(np.ndarray):
     # -----------------------------------------------------------------
 
     @classmethod
-    def from_file(cls, path, index=0, name=None, description=None, plane=None, hdulist_index=0, fwhm=None):
+    def from_file(cls, path, index=0, name=None, description=None, plane=None, hdulist_index=0, no_filter=False):
 
         """
         This function ...
@@ -83,7 +85,7 @@ class Frame(np.ndarray):
         :param description:
         :param plane:
         :param hdulist_index:
-        :param fwhm:
+        :param no_filter:
         :return:
         """
 
@@ -124,8 +126,11 @@ class Frame(np.ndarray):
                 print("           - header pixelscale: (", header_pixelscale.x.to("arcsec/pix"), header_pixelscale.y.to("arcsec/pix"), ")")
                 print("           - actual pixelscale: (", pixelscale.x.to("arcsec/pix"), pixelscale.y.to("arcsec/pix"), ")")
 
-        # Obtain the filter for this image
-        filter = headers.get_filter(filesystem.name(path[:-5]), header)
+        if no_filter: fltr = None
+        else:
+
+            # Obtain the filter for this image
+            fltr = headers.get_filter(filesystem.name(path[:-5]), header)
 
         # Obtain the units of this image
         unit = headers.get_unit(header)
@@ -141,13 +146,21 @@ class Frame(np.ndarray):
 
         if nframes > 1:
 
-            # Get the description of this frame index
-            description = headers.get_frame_description(header, index)
-
             if plane is not None:
 
-                description = plane
-                index = headers.get_frame_index(header, plane)
+                for i in range(nframes):
+
+                    # Get name and description of frame
+                    name, description, plane_type = headers.get_frame_name_and_description(header, i, always_call_first_primary=False)
+
+                    if plane == name:
+                        index = i
+                        break
+
+                # If a break is not encountered, a matching plane name is not found
+                else: raise ValueError("Plane with name '" + plane + "' not found")
+
+            else: name, description, plane_type = headers.get_frame_name_and_description(header, index, always_call_first_primary=False)
 
             # Get the name from the file path
             if name is None: name = filesystem.name(path[:-5])
@@ -160,7 +173,7 @@ class Frame(np.ndarray):
                        description=description,
                        unit=unit,
                        zero_point=zero_point,
-                       filter=filter,
+                       filter=fltr,
                        sky_subtracted=sky_subtracted,
                        fwhm=fwhm)
 
@@ -180,7 +193,7 @@ class Frame(np.ndarray):
                        description=description,
                        unit=unit,
                        zero_point=zero_point,
-                       filter=filter,
+                       filter=fltr,
                        sky_subtracted=sky_subtracted,
                        fwhm=fwhm)
 
@@ -302,6 +315,18 @@ class Frame(np.ndarray):
     # -----------------------------------------------------------------
 
     @property
+    def fwhm_pix(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return (self.fwhm / self.xy_average_pixelscale).to("pix").value if self.fwhm is not None else None
+
+    # -----------------------------------------------------------------
+
+    @property
     def header(self):
 
         """
@@ -389,11 +414,12 @@ class Frame(np.ndarray):
 
     # -----------------------------------------------------------------
 
-    def convolved(self, kernel):
+    def convolved(self, kernel, allow_huge=False):
 
         """
         This function ...
         :param kernel:
+        :param allow_huge:
         :return:
         """
 
@@ -411,8 +437,12 @@ class Frame(np.ndarray):
         # Rebin the kernel to the same grid of the image
         kernel = ndimage.interpolation.zoom(kernel, zoom=1.0/factor)
 
+        nans_mask = np.isnan(self)
+
         # Do the convolution on this frame
-        data = convolve_fft(self, kernel, normalize_kernel=True)
+        data = convolve_fft(self, kernel, normalize_kernel=True, interpolate_nan=True, allow_huge=allow_huge)
+
+        data[nans_mask] = float("nan")
 
         # Return the convolved frame
         # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
@@ -425,6 +455,24 @@ class Frame(np.ndarray):
                      filter=self.filter,
                      sky_subtracted=self.sky_subtracted,
                      fwhm=kernel_fwhm)
+
+    # -----------------------------------------------------------------
+
+    def convolve(self, kernel, allow_huge=False):
+
+        """
+        This function ...
+        :param kernel:
+        :param allow_huge:
+        :return:
+        """
+
+        # Generate a convolved Frame
+        convolved = self.convolved(kernel, allow_huge)
+
+        # Replace the data and set the FWHM
+        self[:] = convolved
+        self.fwhm = convolved.fwhm
 
     # -----------------------------------------------------------------
 
@@ -452,6 +500,26 @@ class Frame(np.ndarray):
                      filter=self.filter,
                      sky_subtracted=self.sky_subtracted,
                      fwhm=self.fwhm)
+
+    # -----------------------------------------------------------------
+
+    def rebin(self, reference_wcs):
+
+        """
+        This function ...
+        :param reference_wcs:
+        :return:
+        """
+
+        # Generate a rebinned Frame
+        rebinned = self.rebinned(reference_wcs)
+
+        # Resize the current frame in-place
+        self.resize(rebinned.shape, refcheck=False)
+
+        # Replace the data by the rebinned data and set the WCS
+        self[:] = rebinned
+        self.wcs = rebinned.wcs
 
     # -----------------------------------------------------------------
 
@@ -500,22 +568,81 @@ class Frame(np.ndarray):
 
     # -----------------------------------------------------------------
 
-    def downsample(self, factor):
+    def crop(self, x_min, x_max, y_min, y_max):
+
+        """
+        This function ...
+        :param x_min:
+        :param x_max:
+        :param y_min:
+        :param y_max:
+        :return:
+        """
+
+        # Generate a cropped Frame
+        cropped = self.cropped(x_min, x_max, y_min, y_max)
+
+        # Resize the current frame in-place
+        self.resize(cropped.shape, refcheck=False)
+
+        # Replace the data by the cropped data and set the WCS
+        self[:] = cropped
+        self.wcs = cropped.wcs
+
+    # -----------------------------------------------------------------
+
+    @property
+    def center(self):
 
         """
         This function ...
         :return:
         """
 
-        # TODO: change the WCS !!!
+        return Position(self.wcs.wcs.crpix[0], self.wcs.wcs.crpix[1])
+
+    # -----------------------------------------------------------------
+
+    def downsampled(self, factor, order=3):
+
+        """
+        This function ...
+        :return:
+        """
 
         # Calculate the downsampled array
-        data = ndimage.interpolation.zoom(self, zoom=1.0/factor)
+        data = ndimage.interpolation.zoom(self, zoom=1.0/factor, order=order)
+
+        new_xsize = data.shape[1]
+        new_ysize = data.shape[0]
+
+        relative_center = Position(self.center.x / self.xsize, self.center.y / self.ysize)
+
+        new_center = Position(relative_center.x * new_xsize, relative_center.y * new_ysize)
+
+        # Make a copy of the current WCS
+        #new_wcs = self.wcs.copy() ## THIS IS NOT A REAL DEEP COPY!! THIS HAS CAUSED ME BUGS THAT GAVE ME HEADACHES
+        new_wcs = copy.deepcopy(self.wcs)
+
+        # Change the center pixel position
+        new_wcs.wcs.crpix[0] = new_center.x
+        new_wcs.wcs.crpix[1] = new_center.y
+
+        # Change the number of pixels
+        new_wcs.naxis1 = new_xsize
+        new_wcs.naxis2 = new_ysize
+
+        new_wcs._naxis1 = new_wcs.naxis1
+        new_wcs._naxis2 = new_wcs.naxis2
+
+        # Change the pixel scale
+        new_wcs.wcs.cdelt[0] *= float(self.xsize) / float(new_xsize)
+        new_wcs.wcs.cdelt[1] *= float(self.ysize) / float(new_ysize)
 
         # Return the downsampled frame
         # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
         return Frame(data,
-                     wcs=None,
+                     wcs=new_wcs,
                      name=self.name,
                      description=self.description,
                      unit=self.unit,
@@ -523,6 +650,89 @@ class Frame(np.ndarray):
                      filter=self.filter,
                      sky_subtracted=self.sky_subtracted,
                      fwhm=self.fwhm)
+
+    # -----------------------------------------------------------------
+
+    def upsampled(self, factor, integers=False):
+
+        """
+        This function ...
+        :param factor:
+        :param integers:
+        :return:
+        """
+
+        if integers:
+
+            # Check whether the upsampling factor is an integer or not
+            if int(factor) == factor:
+
+                data = ndimage.zoom(self, factor, order=0)
+
+                new_xsize = data.shape[1]
+                new_ysize = data.shape[0]
+
+                relative_center = Position(self.center.x / self.xsize, self.center.y / self.ysize)
+
+                new_center = Position(relative_center.x * new_xsize, relative_center.y * new_ysize)
+
+                new_wcs = self.wcs.copy()
+                # Change the center pixel position
+                new_wcs.wcs.crpix[0] = new_center.x
+                new_wcs.wcs.crpix[1] = new_center.y
+
+                # Change the number of pixels
+                new_wcs.naxis1 = new_xsize
+                new_wcs.naxis2 = new_ysize
+
+                new_wcs._naxis1 = new_wcs.naxis1
+                new_wcs._naxis2 = new_wcs.naxis2
+
+                # Change the pixel scale
+                new_wcs.wcs.cdelt[0] *= float(self.xsize) / float(new_xsize)
+                new_wcs.wcs.cdelt[1] *= float(self.ysize) / float(new_ysize)
+
+                return Frame(data, wcs=new_wcs, name=self.name, description=self.description, unit=self.unit, zero_point=self.zero_point, filter=self.filter, sky_subtracted=self.sky_subtracted, fwhm=self.fwhm)
+
+            # Upsampling factor is not an integer
+            else:
+
+                # Create a new Frame
+                #frame = Frame.zeros_like(self)
+
+                #print("self.shape", self.shape)
+
+                frame = self.downsampled(1./factor)
+
+                #print("frame.shape", frame.shape)
+
+                #print("Checking indices ...")
+                indices = np.unique(self)
+
+                #print("indices:", indices)
+
+                # Loop over the indices
+                for index in list(indices):
+
+                    #print(index)
+
+                    index = int(index)
+
+                    where = Mask(self == index)
+
+                    # Rebin this mask
+                    #data = transformations.new_align_and_rebin(self.masks[mask_name].astype(float), original_wcs, reference_wcs)
+
+                    # Calculate the downsampled array
+                    data = ndimage.interpolation.zoom(where.astype(float), zoom=factor)
+
+                    upsampled_where = data > 0.5
+
+                    frame[upsampled_where] = index
+
+                return frame
+
+        else: return self.downsampled(1./factor)
 
     # -----------------------------------------------------------------
 
@@ -701,6 +911,19 @@ class Frame(np.ndarray):
 
     # -----------------------------------------------------------------
 
+    def replace_infs(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        # Set all inf pixels to the specified value
+        self[np.isinf(self)] = value
+
+    # -----------------------------------------------------------------
+
     def fit_polynomial(self, order, mask=None):
 
         """
@@ -829,7 +1052,7 @@ class Frame(np.ndarray):
         # Set unit, FWHM and filter description
         if self.unit is not None: header.set("SIGUNIT", str(self.unit), "Unit of the map")
         if self.fwhm is not None: header.set("FWHM", self.fwhm.to("arcsec").value, "[arcsec] FWHM of the PSF")
-        if self.filter is not None: header.set("FILTER", self.filter.description(), "Filter used for this observation")
+        if self.filter is not None: header.set("FILTER", str(self.filter), "Filter used for this observation")
 
         # Add origin description
         if origin is not None: header["ORIGIN"] = origin

@@ -115,10 +115,9 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
         finder.config.find_other_sources = False # default is True
 
         # Define how stars not fit by PSF should be masked
-        finder.config.stars.source_sf_sigma_level = 3.0 # 4.0 is the default, change this to whatever value you want
-        finder.config.stars.fwhm.scale_factor = 2.0 # 1.0 is the default, change this to 2.0 for example
-        finder.config.stars.fwhm.measure = 'max' # Can change to median, mean, or max
-
+        finder.config.stars.source_sf_sigma_level = 6.0 # 4.0 is the default, change this to whatever value you want
+        finder.config.stars.fwhm.scale_factor = 1.0 # 1.0 is the default, change this to 2.0 for example
+        finder.config.stars.fwhm.measure = 'median' # Can change to median, mean, or max
 
 
         # Run the source finder
@@ -175,7 +174,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
         segments.save(path)
 
 
-
+        """
         # Only process the most conspicuous foreground stars, to save time
         BrightestStars(saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, percentile=75.0, maxtot=100, do_sat=do_sat)
 
@@ -183,7 +182,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
         star_region = Region.from_file(star_region_path.replace('.reg','_revised.reg'))
         saturation_region = Region.from_file(saturation_region_path.replace('.reg','_revised.reg'))
         if finder.config.find_other_sources==True: other_region = Region.from_file(other_region_path)
-
+        """
 
 
         # Pickle region and segmentation files to be used for photometry stage of pipeline (if required)

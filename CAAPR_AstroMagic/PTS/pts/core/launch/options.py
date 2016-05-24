@@ -20,7 +20,99 @@ from ..basics.map import Map
 
 # -----------------------------------------------------------------
 
-class AnalysisOptions(object):
+class Options(object):
+
+    """
+    This class ...
+    """
+
+    def __init__(self):
+
+        """
+        The constructor ...
+        """
+
+        pass
+
+    # -----------------------------------------------------------------
+
+    def set_options(self, options):
+
+        """
+        This function allows setting multiple options at once from a dictionary
+        :param options:
+        :return:
+        """
+
+        # Loop over all the options defined in the 'options' dictionary
+        for option in options:
+
+            # Check whether an option with this name exists in this class
+            if hasattr(self, option):
+
+                # Check if the option is composed of other options (a Map), or if it is just a simple variable
+                if isinstance(getattr(self, option), Map):
+                    getattr(self, option).set_items(options[option])
+
+                # If it is a simple variable, just use setattr to set the attribute of this class
+                else:
+                    setattr(self, option, options[option])
+
+            # If the option does not exist, ignore it but give a warning
+            else: warnings.warn("The option " + option + " does not exist")
+
+# -----------------------------------------------------------------
+
+class SchedulingOptions(object):
+
+    """
+    This function ...
+    """
+
+    def __init__(self):
+
+        """
+        The constructor ...
+        """
+
+        # Call the constructor of the base class
+        super(SchedulingOptions, self).__init__()
+
+        # Scheduling options
+        self.nodes = None
+        self.ppn = None
+        self.mail = None
+        self.full_node = None
+        self.walltime = None
+        self.local_jobscript_path = None
+
+    # -----------------------------------------------------------------
+
+    @classmethod
+    def from_dict(cls, dictionary):
+
+        """
+        This function ...
+        :param dictionary:
+        :return:
+        """
+
+        # Create a new SchedulingOptions instance
+        options = cls()
+
+        if "nodes" in dictionary: options.nodes = dictionary["nodes"]
+        if "ppn" in dictionary: options.ppn = dictionary["ppn"]
+        if "mail" in dictionary: options.mail = dictionary["mail"]
+        if "full_node" in dictionary: options.full_node = dictionary["full_node"]
+        if "walltime" in dictionary: options.walltime = dictionary["walltime"]
+        if "local_jobscript_path" in dictionary: options.local_jobscript_path = dictionary["local jobscript path"]
+
+        # Return the scheduling options object
+        return options
+
+# -----------------------------------------------------------------
+
+class AnalysisOptions(Options):
 
     """
     This class ...
@@ -32,6 +124,9 @@ class AnalysisOptions(object):
         The constructor ...
         :return:
         """
+
+        # Call the constructor of the base class
+        super(AnalysisOptions, self).__init__()
 
         # Options for extracting data from the simulation's log files
         self.extraction = Map()
@@ -60,6 +155,15 @@ class AnalysisOptions(object):
         self.misc.fluxes = False
         self.misc.images = False
         self.misc.observation_filters = None # The filters for which to recreate the observations
+        self.misc.observation_instruments = None # The instrument for which to recreate the observations
+        self.misc.make_images_remote = None  # Perform the calculation of the observed images on a remote machine (this is a memory and CPU intensive step)
+        self.misc.images_wcs = None  # the path to the FITS file from which the WCS should be set as the WCS of the simulated images
+        self.misc.images_unit = None # the unit to which the simulated images should be converted (if None, the original unit is kept)
+        self.misc.images_kernels = None # the paths to the FITS file of convolution kernel used for convolving the observed images (a dictionary where the keys are the filter names)
+
+        # Properties that are relevant for simulations launched as part of a batch (e.g. from an automatic launching procedure)
+        self.timing_table_path = None
+        self.memory_table_path = None
 
         # Properties relevant for simulations part of a scaling test
         self.scaling_run_name = None
@@ -68,31 +172,6 @@ class AnalysisOptions(object):
 
         # Properties relevant for simulations part of radiative transfer modeling
         self.modeling_path = None
-
-    # -----------------------------------------------------------------
-
-    def set_options(self, options):
-
-        """
-        This function allows setting multiple options at once from a dictionary
-        :param options:
-        :return:
-        """
-
-        # Loop over all the options defined in the 'options' dictionary
-        for option in options:
-
-            # Check whether an option with this name exists in this class
-            if hasattr(self, option):
-
-                # Check if the option is composed of other options (a Map), or if it is just a simple variable
-                if isinstance(getattr(self, option), Map): getattr(self, option).set_items(options[option])
-
-                # If it is a simple variable, just use setattr to set the attribute of this class
-                else: setattr(self, option, options[option])
-
-            # If the option does not exist, ignore it but give a warning
-            else: warnings.warn("The option " + option + " does not exist")
 
     # -----------------------------------------------------------------
 

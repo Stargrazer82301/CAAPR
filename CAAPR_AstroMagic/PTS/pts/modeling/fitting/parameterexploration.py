@@ -13,7 +13,7 @@
 from __future__ import absolute_import, division, print_function
 
 # Import standard modules
-import numpy as np
+from collections import defaultdict
 
 # Import the relevant PTS classes and modules
 from .component import FittingComponent
@@ -23,6 +23,7 @@ from ...core.basics.filter import Filter
 from ...core.simulation.skifile import SkiFile
 from ...core.launch.batchlauncher import BatchLauncher
 from ...core.tools.logging import log
+from ...core.launch.parallelization import Parallelization
 
 # -----------------------------------------------------------------
 
@@ -49,81 +50,11 @@ class ParameterExplorer(FittingComponent):
         # The ski file
         self.ski = None
 
-        # The parameter ranges
-        self.young_luminosities = None
-        self.ionizing_luminosities = None
-        self.dust_masses = None
+        # The parameter combinations
+        self.parameters = defaultdict(list)
 
         # The table with the parameter values for each simulation
         self.table = None
-
-    # -----------------------------------------------------------------
-
-    @classmethod
-    def from_arguments(cls, arguments):
-
-        """
-        This function ...
-        :param arguments:
-        :return:
-        """
-
-        # Create a new ParameterExplorer instance
-        explorer = cls(arguments.config)
-
-        # Set the modeling path
-        explorer.config.path = arguments.path
-
-        # Set options for the young stellar population
-        if arguments.young_nvalues is not None: explorer.config.young_stars.nvalues = arguments.young_nvalues
-        if arguments.young_range is not None:
-            explorer.config.young_stars.rel_min = arguments.young_range[0]
-            explorer.config.young_stars.rel_max = arguments.young_range[1]
-        if arguments.young_log: explorer.config.young_stars.scale = "log"
-        else: explorer.config.young_stars.scale = "linear"
-
-        # Set options for the ionizing stellar population
-        if arguments.ionizing_nvalues is not None: explorer.config.ionizing_stars.nvalues = arguments.ionizing_nvalues
-        if arguments.ionizing_range is not None:
-            explorer.config.ionizing_stars.rel_min = arguments.ionizing_range[0]
-            explorer.config.ionizing_stars.rel_max = arguments.ionizing_range[1]
-        if arguments.ionizing_log: explorer.config.ionizing_stars = "log"
-        else: explorer.config.ionizing_stars.scale = "linear"
-
-        # Set options for the dust component
-        if arguments.dust_nvalues is not None: explorer.config.dust.nvalues = arguments.dust_nvalues
-        if arguments.dust_range is not None:
-            explorer.config.dust.rel_min = arguments.dust_range[0]
-            explorer.config.dust.rel_max = arguments.dust_range[1]
-        if arguments.dust_log: explorer.config.dust.scale = "log"
-        else: explorer.config.dust.scale = "linear"
-
-        # Return the new instance
-        return explorer
-
-    # -----------------------------------------------------------------
-
-    def run(self):
-
-        """
-        This function ...
-        :return:
-        """
-
-        # 1. Call the setup function
-        self.setup()
-
-        # 2. Load the ski file
-        self.load_ski()
-
-        # 3. Set the ranges of the different fit parameters
-        self.set_parameter_ranges()
-
-        # 4. Launch the simulations for different parameter values
-        self.simulate()
-
-        # 5. Create and write a table with the parameter values for each simulation
-        self.write_parameter_table()
 
     # -----------------------------------------------------------------
 
@@ -140,6 +71,7 @@ class ParameterExplorer(FittingComponent):
         # Get the names of the filters for which we have photometry
         filter_names = []
         fluxes_table_path = filesystem.join(self.phot_path, "fluxes.dat")
+        #fluxes_table = tables.from_file(fluxes_table_path, format="ascii.ecsv")
         fluxes_table = tables.from_file(fluxes_table_path)
         # Loop over the entries in the fluxes table, get the filter
         for entry in fluxes_table:
@@ -147,29 +79,39 @@ class ParameterExplorer(FittingComponent):
             filter_id = entry["Instrument"] + "." + entry["Band"]
             filter_names.append(filter_id)
 
-        # Set options for the BatchLauncher
+        # Set options for the BatchLauncher: basic options
+        self.launcher.config.shared_input = True  # The input directories for the different simulations are shared
+        self.launcher.config.group_simulations = True  # group multiple simulations into a single job (because a very large number of simulations will be scheduled)
+        self.launcher.config.remotes = self.config.remotes  # the remote hosts on which to run the simulations
+
+        # Set options for the BatchLauncher: simulation analysis options
+        self.launcher.config.analysis.extraction.path = self.fit_res_path
         self.launcher.config.analysis.misc.path = self.fit_res_path # The base directory where all of the simulations will have a seperate directory with the 'misc' analysis output
         self.launcher.config.analysis.plotting.path = self.fit_plot_path # The base directory where all of the simulations will have a seperate directory with the plotting analysis output
+        self.launcher.config.analysis.extraction.timeline = True # extract the simulation timeline
         self.launcher.config.analysis.plotting.seds = True  # Plot the output SEDs
+        self.launcher.config.analysis.plotting.reference_sed = filesystem.join(self.phot_path, "fluxes.dat") # the path to the reference SED (for plotting the simulated SED against the reference points)
         self.launcher.config.analysis.misc.fluxes = True  # Calculate observed fluxes
         self.launcher.config.analysis.misc.images = True  # Make observed images
         self.launcher.config.analysis.misc.observation_filters = filter_names  # The filters for which to create the observations
         self.launcher.config.analysis.plotting.format = "png" # plot in PNG format so that an animation can be made from the fit SEDs
+        self.launcher.config.analysis.timing_table_path = self.timing_table_path # The path to the timing table file
+        self.launcher.config.analysis.memory_table_path = self.memory_table_path # The path to the memory table file
 
-        self.launcher.config.shared_input = True   # The input directories for the different simulations are shared
-        self.launcher.config.remotes = ["nancy"]   # temporary; only use Nancy
+    # -----------------------------------------------------------------
 
-        # If a parameter table already exists, load it
-        if filesystem.is_file(self.parameter_table_path): self.table = tables.from_file(self.parameter_table_path)
+    def load_table(self):
 
-        # If the table does not exist yet
-        else:
+        """
+        This function ...
+        :return:
+        """
 
-            # Create an empty table
-            names = ["Simulation name", "FUV young", "FUV ionizing", "Dust mass"]
-            data = [[], [], [], []]
-            dtypes = ["S24", "float64", "float64", "float64"]
-            self.table = tables.new(data, names, dtypes=dtypes)
+        # Inform the user
+        log.info("Loading the parameter table ...")
+
+        # Load the parameter table
+        self.table = tables.from_file(self.parameter_table_path, format="ascii.ecsv", fix_string_length=("Simulation name", 24))
 
     # -----------------------------------------------------------------
 
@@ -180,90 +122,56 @@ class ParameterExplorer(FittingComponent):
         :return:
         """
 
+        # Inform the user
+        log.info("Loading the ski file ...")
+
         # Open the ski file (created by InputInitializer)
         self.ski = SkiFile(self.fit_ski_path)
 
     # -----------------------------------------------------------------
 
-    def set_parameter_ranges(self):
+    def set_parallelization(self):
 
         """
-        This function ...
+        This function sets the parallelization scheme for those remote hosts used by the batch launcher that use
+        a scheduling system (the parallelization for the other hosts is left up to the batch launcher and will be
+        based on the current load of the correponding system).
         :return:
         """
 
-        # Get the current values in the ski file prepared by InputInitializer
-        young_luminosity, young_filter = self.ski.get_stellar_component_luminosity("Young stars")
-        ionizing_luminosity, ionizing_filter = self.ski.get_stellar_component_luminosity("Ionizing stars")
-        dust_mass = self.ski.get_dust_component_mass(0)
+        # Loop over the IDs of the hosts used by the batch launcher that use a scheduling system
+        for host in self.launcher.scheduler_hosts:
 
-        # Set the parameter ranges
-        self.set_young_luminosity_range(young_luminosity)
-        self.set_ionizing_luminosity_range(ionizing_luminosity)
-        self.set_dust_mass_range(dust_mass)
+            # Get the number of cores per node for this host
+            cores_per_node = host.clusters[host.cluster_name].cores
+
+            # Determine the number of cores corresponding to 4 full nodes
+            cores = cores_per_node * 4
+
+            # Use 1 core for each process (assume there is enough memory)
+            processes = cores
+
+            # Determine the number of threads per core
+            if host.use_hyperthreading: threads_per_core = host.clusters[host.cluster_name].threads_per_core
+            else: threads_per_core = 1
+
+            # Create a Parallelization instance
+            parallelization = Parallelization(cores, threads_per_core, processes)
+
+            # Set the parallelization for this host
+            self.launcher.set_parallelization_for_host(host.id, parallelization)
 
     # -----------------------------------------------------------------
 
-    def set_young_luminosity_range(self, luminosity):
+    @property
+    def number_of_models(self):
 
         """
         This function ...
-        :param luminosity:
         :return:
         """
 
-        # Set the range of the FUV luminosity of the young stellar population
-        min = self.config.young_stars.rel_min * luminosity
-        max = self.config.young_stars.rel_max * luminosity
-
-        # Create a linear or logarithmic range of luminosities
-        if self.config.young_stars.scale == "linear":
-            self.young_luminosities = np.linspace(min, max, num=self.config.young_stars.nvalues, endpoint=True)
-        elif self.config.young_stars.scale == "logarithmic":
-            self.young_luminosities = np.logspace(min, max, num=self.config.young_stars.nvalues, endpoint=True)
-        else: raise ValueError("Invalid scale for the young stellar luminosity values")
-
-    # -----------------------------------------------------------------
-
-    def set_ionizing_luminosity_range(self, luminosity):
-
-        """
-        This function ...
-        :param luminosity:
-        :return:
-        """
-
-        # Determine the minimum and maximum luminosity
-        min = self.config.ionizing_stars.rel_min * luminosity
-        max = self.config.ionizing_stars.rel_max * luminosity
-
-        # Create a linear or logarithmic range of luminosities
-        if self.config.ionizing_stars.scale == "linear":
-            self.ionizing_luminosities = np.linspace(min, max, num=self.config.ionizing_stars.nvalues, endpoint=True)
-        elif self.config.ionizing_stars.scale == "log":
-            self.ionizing_luminosities = np.logspace(min, max, num=self.config.ionizing_stars.nvalues, endpoint=True)
-        else: raise ValueError("Invalid scale for the ionizing stellar luminosity values")
-
-    # -----------------------------------------------------------------
-
-    def set_dust_mass_range(self, mass):
-
-        """
-        This function ...
-        :param mass:
-        :return:
-        """
-
-        # Set the dust mass range
-        min = self.config.dust.rel_min * mass
-        max = self.config.dust.rel_max * mass
-
-        # Create a linear or logarithmic range of dust masses
-        if self.config.dust.scale == "linear":
-            self.dust_masses = np.linspace(min, max, num=self.config.dust.nvalues, endpoint=True)
-        elif self.config.dust.scale == "log":
-            self.dust_masses = np.logspace(min, max, num=self.config.dust.nvalues, endpoint=True)
-        else: raise ValueError("Invalid scale for the dust mass values")
+        return len(self.parameters["FUV young"])
 
     # -----------------------------------------------------------------
 
@@ -274,60 +182,61 @@ class ParameterExplorer(FittingComponent):
         :return:
         """
 
-        # Scheduling options
-        scheduling_options = {}
-        scheduling_options["walltime"] = None
+        # Set the paths to the directories to contain the launch scripts (job scripts) for the different remote hosts
+        for host_id in self.launcher.host_ids:
+            script_dir_path = filesystem.join(self.fit_scripts_path, host_id)
+            if not filesystem.is_directory(script_dir_path): filesystem.create_directory(script_dir_path)
+            self.launcher.set_script_path(host_id, script_dir_path)
 
         # Create a FUV filter object
         fuv = Filter.from_string("FUV")
 
-        # Loop over the different values of the young stellar luminosity
-        for young_luminosity in self.young_luminosities:
+        # Loop over the different parameter combinations
+        for i in range(self.number_of_models):
 
-            # Loop over the different values of the ionizing stellar luminosity
-            for ionizing_luminosity in self.ionizing_luminosities:
+            # Get the parameter values
+            young_luminosity = self.parameters["FUV young"][i]
+            ionizing_luminosity = self.parameters["FUV ionizing"][i]
+            dust_mass = self.parameters["Dust mass"][i]
 
-                # Loop over the different values of the dust mass
-                for dust_mass in self.dust_masses:
+            # Create a unique name for this combination of parameter values
+            simulation_name = time.unique_name()
 
-                    # Create a unique name for this combination of parameter values
-                    simulation_name = time.unique_name()
+            # Change the parameter values in the ski file
+            self.ski.set_stellar_component_luminosity("Young stars", young_luminosity, fuv)
+            self.ski.set_stellar_component_luminosity("Ionizing stars", ionizing_luminosity, fuv)
+            self.ski.set_dust_component_mass(0, dust_mass)
 
-                    # Change the parameter values in the ski file
-                    self.ski.set_stellar_component_luminosity("Young stars", young_luminosity, fuv)
-                    self.ski.set_stellar_component_luminosity("Ionizing stars", ionizing_luminosity, fuv)
-                    self.ski.set_dust_component_mass(0, dust_mass)
+            # Determine the directory for this simulation
+            simulation_path = filesystem.join(self.fit_out_path, simulation_name)
 
-                    # Determine the directory for this simulation
-                    simulation_path = filesystem.join(self.fit_out_path, simulation_name)
+            # Create the simulation directory
+            filesystem.create_directory(simulation_path)
 
-                    # Create the simulation directory
-                    filesystem.create_directory(simulation_path)
+            # Create an 'out' directory within the simulation directory
+            output_path = filesystem.join(simulation_path, "out")
+            filesystem.create_directory(output_path)
 
-                    # Create an 'out' directory within the simulation directory
-                    output_path = filesystem.join(simulation_path, "out")
-                    filesystem.create_directory(output_path)
+            # Put the ski file with adjusted parameters into the simulation directory
+            ski_path = filesystem.join(simulation_path, self.galaxy_name + ".ski")
+            self.ski.saveto(ski_path)
 
-                    # Put the ski file with adjusted parameters into the simulation directory
-                    ski_path = filesystem.join(simulation_path, self.galaxy_name + ".ski")
-                    self.ski.saveto(ski_path)
+            # Create the SKIRT arguments object
+            arguments = create_arguments(ski_path, self.fit_in_path, output_path)
 
-                    # Create the SKIRT arguments object
-                    arguments = create_arguments(ski_path, self.fit_in_path, output_path)
+            # Debugging
+            log.debug("Adding a simulation to the queue with:")
+            log.debug(" - ski path: " + arguments.ski_pattern)
+            log.debug(" - output path: " + arguments.output_path)
 
-                    # Debugging
-                    log.debug("Adding a simulation to the queue with:")
-                    log.debug(" - ski path: " + arguments.ski_pattern)
-                    log.debug(" - output path: " + arguments.output_path)
+            # Put the parameters in the queue and get the simulation object
+            self.launcher.add_to_queue(arguments, simulation_name)
 
-                    # Put the parameters in the queue and get the simulation object
-                    self.launcher.add_to_queue(arguments, simulation_name)
+            # Set scheduling options (for the different remote hosts with a scheduling system)
+            for host_id in self.scheduling_options: self.launcher.set_scheduling_options(host_id, simulation_name, self.scheduling_options[host_id])
 
-                    # Set scheduling options
-                    self.launcher.set_scheduling_options(simulation_name, scheduling_options)
-
-                    # Add an entry to the parameter table
-                    self.table.add_row([simulation_name, young_luminosity, ionizing_luminosity, dust_mass])
+            # Add an entry to the parameter table
+            self.table.add_row([simulation_name, young_luminosity, ionizing_luminosity, dust_mass])
 
         # Run the launcher, schedules the simulations
         simulations = self.launcher.run()
@@ -338,11 +247,23 @@ class ParameterExplorer(FittingComponent):
             # Add the path to the modeling directory to the simulation object
             simulation.analysis.modeling_path = self.config.path
 
-            # Set the path to the reference SED (for plotting the simulated SED against the reference points)
-            simulation.analysis.plotting.reference_sed = filesystem.join(self.phot_path, "fluxes.dat")
-
             # Save the simulation object
             simulation.save()
+
+    # -----------------------------------------------------------------
+
+    def write(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Writing ...")
+
+        # Create and write a table with the parameter values for each simulation
+        self.write_parameter_table()
 
     # -----------------------------------------------------------------
 
@@ -353,8 +274,16 @@ class ParameterExplorer(FittingComponent):
         :return:
         """
 
+        # Inform the user
+        log.info("Writing the parameter table ...")
+
+        # Set the units of the parameter table
+        self.table["FUV young"].unit = "Lsun_FUV"
+        self.table["FUV ionizing"].unit = "Lsun_FUV"
+        self.table["Dust mass"].unit = "Msun"
+
         # Write the parameter table
-        tables.write(self.table, self.parameter_table_path)
+        tables.write(self.table, self.parameter_table_path, format="ascii.ecsv")
 
 # -----------------------------------------------------------------
 
@@ -384,6 +313,7 @@ def create_arguments(ski_path, input_path, output_path):
     arguments.parallel.threads = None
     arguments.parallel.processes = None
 
+    # Return the SKIRT arguments object
     return arguments
 
 # -----------------------------------------------------------------
