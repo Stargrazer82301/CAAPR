@@ -266,7 +266,10 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
     edge_short = np.floor(float(thumb_files)**0.5)
     edge_long = np.round(phi*float(edge_short))
     if int(edge_short*edge_long)<thumb_files:
-        edge_long += 1
+        if int(edge_short+1)<int(edge_long):
+            edge_short += 1
+        else:
+            edge_long += 1
     if (int(edge_short*edge_long)-int(edge_long))>=thumb_files:
         edge_short -= 1
 
@@ -478,7 +481,10 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
     edge_short = np.floor(float(thumb_files)**0.5)
     edge_long = np.round(phi*float(edge_short))
     if int(edge_short*edge_long)<thumb_files:
-        edge_long += 1
+        if int(edge_short+1)<int(edge_long):
+            edge_short += 1
+        else:
+            edge_long += 1
     if (int(edge_short*edge_long)-int(edge_long))>=thumb_files:
         edge_short -= 1
 
