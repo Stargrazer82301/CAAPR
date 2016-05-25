@@ -71,6 +71,9 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
             if bands_dict[band]['remove_stars']==True:
                 star_sub_check = True
         if star_sub_check==True:
+            if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic')):
+                shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
+            os.mkdir(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
             source_dict['pre_catalogue'] = CAAPR_AstroMagic.PreCatalogue(source_dict, bands_dict, kwargs_dict)
 
 
@@ -291,7 +294,7 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
     # Create final polynomial filter (undoing downsampling using lorenzoriano GitHub script)
     i_coords, j_coords = np.mgrid[:image_ds.shape[0], :image_ds.shape[1]]
     poly_fit = fit(i_coords, j_coords)
-    poly_full = congrid.congrid(poly_fit, (pod['cutout'].shape[0], pod['cutout'].shape[1]), minusone=True)
+    poly_full = scipy.ndimage.interpolation.zoom(poly_fit, [ float(pod['cutout'].shape[0])/float(poly_fit.shape[0]), float(pod['cutout'].shape[1])/float(poly_fit.shape[1]) ], mode='nearest') #poly_full = congrid.congrid(poly_fit, (pod['cutout'].shape[0], pod['cutout'].shape[1]), minusone=True)
 
 
 
