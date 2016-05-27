@@ -82,7 +82,7 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
         # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
         if pod['verbose']: print '['+pod['id']+'] Parsing input data.'
-        pod = CAAPR_Pipeline.MapPrelim(pod)
+        pod = CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
         if pod['within_bounds']==False:
             return pod
         CAAPR_IO.MemCheck(pod)
@@ -93,7 +93,7 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
         if kwargs_dict['starsub']==True:
             if band_dict['remove_stars']==True:
                 if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
-                pod = CAAPR_AstroMagic.Magic(pod, source_dict, kwargs_dict, do_sat=False)
+                pod = CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict, do_sat=False)
 
 
 
@@ -129,7 +129,7 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
 
             # Run pod through function that determines aperture size
-            pod = ApertureSize(pod)
+            pod = ApertureSize(pod, band_dict)
 
 
 
@@ -219,9 +219,8 @@ def ApertureShape(pod):
 
 
 # Define function that determines the size of the source aperture in this band
-def ApertureSize(pod):
+def ApertureSize(pod,band_dict):
     if pod['verbose']: print '['+pod['id']+'] Commencing determination of appropriate size for source aperture.'
-    band_dict = pod['band_dict']
     verbose = pod['verbose']
 
     # Define sub-function that determines SNR of a defined annulus; and if requested, determines residual between the SNR of a defined annulus, and a target SNR of 2

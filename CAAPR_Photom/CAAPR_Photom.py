@@ -113,7 +113,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
         # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
-        pod = CAAPR_Pipeline.MapPrelim(pod)
+        pod = CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
         if pod['within_bounds']==False:
             output_dict = {'band_name':band_dict['band_name'],
                        'ap_sum':np.NaN,
@@ -140,7 +140,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
         if kwargs_dict['starsub']==True:
             if band_dict['remove_stars']==True:
                 if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
-                pod = CAAPR_AstroMagic.Magic(pod, source_dict, kwargs_dict, do_sat=False)
+                pod = CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict, do_sat=False)
 
 
 
@@ -151,7 +151,12 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
         # Run pod through function that (finally) performs the actual photometry
-        pod = Photom(pod)
+        pod = Photom(pod, band_dict)
+
+
+
+        # Run pod through function that performs aperture correction
+        pod = ApCorrect(pod)
 
 
 
@@ -218,8 +223,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
 # Define actual function that actually performs actual photometry
-def Photom(pod):
-    band_dict = pod['band_dict']
+def Photom(pod, band_dict):
     if pod['verbose']: print '['+pod['id']+'] Performing aperture photometry.'
 
 
@@ -249,8 +253,8 @@ def Photom(pod):
     else:
         bg_nan_frac = float(np.where(np.isnan(bg_calc[2]))[0].shape[0]) / float(bg_calc[1])
 
-    # If more than 5% of the pixels inside the source aperture, or 75% of those in background annulus are NaN, record NaN flux, otherwise continue as per normal
-    ap_nan_thresh = 0.05
+    # If more than a givn fraction of the pixels inside the source aperture, or the background annulus, are NaN, record NaN flux, otherwise continue as per normal
+    ap_nan_thresh = 0.10
     bg_nan_thresh = 0.80
     if ap_nan_frac>ap_nan_thresh:
         if pod['verbose']: print '['+pod['id']+'] More than '+str(int(100.0*ap_nan_thresh))+'% of pixels in source aperture are NaN; recording null flux.'
@@ -468,7 +472,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
             bg_width = (adj_semimaj_pix * band_dict['annulus_outer']) - bg_inner_semimaj_pix
             bg_calc = ChrisFuncs.Photom.AnnulusSum(cutout, bg_inner_semimaj_pix, bg_width, 1.0, 0.0, random_i, random_j)
 
-            # Check if more than 5% of the pixels inside the sky aperture, or 75% of those in sky annulus, are NaN; if so, reject
+            # Check if more than a givn fraction of the pixels inside the source aperture, or the background annulus, are NaN; if so, reject
             try:
                 if ap_calc[3][0].shape[0]==0 or ap_calc[1]==0:
                     ap_nan_frac = 0.0
@@ -486,7 +490,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
                 pdb.set_trace()
             #if ap_debug: print 'Aperture NaN fraction: '+str(ap_nan_frac)
             #if ap_debug: print 'Background NaN fraction: '+str(bg_nan_frac)
-            ap_nan_thresh = 0.05
+            ap_nan_thresh = 0.10
             bg_nan_thresh = 0.80
             if ap_nan_frac>ap_nan_thresh:
                 if ap_debug: print 'Rejection: aperture contains too many NaNs'
@@ -662,6 +666,13 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
         plt.close('all')
         ap_noise_dict = {'fail':False, 'ap_noise':ap_noise_proj}
         return ap_noise_dict
+
+
+
+
+
+# Define function that uses provided beam profile to aperture-correct photometry
+def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
 
 
 
