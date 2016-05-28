@@ -264,8 +264,8 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
     # Find grid dimensions that closely match the golden ratio for the number of images being plotted
     phi = (1.0+5.0**0.5)/2.0
     edge_short = np.floor(float(thumb_files)**0.5)
-    edge_long = np.round(phi*float(edge_short))
-    if int(edge_short*edge_long)<thumb_files:
+    edge_long = np.floor(phi*float(edge_short))
+    while int(edge_short*edge_long)<thumb_files:
         if int(edge_short+1)<int(edge_long):
             edge_short += 1
         else:
