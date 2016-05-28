@@ -154,10 +154,10 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
         pod = Photom(pod, band_dict)
 
 
-
+        """
         # Run pod through function that performs aperture correction
         pod = ApCorrect(pod)
-
+        """
 
 
         # If photometry recorded null flux, skip determination of aperture noise, recording null value for this too, instead
@@ -419,24 +419,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
                 ap_mask = ChrisFuncs.Photom.EllipseMask(cutout, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)
                 attempt_mask[ np.where(ap_mask==1) ] = sky_success_counter
                 print 'Aperture :'+str(sky_success_counter+1)+';   Generation: '+str(sky_gen_counter)+';   Pix Coords: ['+str(random_i)+','+str(random_j)+']'
-
-            """
-            # Produce r & theta coords for random sky aperture, dictated by gaussian distribution centred on source
-            random_theta = 360.0 * np.random.rand()
-            random_r = (2.0*adj_semimin_pix) + np.abs(np.random.normal(loc=0.0, scale=4.0*adj_semimaj_pix_full))
-            random_i = centre_i + ( random_r * np.cos(np.radians(random_theta)) )#np.random.normal(loc=centre_i, scale=2.0*sky_ap_rad_pix)
-            random_j = centre_j + ( random_r * np.sin(np.radians(random_theta)) )#np.random.normal(loc=centre_j, scale=2.0*sky_ap_rad_pix)
-
-            # Check that generated sky aperture does not intersect border region
-            if random_i<=sky_border or random_i>(cutout.shape[0]-sky_border) or random_j<=sky_border or random_j>(cutout.shape[1]-sky_border):
-                if ap_debug: print 'Rejection: aperture in border'
-                continue
-
-            # Do crude basic that generated sky aperture does not intersect source; if it does, reject
-            if ( abs(centre_i - random_i) < adj_semimaj_pix_full ) and ( abs(centre_j - random_j) < adj_semimaj_pix_full ):
-                if ap_debug: print 'Rejection: aperture intersects source (according to basic check)'
-                continue
-            """
+            
             # Do sophisticated check that generated sky aperture does not intersect source; if it does, reject
             exclude_sum = ChrisFuncs.Photom.EllipseSum(exclude_mask, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)[0]
             if exclude_sum>0:
@@ -673,7 +656,7 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
 
 # Define function that uses provided beam profile to aperture-correct photometry
 def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
-
+    pass
 
 
 
