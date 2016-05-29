@@ -330,7 +330,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
     sky_gen_max = 100
 
     # Generate random polar coordinates to draw from
-    random_size = sky_success_target * sky_gen_max * 100
+    random_size = sky_success_target * sky_gen_max * 10000
     random_failed = []
     random_theta_list = 360.0 * np.random.rand(random_size)
     random_r_list = (2.0*adj_semimin_pix) + np.abs(np.random.normal(loc=0.0, scale=5.0*adj_semimaj_pix_full, size=random_size))
@@ -383,11 +383,17 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
     random_i_list = random_i_list[random_ij_pix_good]
     random_j_list = random_j_list[random_ij_pix_good]
 
+    # If none of the apertures are suitable, immediately suitable
+    if random_i_list.shape[0]==0:
+        ap_noise_dict = {'fail':True, 'prior_mask':prior_mask, 'flag_mask':flag_mask, 'sky_success_counter':0}
+        cutout = cutout_inviolate
+        return ap_noise_dict
 
 
 
 
-    # Commence creation of random sky apertures    sky_success_counter = 0
+
+    # Commence creation of random sky apertures
     sky_success_counter = 0
     sky_sum_list = []
     sky_total_fail = False
@@ -419,7 +425,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
                 ap_mask = ChrisFuncs.Photom.EllipseMask(cutout, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)
                 attempt_mask[ np.where(ap_mask==1) ] = sky_success_counter
                 print 'Aperture :'+str(sky_success_counter+1)+';   Generation: '+str(sky_gen_counter)+';   Pix Coords: ['+str(random_i)+','+str(random_j)+']'
-            
+
             # Do sophisticated check that generated sky aperture does not intersect source; if it does, reject
             exclude_sum = ChrisFuncs.Photom.EllipseSum(exclude_mask, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)[0]
             if exclude_sum>0:
