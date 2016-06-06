@@ -294,6 +294,7 @@ class GalaxyFinder(Configurable):
         log.info("Loading the galaxies from the catalog ...")
 
         # Create the list of galaxies
+        galcheck = []
         for i in range(len(self.catalog)):
 
             # Get the galaxy properties
@@ -339,10 +340,13 @@ class GalaxyFinder(Configurable):
             if self.ignore_mask is not None: galaxy.ignore = self.ignore_mask.masks(pixel_position)
 
             # If the input mask masks this star's position, skip it (don't add it to the list of stars)
-            if self.bad_mask is not None and self.bad_mask.masks(pixel_position): continue
+            if not principal:
+                if self.bad_mask is not None and self.bad_mask.masks(pixel_position): continue
 
             # Add the new galaxy to the list
             self.galaxies.append(galaxy)
+            galcheck.append(len(self.galaxies))
+
 
         # Debug messages
         log.debug(self.principal.name + " is the principal galaxy in the frame")
