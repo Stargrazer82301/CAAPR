@@ -287,15 +287,46 @@ def Photom(pod, band_dict):
 
 
 # Define funcion that attempts to estimate aperture noise using randomly-positioned sky apertures of given dimensions
-def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_axial_ratio, adj_angle, centre_i, centre_j, mini=False):
+def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_axial_ratio, adj_angle, centre_i, centre_j, mini=False, downsample=False):
     source_id = source_dict['name']+'_'+band_dict['band_name']
-    cutout = cutout.copy()
     ap_debug = False
+
+
+
+    # Handle downsampling input
+    if downsample!=False:
+        ds_request = int(downsample)
+    else:
+        ds_request = 1
+
+    # Standard downsampling target is for aperture diameter to correspod to 200 pixels
+    ds_target = int( np.round( float(adj_semimaj_pix) ) / 100.0 )
+    ds_factor = max([ ds_request, ds_target ])
+
+    # If mini-apertures are being used, ensure downsampling isn't agressive
+    if downsample!=False:
+        ds_mini = int( np.round( float(mini) ) / 2.0 )
+        if ds_mini>=2:
+            ds_factor = min([ ds_factor, ds_mini ])
+        else:
+            ds_factor = 1
+
+    # If downsampling is makes sense, apply
+    if ds_factor>=2:
+        if ap_debug: print 'Setup: Downsampling map by factor of '+str(ds_factor)
+        cutout = skimage.measure.block_reduce(cutout, block_size=(int(ds_factor),int(ds_factor)), func=np.mean, cval=np.NaN)
+        cutout *= float(ds_factor)*float(ds_factor)
+        centre_i /= float(ds_factor)
+        centre_j /= float(ds_factor)
+        adj_semimaj_pix /= float(ds_factor)
+        if mini!=False:
+            mini /= float(ds_factor)
 
 
 
     # Handle input variables if mini-apertures are required
     if mini!=False:
+        if ap_debug: print 'Setup: Preparing inputs for mini-apertures'
         if isinstance(mini, float) or isinstance(mini, int):
             mini = float(mini)
             adj_semimaj_pix_full = adj_semimaj_pix
