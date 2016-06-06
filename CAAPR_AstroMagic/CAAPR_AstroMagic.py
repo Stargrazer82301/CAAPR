@@ -29,12 +29,10 @@ from pts.magic.basics.region import Region
 
 
 # Define function that wraps the AstroMagic calling procedure
-def Magic(pod, source_dict, kwargs_dict, do_sat=True):
+def Magic(pod, source_dict, band_dict, kwargs_dict, do_sat=True):
     pod_in = pod
     in_fitspath = pod['in_fitspath']
     temp_dir_path = pod['temp_dir_path']
-    band_dict = pod['band_dict']
-    source_dict = pod['source_dict']
 
 
 
@@ -115,17 +113,32 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
         finder.config.find_other_sources = False # default is True
 
         # Define how stars not fit by PSF should be masked
-        finder.config.stars.source_sf_sigma_level = 6.0 # 4.0 is the default, change this to whatever value you want
+        finder.config.stars.source_psf_sigma_level = 4.0 # 4.0 is the default, change this to whatever value you want
         finder.config.stars.fwhm.scale_factor = 1.0 # 1.0 is the default, change this to 2.0 for example
         finder.config.stars.fwhm.measure = 'median' # Can change to median, mean, or max
+        finder.config.stars.saturation.dilate = False
+        finder.config.stars.saturation.iterations = 1
+        finder.config.stars.saturation.connectivity = 1
 
+        # Downsample map for faster run time
+        if int(band_dict['downsample_factor'])>1:
+            if pod['verbose']: print '['+pod['id']+'] AstroMagic will run on copy of map downsampled by factor of '+str(int(band_dict['downsample_factor']))+', to improve speed.'
+            finder.config.downsample_factor = int( band_dict['downsample_factor'] )
 
         # Run the source finder
         if pod['verbose']: print '['+pod['id']+'] AstroMagic locating online catalogue sources in map.'
         special_region = None # Not important except for debugging
         ignore_region = None # Not important except when certain areas need to be completely ignored from the extraction procedure
         finder.config.build_catalogs = False # For using pre-fetched catalogue files
-        finder.run(image.frames.primary, catalog_importer.galactic_catalog, catalog_importer.stellar_catalog, special_region, ignore_region, bad_mask)
+        try:
+            finder.run(image.frames.primary, catalog_importer.galactic_catalog, catalog_importer.stellar_catalog, special_region, ignore_region, bad_mask)
+        except RuntimeError as e:
+            if 'found' in e.message:
+                if pod['verbose']: print '['+pod['id']+'] AstroMagic found no sources to remove.'
+                pod['pre_reg'] = True
+                return pod
+            else:
+                pdb.set_trace()
 
 
 
@@ -148,6 +161,24 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
         other_region = finder.other_region
         other_region_path = filesystem.join(output_path, "other_sources.reg")
         if other_region is not None: other_region.save(other_region_path)
+
+
+
+        # Produce blank version of galaxy region file
+        shutil.copy2(galaxy_region_path, galaxy_region_path.replace('.reg','_revised.reg'))
+        galaxy_string = '# Name \"Right ascension\" Declination Redshift Type \"Alternative names\" Distance Inclination D25 \"Major axis length\" \"Minor axis length\" \"Position angle\" Principal \"Companion galaxies\" \"Parent galaxy\"'
+        galaxy_file = open( galaxy_region_path.replace('.reg','_revised.reg'), 'w')
+        galaxy_file.write(galaxy_string)
+        galaxy_file.close()
+        galaxy_region = Region.from_file(galaxy_region_path.replace('.reg','_revised.reg'))
+
+        # Handle stars that have been conflated witht the target galaxy
+        OverlargeStars(saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, band_dict, temp_dir_path)
+
+        # Region files can be adjusted by the user; if this is done, they have to be reloaded
+        star_region = Region.from_file(star_region_path.replace('.reg','_revised.reg'))
+        saturation_region = Region.from_file(saturation_region_path.replace('.reg','_revised.reg'))
+        if finder.config.find_other_sources==True: other_region = Region.from_file(other_region_path)
 
 
 
@@ -174,15 +205,7 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
         segments.save(path)
 
 
-        """
-        # Only process the most conspicuous foreground stars, to save time
-        BrightestStars(saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, percentile=75.0, maxtot=100, do_sat=do_sat)
 
-        # Region files can be adjusted by the user; if this is done, they have to be reloaded
-        star_region = Region.from_file(star_region_path.replace('.reg','_revised.reg'))
-        saturation_region = Region.from_file(saturation_region_path.replace('.reg','_revised.reg'))
-        if finder.config.find_other_sources==True: other_region = Region.from_file(other_region_path)
-        """
 
 
         # Pickle region and segmentation files to be used for photometry stage of pipeline (if required)
@@ -213,25 +236,26 @@ def Magic(pod, source_dict, kwargs_dict, do_sat=True):
     # Grab AstroMagic output and return in pod
     am_output = astropy.io.fits.getdata( os.path.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') )
     pod['cutout'] = am_output
-    signal.alarm(0)
     pod['pre_reg'] = True
     return pod
 
 
 
-#    # Handle failure
-#    except:
-#        signal.alarm(0)
-#        print '['+pod['id']+'] AstroMagic processing failed; retaining standard image.'
-#        pod = pod_in
-#        return pod
+
+
+# Define function to saturation regions that wholly intersect target galaxy
+def OverlargeStars(sat_path, star_path, gal_path, image, source_dict, band_dict, temp_dir_path):
 
 
 
-
-
-# Define function to select only the most prominent foreground stars identified by AstroMagic
-def BrightestStars(sat_path, star_path, gal_path, image, source_dict, percentile=50.0, maxtot=100, do_sat=True):
+    # Check if there are any saturation regions in saturation file; if not, return un-altered saturation files
+    sat_line_count = 0
+    with open(sat_path) as sat_file:
+        sat_line_count = sum(1 for _ in sat_file)
+    if sat_line_count<2:
+        shutil.copy2(sat_path, sat_path.replace('.reg','_revised.reg'))
+        shutil.copy2(star_path, star_path.replace('.reg','_revised.reg'))
+        return
 
 
 
@@ -241,59 +265,71 @@ def BrightestStars(sat_path, star_path, gal_path, image, source_dict, percentile
     for sat_region in sat_regions:
         sat_indices.append( float(sat_region.attr[1]['text']) )
         sat_areas.append( np.pi * float(sat_region.coord_list[2]) * float(sat_region.coord_list[3]) )
-
-    # Determine the area that corresponds to the requested percentile cut (or max total), and keep only saturation regions that satisfy those criteria
     sat_array = np.array([sat_areas, sat_indices]).transpose()
-    sat_cutoff = np.percentile( sat_array[:,0], float(percentile) )
-    if np.where(sat_areas>sat_cutoff)[0].shape[0]>maxtot:
-        sat_cutoff = np.sort(sat_array[:,0])[::-1][int(maxtot)-1]
-    sat_array = sat_array[ np.where( sat_array[:,0]>=sat_cutoff ) ]
     sat_indices_out = sat_array[:,1].astype(int).tolist()
+
+    # Open galaxy catalogue file, and determine the "primary" name of the one that has been deemed principal
+    gal_cat = astropy.table.Table.read(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Galaxies.cat'), format='ascii')
+    if np.where(gal_cat['Principal']=='True')[0].shape[0]==0:
+        gal_principal = 'NULL'
+    else:
+        gal_principal = gal_cat[np.where(gal_cat['Principal']=='True')[0][0]]['Name'].replace(' ','')
 
     # Loop over galaxy region file, identify region corresponding to target galaxy, and create mask array of it
     gal_regions = pyregion.open(gal_path)
+    gal_found = False
     for gal_region in gal_regions:
         if 'text' in gal_region.attr[1].keys():
             gal_name = gal_region.attr[1]['text'].replace(' ','')
             if gal_name==source_dict['name']:
+                gal_found = True
                 break
-    gal_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(gal_region.coord_list[2:4]), np.max(gal_region.coord_list[2:4])/np.min(gal_region.coord_list[2:4]), gal_region.coord_list[4], gal_region.coord_list[0], gal_region.coord_list[1])
-    gal_mask_sum = np.sum(gal_mask)
+            elif gal_name==gal_principal:
+                gal_found = True
+                break
+    if gal_found:
+        gal_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(gal_region.coord_list[2:4]), np.max(gal_region.coord_list[2:4])/np.min(gal_region.coord_list[2:4]), gal_region.coord_list[4], gal_region.coord_list[0], gal_region.coord_list[1])
+    else:
+        gal_mask = np.zeros(image.shape)
+    #gal_mask_sum = np.sum(gal_mask)
 
     # Loop back over the saturation regions, not keeping those that aren't being retained, or which wholly encompass target galaxy
+    sat_indices_bad = []
     sat_regions_out = pyregion.ShapeList([])
     for sat_region in sat_regions:
 
-        # Check that saturation region does't wholly encompass target galaxy
+        # Check that saturation region does't interset target galaxy
         sat_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(sat_region.coord_list[2:4]), np.max(sat_region.coord_list[2:4])/np.min(sat_region.coord_list[2:4]), sat_region.coord_list[4], sat_region.coord_list[0], sat_region.coord_list[1])
         check_mask = gal_mask + sat_mask
-        if np.where(check_mask==2)[0].shape[0]<gal_mask_sum:
+        if np.where(check_mask==2)[0].shape[0]>0:
+            sat_indices_bad.append( float(sat_region.attr[1]['text']) )
+            continue
 
-            # Record regions that pass all criteria
-            if int(sat_region.attr[1]['text']) in sat_indices_out:
-                sat_regions_out.append(sat_region)
+        # Record regions that pass all criteria
+        elif int(sat_region.attr[1]['text']) in sat_indices_out:
+            sat_regions_out.append(sat_region)
 
-    # Now read in and loop over the star region file, and make new region list using only wanted entries
+    # Now read in and loop over the star region file
     star_regions = pyregion.open(star_path)
     star_regions_out = pyregion.ShapeList([])
     for star_region in star_regions:
+        """
+        # Remove stars that are associated with "bad" saturation regions
         if 'text' in star_region.attr[1].keys():
-            if int(star_region.attr[1]['text']) in sat_indices_out:
-                star_regions_out.append(star_region)
-#        elif star_region.name=='point':
-#            star_regions_out.remove(star_region)
+            if int(star_region.attr[1]['text']) in sat_indices_bad:
+                continue
+        """
+        # Remove stars that are located too close to centre of principal galaxy
+        principal_dist = np.sqrt( (gal_region.coord_list[0]-star_region.coord_list[0])**2.0 + (gal_region.coord_list[1]-star_region.coord_list[1])**2.0 )
+        if principal_dist<=20:
+            continue
+
+        # If star has passed all criteria, record it to output
+        star_regions_out.append(star_region)
 
     # Save updated regions to file
     sat_regions_out.write(sat_path.replace('.reg','_revised.reg'))
     star_regions_out.write(star_path.replace('.reg','_revised.reg'))
-
-    # Replace saturation file with placeholder, if it's not needed
-    if do_sat==False:
-        sat_string = 'global color=white\n image'
-        sat_file = open( sat_path.replace('.reg','_revised.reg'), 'w')
-        sat_file.write(sat_string)
-        sat_file.close()
-
 
 
 
@@ -339,7 +375,7 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
         if diam>diam_max:
             file_max = in_fitspath
             diam_max = diam
-            file_max_cdelt = band_cdelt
+            #file_max_cdelt = band_cdelt
 
     # Get AstroMagic catalogue object reference fits
     logging.setup_log(level="ERROR")
@@ -413,4 +449,70 @@ finder.write_stellar_catalog()
 
 # Return catalogue importer object
 return catalog_importer
+"""
+
+"""
+# Define function to select only the most prominent foreground stars identified by AstroMagic
+def BrightestStars(sat_path, star_path, gal_path, image, source_dict, percentile=50.0, maxtot=100, do_sat=True):
+
+
+
+    # Read in saturation region file, and loop over each entry, recording area and index
+    sat_regions = pyregion.open(sat_path)
+    sat_indices, sat_areas = [], []
+    for sat_region in sat_regions:
+        sat_indices.append( float(sat_region.attr[1]['text']) )
+        sat_areas.append( np.pi * float(sat_region.coord_list[2]) * float(sat_region.coord_list[3]) )
+
+    # Determine the area that corresponds to the requested percentile cut (or max total), and keep only saturation regions that satisfy those criteria
+    sat_array = np.array([sat_areas, sat_indices]).transpose()
+    sat_cutoff = np.percentile( sat_array[:,0], float(percentile) )
+    if np.where(sat_areas>sat_cutoff)[0].shape[0]>maxtot:
+        sat_cutoff = np.sort(sat_array[:,0])[::-1][int(maxtot)-1]
+    sat_array = sat_array[ np.where( sat_array[:,0]>=sat_cutoff ) ]
+    sat_indices_out = sat_array[:,1].astype(int).tolist()
+
+    # Loop over galaxy region file, identify region corresponding to target galaxy, and create mask array of it
+    gal_regions = pyregion.open(gal_path)
+    for gal_region in gal_regions:
+        if 'text' in gal_region.attr[1].keys():
+            gal_name = gal_region.attr[1]['text'].replace(' ','')
+            if gal_name==source_dict['name']:
+                break
+    gal_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(gal_region.coord_list[2:4]), np.max(gal_region.coord_list[2:4])/np.min(gal_region.coord_list[2:4]), gal_region.coord_list[4], gal_region.coord_list[0], gal_region.coord_list[1])
+    gal_mask_sum = np.sum(gal_mask)
+
+    # Loop back over the saturation regions, not keeping those that aren't being retained, or which wholly encompass target galaxy
+    sat_regions_out = pyregion.ShapeList([])
+    for sat_region in sat_regions:
+
+        # Check that saturation region does't wholly encompass target galaxy
+        sat_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(sat_region.coord_list[2:4]), np.max(sat_region.coord_list[2:4])/np.min(sat_region.coord_list[2:4]), sat_region.coord_list[4], sat_region.coord_list[0], sat_region.coord_list[1])
+        check_mask = gal_mask + sat_mask
+        if np.where(check_mask==2)[0].shape[0]<gal_mask_sum:
+
+            # Record regions that pass all criteria
+            if int(sat_region.attr[1]['text']) in sat_indices_out:
+                sat_regions_out.append(sat_region)
+
+    # Now read in and loop over the star region file, and make new region list using only wanted entries
+    star_regions = pyregion.open(star_path)
+    star_regions_out = pyregion.ShapeList([])
+    for star_region in star_regions:
+        if 'text' in star_region.attr[1].keys():
+            if int(star_region.attr[1]['text']) in sat_indices_out:
+                star_regions_out.append(star_region)
+#        elif star_region.name=='point':
+#            star_regions_out.remove(star_region)
+
+    # Save updated regions to file
+    sat_regions_out.write(sat_path.replace('.reg','_revised.reg'))
+    star_regions_out.write(star_path.replace('.reg','_revised.reg'))
+
+    # Replace saturation file with placeholder, if it's not needed
+    if do_sat==False:
+        sat_string = 'global color=white\n image'
+        sat_file = open( sat_path.replace('.reg','_revised.reg'), 'w')
+        sat_file.write(sat_string)
+        sat_file.close()
 """
