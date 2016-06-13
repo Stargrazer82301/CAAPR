@@ -29,10 +29,10 @@ from pts.magic.basics.region import Region
 
 
 # Define function that wraps the AstroMagic calling procedure
-def Magic(pod, source_dict, band_dict, kwargs_dict, do_sat=True):
-    pod_in = pod
+def Magic(pod, source_dict, band_dict, kwargs_dict):
     in_fitspath = pod['in_fitspath']
     temp_dir_path = pod['temp_dir_path']
+    if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
 
 
 
@@ -113,12 +113,12 @@ def Magic(pod, source_dict, band_dict, kwargs_dict, do_sat=True):
         finder.config.find_other_sources = False # default is True
 
         # Define how stars not fit by PSF should be masked
-        finder.config.stars.source_psf_sigma_level = 4.0 # 4.0 is the default, change this to whatever value you want
-        finder.config.stars.fwhm.scale_factor = 1.0 # 1.0 is the default, change this to 2.0 for example
-        finder.config.stars.fwhm.measure = 'median' # Can change to median, mean, or max
-        finder.config.stars.saturation.dilate = False
-        finder.config.stars.saturation.iterations = 1
-        finder.config.stars.saturation.connectivity = 1
+#        finder.config.stars.source_psf_sigma_level = 3.0 # 4.0 is the default, change this to whatever value you want
+#        finder.config.stars.fwhm.scale_factor = 2.0 # 1.0 is the default, change this to 2.0 for example
+#        finder.config.stars.fwhm.measure = 'max' # Can change to median, mean, or max
+#        finder.config.stars.saturation.dilate = True
+#        finder.config.stars.saturation.iterations = 1
+#        finder.config.stars.saturation.connectivity = 1
 
         # Downsample map for faster run time
         if int(band_dict['downsample_factor'])>1:
@@ -166,7 +166,7 @@ def Magic(pod, source_dict, band_dict, kwargs_dict, do_sat=True):
 
         # Produce blank version of galaxy region file
         shutil.copy2(galaxy_region_path, galaxy_region_path.replace('.reg','_revised.reg'))
-        galaxy_string = '# Name \"Right ascension\" Declination Redshift Type \"Alternative names\" Distance Inclination D25 \"Major axis length\" \"Minor axis length\" \"Position angle\" Principal \"Companion galaxies\" \"Parent galaxy\"'
+        galaxy_string = ''#'# Region file format: DS9 version 4.1' #'# Name \"Right ascension\" Declination Redshift Type \"Alternative names\" Distance Inclination D25 \"Major axis length\" \"Minor axis length\" \"Position angle\" Principal \"Companion galaxies\" \"Parent galaxy\"'
         galaxy_file = open( galaxy_region_path.replace('.reg','_revised.reg'), 'w')
         galaxy_file.write(galaxy_string)
         galaxy_file.close()
@@ -298,7 +298,7 @@ def OverlargeStars(sat_path, star_path, gal_path, image, source_dict, band_dict,
     sat_regions_out = pyregion.ShapeList([])
     for sat_region in sat_regions:
 
-        # Check that saturation region does't interset target galaxy
+        # Check that saturation region doesn't interset target galaxy
         sat_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(sat_region.coord_list[2:4]), np.max(sat_region.coord_list[2:4])/np.min(sat_region.coord_list[2:4]), sat_region.coord_list[4], sat_region.coord_list[0], sat_region.coord_list[1])
         check_mask = gal_mask + sat_mask
         if np.where(check_mask==2)[0].shape[0]>0:
@@ -313,12 +313,12 @@ def OverlargeStars(sat_path, star_path, gal_path, image, source_dict, band_dict,
     star_regions = pyregion.open(star_path)
     star_regions_out = pyregion.ShapeList([])
     for star_region in star_regions:
-        """
+
         # Remove stars that are associated with "bad" saturation regions
         if 'text' in star_region.attr[1].keys():
             if int(star_region.attr[1]['text']) in sat_indices_bad:
                 continue
-        """
+
         # Remove stars that are located too close to centre of principal galaxy
         principal_dist = np.sqrt( (gal_region.coord_list[0]-star_region.coord_list[0])**2.0 + (gal_region.coord_list[1]-star_region.coord_list[1])**2.0 )
         if principal_dist<=20:
