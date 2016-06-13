@@ -272,6 +272,8 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
             edge_long += 1
     if (int(edge_short*edge_long)-int(edge_long))>=thumb_files:
         edge_short -= 1
+    if (int(edge_short*edge_long)-int(edge_short))>=thumb_files:
+        edge_long -= 1
 
     # Set up various variables
     counter = 0
@@ -487,6 +489,8 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
             edge_long += 1
     if (int(edge_short*edge_long)-int(edge_long))>=thumb_files:
         edge_short -= 1
+    if (int(edge_short*edge_long)-int(edge_short))>=thumb_files:
+        edge_long -= 1
 
     # Set up various variables
     counter = 0
