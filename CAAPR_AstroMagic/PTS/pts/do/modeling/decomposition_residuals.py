@@ -47,13 +47,14 @@ arguments = parser.parse_args()
 
 # -----------------------------------------------------------------
 
-# Set the modeling path
+# Set the modeling path and the log path
 arguments.path = fs.cwd()
+log_path = fs.join(arguments.path, "log")
 
 # -----------------------------------------------------------------
 
 # Determine the log file path
-logfile_path = fs.join(arguments.path, time.unique_name("log") + ".txt") if arguments.report else None
+logfile_path = fs.join(log_path, time.unique_name("log") + ".txt") if arguments.report else None
 
 # Determine the log level
 level = "DEBUG" if arguments.debug else "INFO"
@@ -119,7 +120,7 @@ bulge_residual_path = fs.join(residuals_path, "bulge_residual.fits")
 bulge_residual.save(bulge_residual_path)
 
 #bulge_residual2 = frame - (bulge * 1.3)
-#bulge_residual2_path = filesystem.join(residuals_path, "bulge_residual_1,3.fits")
+#bulge_residual2_path = fs.join(residuals_path, "bulge_residual_1,3.fits")
 #bulge_residual2.save(bulge_residual2_path)
 
 # Calculate the disk residual frame

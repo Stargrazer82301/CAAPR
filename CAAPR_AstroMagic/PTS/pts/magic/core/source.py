@@ -31,7 +31,7 @@ from .frame import Frame
 from .box import Box
 from ..basics.vector import Position, Extent
 from ..basics.mask import Mask
-from ..basics.geometry import Ellipse, Rectangle
+from ..basics.geometry import Ellipse, Rectangle, Circle
 from ..tools import plotting, statistics
 
 # -----------------------------------------------------------------
@@ -42,7 +42,7 @@ class Source(object):
     This class...
     """
 
-    def __init__(self, center, radius, angle, factor, cutout, mask, background=None, removed=None, peak=None):
+    def __init__(self, center, radius, angle, factor, cutout, mask, background=None, removed=None, peak=None, shape=None):
 
         """
         The constructor ...
@@ -58,9 +58,26 @@ class Source(object):
         self.background = background
         self.removed = removed
         self.peak = peak
+        self.shape = shape
 
         # The elliptical contour
         self.contour = Ellipse(self.center, self.radius, self.angle)
+
+    # -----------------------------------------------------------------
+
+    @classmethod
+    def around_coordinate(cls, frame, coordinate, radius, factor):
+
+        """
+        This function ...
+        :param coordinate:
+        :param radius:
+        :param factor:
+        :return:
+        """
+
+        circle = Circle(coordinate, radius)
+        return cls.from_shape(frame, circle, factor)
 
     # -----------------------------------------------------------------
 
@@ -86,6 +103,9 @@ class Source(object):
 
         # Set the source mask
         source.mask = mask
+
+        # Set the source shape
+        source.shape = shape
 
         # Return the source
         return source
@@ -127,7 +147,7 @@ class Source(object):
         peak = None
 
         # Create and return a new Source instance
-        return cls(center, radius, angle, factor, cutout, mask, background, removed, peak)
+        return cls(center, radius, angle, factor, cutout, mask, background, removed, peak, rectangle)
 
     # -----------------------------------------------------------------
 
@@ -167,7 +187,7 @@ class Source(object):
         peak = None
 
         # Create and return a new Source instance
-        return cls(center, radius, angle, factor, cutout, mask, background, removed, peak)
+        return cls(center, radius, angle, factor, cutout, mask, background, removed, peak, ellipse)
 
     # -----------------------------------------------------------------
 
@@ -423,12 +443,29 @@ class Source(object):
         :return:
         """
 
-        # Perform sigma-clipping on the background if requested
-        if sigma_clip: mask = statistics.sigma_clip_mask(self.cutout, sigma_level=sigma_level, mask=self.mask)
-        else: mask = self.mask
+        # Make a distinction between the "PTS" way of estimating the background and all other methods.
+        # For the PTS way, in case sigma clipping is disabled, this means it is disabled only for the 'polynomial fitting step'
+        # of the background estimation, so provide two distinct masks to the interpolated() method: the clipped mask for
+        # the 'background noise' estimation and the non-clipped mask for the 'polynomial fitting step'.
+        if method == "pts":
+
+            if sigma_clip:
+                mask = statistics.sigma_clip_mask(self.cutout, sigma_level=sigma_level, mask=self.mask)
+                no_clip_mask = None
+            else:
+                mask = statistics.sigma_clip_mask(self.cutout, sigma_level=sigma_level, mask=self.mask)
+                no_clip_mask = self.mask
+
+        else:
+
+            # Perform sigma-clipping on the background if requested
+            if sigma_clip: mask = statistics.sigma_clip_mask(self.cutout, sigma_level=sigma_level, mask=self.mask)
+            else: mask = self.mask
+
+            no_clip_mask = None
 
         # Perform the interpolation
-        self.background = self.cutout.interpolated(mask, method)
+        self.background = self.cutout.interpolated(mask, method, no_clip_mask=no_clip_mask)
 
     # -----------------------------------------------------------------
 
@@ -579,12 +616,13 @@ class Source(object):
 
     # -----------------------------------------------------------------
 
-    def zoom_out(self, factor, frame):
+    def zoom_out(self, factor, frame, keep_original_mask=False):
 
         """
         This function ...
         :param factor:
         :param frame:
+        :param keep_original_mask:
         :return:
         """
 
@@ -603,6 +641,23 @@ class Source(object):
 
         # Create the new source
         new_source = Source(self.center, new_radius, self.angle, self.factor, cutout, mask, peak=self.peak)
+
+        if keep_original_mask:
+
+            original_x_min = self.cutout.x_min
+            original_y_min = self.cutout.y_min
+            original_x_max = self.cutout.x_max
+            original_y_max = self.cutout.y_max
+
+            new_source.mask = Mask(np.zeros(new_source.cutout.shape))
+
+            rel_x_min = original_x_min - new_source.cutout.x_min
+            rel_y_min = original_y_min - new_source.cutout.y_min
+            rel_x_max = original_x_max - new_source.cutout.x_min
+            rel_y_max = original_y_max - new_source.cutout.y_min
+
+            # Replace source's mask by found center segment mask
+            new_source.mask[rel_y_min:rel_y_max, rel_x_min:rel_x_max] = self.mask
 
         # Return the zoomed-out source
         return new_source

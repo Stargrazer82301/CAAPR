@@ -52,6 +52,9 @@ class AttenuationPlotter(object):
         self.min_attenuation = None
         self.max_attenuation = None
 
+        # Properties
+        self.transparent = False
+
     # -----------------------------------------------------------------
 
     def set_title(self, title):
@@ -110,7 +113,7 @@ class AttenuationPlotter(object):
         """
 
         # Inform the user
-        log.info("Clearing the SED plotter ...")
+        log.info("Clearing the attenuation plotter ...")
 
         # Set default values for all attributes
         self.title = None
@@ -119,6 +122,7 @@ class AttenuationPlotter(object):
         self.max_wavelength = None
         self.min_attenuation = None
         self.max_attenuation = None
+        self.transparent = False
 
     # -----------------------------------------------------------------
 
@@ -179,7 +183,7 @@ class AttenuationPlotter(object):
         log.debug("Saving the attenuation plot to " + path + " ...")
 
         # Save the figure
-        plt.savefig(path, bbox_inches='tight', pad_inches=0.25)
+        plt.savefig(path, bbox_inches='tight', pad_inches=0.25, transparent=self.transparent)
         plt.close()
 
 # -----------------------------------------------------------------

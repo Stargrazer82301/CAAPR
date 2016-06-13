@@ -187,21 +187,45 @@ class BatchAnalyser(Configurable):
         # Get the total runtime (in seconds)
         total_runtime = self.log_file.total_runtime
 
+        # Get the number of wavelengths
+        wavelengths = self.log_file.wavelengths
+
         # Get the number of photon packages
         packages = self.ski.packages()
 
-        # Get the serial, parallel runtime and runtime overhead (in seconds)
-        serial_runtime = self.te.serial
-        parallel_runtime = self.te.parallel
-        runtime_overhead = self.te.overhead
+        # Get the number of dust cells
+        cells = self.log_file.dust_cells
+
+        # Check whether dust self-absorption was enabled for the simulation
+        selfabsorption = self.ski.dustselfabsorption()
+
+        # Check whether transient heating was enabled for the simulation
+        transient_heating = self.ski.transientheating()
+
+        # Check whether data parallelization was enabled for the simulation
+        data_parallel = self.ski.dataparallel()
+
+        # Get the different contributions to the simulation's runtime
+        setup_time = self.te.setup
+        stellar_time = self.te.stellar
+        spectra_time = self.te.spectra
+        dust_time = self.te.dust
+        writing_time = self.te.writing
+        waiting_time = self.te.waiting
+        communication_time = self.te.communication
+        intermediate_time = self.te.other
 
         # Open the timing table
         timing_table = TimingTable(self.timing_table_path)
 
         # Add an entry to the timing table
+        # Simulation name, Timestamp, Host id, Cluster name, Cores, Hyperthreads per core, Processes, Wavelengths,
+        # Packages, cells, Self-absorption, Total runtime, Setup time, Stellar emission time, Spectra calculation time,
+        # Dust emission time, Writing time, Waiting time, Communication time, Intermediate time
         timing_table.add_entry(self.simulation.name, self.simulation.submitted_at, host_id, cluster_name, cores,
-                               hyperthreads, processes, packages, total_runtime, serial_runtime, parallel_runtime,
-                               runtime_overhead)
+                               hyperthreads, processes, wavelengths, packages, cells, selfabsorption, transient_heating,
+                               data_parallel, total_runtime, setup_time, stellar_time, spectra_time, dust_time,
+                               writing_time, waiting_time, communication_time, intermediate_time)
 
     # -----------------------------------------------------------------
 
@@ -242,11 +266,24 @@ class BatchAnalyser(Configurable):
         input_path = self.simulation.input_path
         wavelengths = self.ski.nwavelengthsfile(input_path)
 
+        # Get the number of dust cells
+        dust_cells = self.log_file.dust_cells
+
+        # Check whether dust self-absorption was enabled for the simulation
+        selfabsorption = self.ski.dustselfabsorption()
+
+        # Check whether transient heating was enabled for the simulation
+        transient_heating = self.ski.transientheating()
+
+        # Check whether data parallelization was enabled for the simulation
+        data_parallel = self.ski.dataparallel()
+
         # Open the memory table
         memory_table = MemoryTable(self.memory_table_path)
 
         # Add an entry to the memory table
         memory_table.add_entry(self.simulation.name, self.simulation.submitted_at, host_id, cluster_name, cores,
-                               hyperthreads, processes, wavelengths, peak_memory_usage)
+                               hyperthreads, processes, wavelengths, dust_cells, selfabsorption, transient_heating,
+                               data_parallel, peak_memory_usage)
 
 # -----------------------------------------------------------------

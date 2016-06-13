@@ -23,6 +23,7 @@ from ..tools import filesystem as fs
 from ..tools.logging import log
 from ..basics.host import Host
 from .parallelization import Parallelization
+from .analyser import SimulationAnalyser
 
 # -----------------------------------------------------------------
 
@@ -51,6 +52,9 @@ class BatchLauncher(Configurable):
         # The queue
         self.queue = []
 
+        # The extra queue
+        self.extra_queue = []
+
         # The scheduling options for (some of) the simulations and (some of) the remote hosts. This is a nested
         # dictionary where the first key represents the remote host ID and the next key represents the name of the
         # simulation (see 'name' parameter of 'add_to_queue')
@@ -70,6 +74,9 @@ class BatchLauncher(Configurable):
 
         # The simulations that have been retrieved
         self.simulations = []
+
+        # Create a SimulationAnalyser instance
+        self.analyser = SimulationAnalyser()
 
     # -----------------------------------------------------------------
 
@@ -116,6 +123,45 @@ class BatchLauncher(Configurable):
 
         # Set the scheduling options for the specified host and for the specified simulation
         self.scheduling_options[host_id][name] = options
+
+    # -----------------------------------------------------------------
+
+    def add_to_extra_queue(self, arguments, analysis_options=None, name=None, share_input=False):
+
+        """
+        This function ...
+        :param arguments:
+        :param analysis_options:
+        :param name:
+        :return:
+        """
+
+        # Add the SkirtArguments and AnalysisOptions object to the queue
+        self.extra_queue.append((arguments, analysis_options, name, share_input))
+
+    # -----------------------------------------------------------------
+
+    @property
+    def in_queue(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return len(self.queue)
+
+    # -----------------------------------------------------------------
+
+    @property
+    def in_extra_queue(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return len(self.extra_queue)
 
     # -----------------------------------------------------------------
 
@@ -232,6 +278,69 @@ class BatchLauncher(Configurable):
 
     # -----------------------------------------------------------------
 
+    @property
+    def no_scheduler_host_ids(self):
+
+        """
+        This function returns just the IDS of the hosts which DON'T use a scheduling system.
+        :return:
+        """
+
+        # If the setup has not been called yet
+        if len(self.remotes) == 0:
+
+            # Initialize a list to contain the host IDs
+            host_ids = []
+
+            # Loop over the IDs of all the hosts used by the BatchLauncher
+            for host_id in self.host_ids:
+
+                # Create Host instance
+                host = Host(host_id)
+
+                # If it's not a scheduler, add it to the list
+                if not host.scheduler: host_ids.append(host_id)
+
+            # Return the list of hosts which don't use a scheduling system
+            return host_ids
+
+        # If the setup has already been called
+        else: return [remote.host_id for remote in self.remotes if not remote.scheduler]
+
+    # -----------------------------------------------------------------
+
+    @property
+    def no_scheduler_hosts(self):
+
+        """
+        This function is similar to 'no_scheduler_host_ids' but returns the Host objects instead of just the IDs of these
+        hosts.
+        :return:
+        """
+
+        # If the setup has not been called yet
+        if len(self.remotes) == 0:
+
+            # Initialize a list to contain the hosts
+            hosts = []
+
+            # Loop over the IDs of all the hosts used by the BatchLauncher
+            for id in self.host_ids:
+
+                # Create a Host instance
+                host = Host(id)
+
+                # If it's a not scheulder, add it to the list
+                if not host.scheduler: hosts.append(host)
+
+            # Return the list of hosts
+            return hosts
+
+        # If the setup has already been called
+        else: return [remote.host for remote in self.remotes if not remote.scheduler]
+
+    # -----------------------------------------------------------------
+
     def set_parallelization_for_host(self, host_id, parallelization):
 
         """
@@ -303,6 +412,9 @@ class BatchLauncher(Configurable):
 
         # Clear the queue
         self.queue = []
+
+        # Clear the extra queue
+        self.extra_queue = []
 
         # Clear the scheduling options
         self.scheduling_options = defaultdict(dict())
@@ -491,7 +603,8 @@ class BatchLauncher(Configurable):
                 # If the input directory is shared between the different simulations
                 if self.config.shared_input and remote_input_path is None: remote_input_path = simulation.remote_input_path
 
-                # Set the parallelization properties for the simulation (this is actually already done by SkirtRemote in the add_to_queue function)
+                # Set the parallelization properties for the simulation
+                # (this is actually already done by SkirtRemote in the add_to_queue function)
                 simulation.parallelization = parallellization
 
                 # Set the analysis options for the simulation
@@ -499,6 +612,40 @@ class BatchLauncher(Configurable):
 
                 # Save the simulation object
                 simulation.save()
+
+            # Add the arguments in the extra queue
+            if self.in_extra_queue > 0 and remote.host_id == self.config.extra_remote:
+
+                for _ in range(self.in_extra_queue):
+
+                    # Get the last item from the extra queue
+                    arguments, analysis_options, name, share_input = self.extra_queue.pop()
+
+                    # Set the parallelization
+                    arguments.parallel.processes = processes
+                    arguments.parallel.threads = threads
+
+                    # Set the remote input path
+                    if share_input and self.config.shared_input: remote_in_path = remote_input_path
+                    else: remote_in_path = None
+
+                    # Queue the simulation
+                    simulation = remote.add_to_queue(arguments, name=name, remote_input_path=remote_in_path)
+                    simulations_remote.append(simulation)
+
+                    # Set parallelization
+                    simulation.parallelization = parallellization
+
+                    # Set the analysis options for the simulation
+                    if analysis_options is not None: simulation.analysis = analysis_options
+
+                    # Remove remote files
+                    simulation.remove_remote_input = not self.config.keep and not share_input
+                    simulation.remove_remote_output = not self.config.keep
+                    simulation.remove_remote_simulation_directory = not self.config.keep and not share_input
+
+                    # Save the simulation object
+                    simulation.save()
 
             # Set a path for the script file to be saved to locally (for manual inspection)
             if remote.host_id in self.script_paths:

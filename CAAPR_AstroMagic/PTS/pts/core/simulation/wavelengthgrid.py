@@ -10,6 +10,7 @@
 # -----------------------------------------------------------------
 
 # Import standard modules
+import numpy as np
 import copy
 
 # Import astronomical modules
@@ -35,9 +36,11 @@ class WavelengthGrid(object):
 
         # Attributes
         #self.table = Table(names=["Wavelength", "Delta"], dtype=('f8', 'f8'))
-        self.table = Table(names=["Wavelength"], dtype=('f8'))
-        self.table["Wavelength"].unit = Unit("micron")
+        #self.table = Table(names=["Wavelength"], dtype=['f8'])
+        #self.table["Wavelength"].unit = Unit("micron")
         #self.table["Delta"].unit = Unit("micron")
+
+        self.table = None
 
     # -----------------------------------------------------------------
 
@@ -73,6 +76,18 @@ class WavelengthGrid(object):
 
     # -----------------------------------------------------------------
 
+    @property
+    def nwavelengths(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return len(self.table)
+
+    # -----------------------------------------------------------------
+
     @classmethod
     def from_wavelengths(cls, wavelengths):
 
@@ -86,7 +101,9 @@ class WavelengthGrid(object):
         grid = cls()
 
         # Add the wavelengths
+        grid.table = Table()
         grid.table["Wavelength"] = wavelengths
+        grid.table["Wavelength"].unit = "micron"
 
         # Return the new instance
         return grid
@@ -131,7 +148,21 @@ class WavelengthGrid(object):
         :return:
         """
 
-        return NotImplementedError("Not implemented yet")
+        # Create a new class instance
+        grid = cls()
+
+        wavelengths = np.loadtxt(path, unpack=True, skiprows=1)
+
+        # Create the table
+        table = Table()
+        table["Wavelength"] = wavelengths
+        table["Wavelength"].unit = "micron"
+
+        # Set the table
+        grid.table = table
+
+        # Return the new instance
+        return grid
 
     # -----------------------------------------------------------------
 
@@ -146,6 +177,30 @@ class WavelengthGrid(object):
 
     # -----------------------------------------------------------------
 
+    @property
+    def min_wavelength(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return np.min(self.table["Wavelength"])
+
+    # -----------------------------------------------------------------
+
+    @property
+    def max_wavelength(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return np.max(self.table["Wavelength"])
+
+    # -----------------------------------------------------------------
+
     def add_point(self, wavelength):
 
         """
@@ -155,6 +210,30 @@ class WavelengthGrid(object):
         """
 
         self.table.add_row([wavelength])
+
+    # -----------------------------------------------------------------
+
+    def closest_wavelength(self, wavelength):
+
+        """
+        This function ...
+        :param wavelength:
+        :return:
+        """
+
+        return self.table["Wavelength"][self.closest_wavelength_index(wavelength)]
+
+    # -----------------------------------------------------------------
+
+    def closest_wavelength_index(self, wavelength):
+
+        """
+        This function ...
+        :param wavelength:
+        :return:
+        """
+
+        return tables.find_closest_index(self.table, wavelength, column_name="Wavelength")
 
     # -----------------------------------------------------------------
 

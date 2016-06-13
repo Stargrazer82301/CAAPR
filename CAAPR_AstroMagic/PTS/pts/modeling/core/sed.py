@@ -21,7 +21,10 @@ from astropy.table import Table
 
 # Import the relevant PTS classes and modules
 from ...core.tools import tables
+from ...core.tools import inspection
+from ...core.tools import filesystem as fs
 from ...core.basics.errorbar import ErrorBar
+from ...core.basics.filter import Filter
 
 # -----------------------------------------------------------------
 
@@ -92,6 +95,26 @@ class IntrinsicSED(object):
         # Return the SED
         return sed
 
+    # -----------------------------------------------------------------
+
+    @classmethod
+    def from_luminosities(cls, wavelengths, luminosities, wavelength_unit="micron", luminosity_unit="W/micron"):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Create a new SED
+        sed = cls()
+
+        sed.table = tables.new([wavelengths, luminosities], ["Wavelength", "Luminosity"])
+        sed.table["Wavelength"].unit = wavelength_unit
+        sed.table["Luminosity"].unit = luminosity_unit
+
+        # Return the SED
+        return sed
+
 # -----------------------------------------------------------------
 
 class ObservedSED(object):
@@ -149,6 +172,86 @@ class ObservedSED(object):
 
     # -----------------------------------------------------------------
 
+    @classmethod
+    def from_caapr(cls, path):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Create a new observed SED
+        sed = cls()
+
+        # Load the table
+        caapr_table = tables.from_file(path, format="csv")
+
+        fluxes = dict()
+        errors = dict()
+
+        # Loop over the columns of the table
+        for colname in caapr_table.colnames:
+
+            if colname == "name": continue
+            if "ERR" in colname:
+                instrument_band = colname.split("_ERR")[0]
+                error = abs(caapr_table[colname][0])
+                if not np.isnan(error): errors[instrument_band] = error
+            else:
+                instrument_band = colname
+                flux = caapr_table[colname][0]
+                if not np.isnan(flux): fluxes[instrument_band] = flux
+
+        observatory_column = []
+        instrument_column = []
+        band_column = []
+        wavelength_column = []
+        flux_column = []
+        fluxerrmin_column = []
+        fluxerrmax_column = []
+
+        for instrument_band in fluxes:
+
+            if not instrument_band in errors: raise ValueError("No error for " + instrument_band)
+
+            flux = fluxes[instrument_band]
+            error = errors[instrument_band]
+
+            instrument = instrument_band.split("_")[0]
+            band = instrument_band.split("_")[1]
+
+            # Create filter
+            fltr = Filter.from_string(instrument + " " + band)
+
+            # Get filter properties
+            observatory = fltr.observatory
+            instrument = fltr.instrument
+            band = fltr.band
+            wavelength = fltr.pivotwavelength()
+
+            # Add entry to the columns
+            observatory_column.append(observatory)
+            instrument_column.append(instrument)
+            band_column.append(band)
+            wavelength_column.append(wavelength)
+            flux_column.append(flux)
+            fluxerrmin_column.append(-error)
+            fluxerrmax_column.append(error)
+
+        # Create the SED table
+        data = [observatory_column, instrument_column, band_column, wavelength_column, flux_column, fluxerrmin_column, fluxerrmax_column]
+        names = ["Observatory", "Instrument", "Band", "Wavelength", "Flux", "Error-", "Error+"]
+        sed.table = tables.new(data, names)
+        sed.table["Wavelength"].unit = "micron"
+        sed.table["Flux"].unit = "Jy"
+        sed.table["Error-"].unit = "Jy"
+        sed.table["Error+"].unit = "Jy"
+
+        # Return the SED
+        return sed
+
+    # -----------------------------------------------------------------
+
     def add_entry(self, filter, flux, error):
 
         """
@@ -182,6 +285,34 @@ class ObservedSED(object):
         """
 
         return tables.column_as_list(self.table["Band"])
+
+    # -----------------------------------------------------------------
+
+    def filters(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Initialize
+        filters = []
+
+        # Loop over all entries
+        for i in range(len(self.table)):
+
+            # Get the instrument and band
+            instrument = self.table["Instrument"][i]
+            band = self.table["Band"][i]
+
+            # Create the filter
+            fltr = Filter.from_instrument_and_band(instrument, band)
+
+            # Add the filter to the list
+            filters.append(fltr)
+
+        # Return the list of filters
+        return filters
 
     # -----------------------------------------------------------------
 
@@ -547,5 +678,101 @@ class SED(object):
 
         # Write the SED table to file
         tables.write(self.table, path, format="ascii.ecsv")
+
+# -----------------------------------------------------------------
+
+seds_path = fs.join(inspection.pts_dat_dir("modeling"), "seds")
+
+# -----------------------------------------------------------------
+
+def load_example_mappings_sed():
+
+    """
+    This function ...
+    :return:
+    """
+
+    # Determine the path to the SED file
+    sed_path = fs.join(seds_path, "mapsed.dat")
+
+    # Get the data
+    wavelength_column, flux_column = np.loadtxt(sed_path, usecols=(0, 1), unpack=True)
+
+    # Create an SED instance
+    sed = SED()
+
+    # Set the columns
+    sed.table = tables.new([wavelength_column, flux_column], ["Wavelength", "Flux"])
+    sed.table["Wavelength"].unit = "micron"
+    sed.table["Flux"].unit = "W/m2" # = lambda * F_Lambda !
+
+    # Return the SED
+    return sed
+
+# -----------------------------------------------------------------
+
+def load_example_bruzualcharlot_sed():
+
+    """
+    This function ...
+    :return:
+    """
+
+    # Determine the path to the SED file
+    sed_path = fs.join(seds_path, "bcsed.dat")
+
+    # Get the data
+    wavelength_column, flux_column = np.loadtxt(sed_path, usecols=(0, 1), unpack=True)
+
+    # Create the SED instance
+    sed = SED()
+
+    # Set the columns
+    sed.table = tables.new([wavelength_column, flux_column], ["Wavelength", "Flux"])
+    sed.table["Wavelength"].unit = "micron"
+    sed.table["Flux"].unit = "W/m2" # = lambda * F_lambda !
+
+    # Return the SED
+    return sed
+
+# -----------------------------------------------------------------
+
+def load_example_zubko_sed():
+
+    """
+    This function ...
+    :return:
+    """
+
+    # Determine the path to the SED file
+    sed_path = fs.join(seds_path, "zubkosed.dat")
+
+    # Get the data
+    wavelength_column, flux_column = np.loadtxt(sed_path, usecols=(0, 2), unpack=True)
+
+    # Create the SED instance
+    sed = SED()
+
+    # Set the columns
+    sed.table = tables.new([wavelength_column, flux_column], ["Wavelength", "Flux"])
+    sed.table["Wavelength"].unit = "micron"
+    sed.table["Flux"].unit = "W/m2" # = lambda * F_lambda
+
+    # Return the SED
+    return sed
+
+# -----------------------------------------------------------------
+
+def load_example_themis_sed():
+
+    """
+    This function ...
+    :return:
+    """
+
+    raise NotImplementedError("Not yet implemented")
+
+    # Determine the path to the SED file
+    # ...
 
 # -----------------------------------------------------------------

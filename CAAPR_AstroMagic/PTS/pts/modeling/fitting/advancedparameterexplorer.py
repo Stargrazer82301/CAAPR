@@ -15,10 +15,6 @@ from __future__ import absolute_import, division, print_function
 # Import standard modules
 import io
 import imageio
-import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from scipy.stats import gaussian_kde
 
 # Import the relevant PTS classes and modules
 from .parameterexploration import ParameterExplorer
@@ -28,9 +24,10 @@ from ...core.launch.options import SchedulingOptions
 from ...core.launch.parallelization import Parallelization
 from ...core.launch.runtime import RuntimeEstimator
 from ...core.basics.distribution import Distribution
-from ...core.basics.animatedgif import AnimatedGif
+from ...core.basics.animation import Animation
 from ...core.tools import filesystem as fs
 from ...core.plot.distribution import DistributionPlotter
+from ...magic.animation.scatter import ScatterAnimation
 
 # -----------------------------------------------------------------
 
@@ -55,9 +52,6 @@ class AdvancedParameterExplorer(ParameterExplorer):
 
         # The probability distributions for the different fit parameters
         self.distributions = dict()
-
-        # A dictionary with the scheduling options for the different remote hosts
-        self.scheduling_options = dict()
 
     # -----------------------------------------------------------------
 
@@ -177,12 +171,15 @@ class AdvancedParameterExplorer(ParameterExplorer):
 
         # Create animations
         if self.config.visualise:
-            points_animation = AnimatedGif()
-            fuv_young_animation = AnimatedGif()
-            fuv_ionizing_animation = AnimatedGif()
-            dust_mass_animation = AnimatedGif()
+            scatter_animation = ScatterAnimation([self.config.young_stars.min, self.config.young_stars.max], [self.config.ionizing_stars.min, self.config.ionizing_stars.max], [self.config.dust.min, self.config.dust.max])
+            scatter_animation.x_label = "FUV luminosity of young stars"
+            scatter_animation.y_label = "FUV luminosity of ionizing stars"
+            scatter_animation.z_label = "Dust mass"
+            fuv_young_animation = Animation()
+            fuv_ionizing_animation = Animation()
+            dust_mass_animation = Animation()
         else:
-            points_animation = None
+            scatter_animation = None
             fuv_young_animation = None
             fuv_ionizing_animation = None
             dust_mass_animation = None
@@ -232,89 +229,8 @@ class AdvancedParameterExplorer(ParameterExplorer):
             self.parameters["FUV ionizing"].append(ionizing_luminosity)
             self.parameters["Dust mass"].append(dust_mass)
 
-            # Add a frame to the animation of parameter points
-            if points_animation is not None and self.number_of_models > 1:
-
-                buf = io.BytesIO()
-
-                fig = plt.figure(figsize=(15,15))
-
-                #ax = Axes3D(fig)
-
-                # Add first subplot
-                ax = fig.add_subplot(2, 2, 1, projection='3d')
-
-                ax.scatter(self.parameters["FUV young"], self.parameters["FUV ionizing"], self.parameters["Dust mass"])
-                ax.set_xlim([self.config.young_stars.min, self.config.young_stars.max])
-                ax.set_ylim([self.config.ionizing_stars.min, self.config.ionizing_stars.max])
-                ax.set_zlim([self.config.dust.min, self.config.dust.max])
-                ax.set_xlabel("FUV luminosity of young stars")
-                ax.set_ylabel("FUV luminosity of ionizing stars")
-                ax.set_zlabel("Dust mass")
-                # To draw projected points against the axis planes:
-                #ax.plot(self.parameters["FUV young"], self.parameters["Dust mass"], 'r+', zdir='y', zs=self.config.ionizing_stars.max)
-                #ax.plot(self.parameters["FUV ionizing"], self.parameters["Dust mass"], 'g+', zdir='x', zs=self.config.young_stars.min)
-                #ax.plot(self.parameters["FUV young"], self.parameters["FUV ionizing"], 'k+', zdir='z', zs=self.config.dust.min)
-
-                # Add second subplot
-                ax = fig.add_subplot(2, 2, 2)
-
-                # Density plot of FUV young vs. FUV ionizing
-                x = np.array(self.parameters["FUV young"])
-                y = np.array(self.parameters["FUV ionizing"])
-                xy = np.vstack([x, y])
-                z = gaussian_kde(xy)(xy)
-                # Sort the points by density, so that the densest points are plotted last
-                idx = z.argsort()
-                x, y, z = x[idx], y[idx], z[idx]
-                ax.scatter(x, y, c=z, s=100, edgecolor='')
-                ax.set_xlabel("FUV luminosity of young stars")
-                ax.set_ylabel("FUV luminosity of ionizing stars")
-                ax.set_xlim([self.config.young_stars.min, self.config.young_stars.max])
-                ax.set_ylim([self.config.ionizing_stars.min, self.config.ionizing_stars.max])
-
-                # Add third subplot
-                ax = fig.add_subplot(2, 2, 3)
-
-                # Density plot of FUV young vs. dust mass
-                x = np.array(self.parameters["FUV young"])
-                y = np.array(self.parameters["Dust mass"])
-                xy = np.vstack([x, y])
-                z = gaussian_kde(xy)(xy)
-                # Sort the points by density, so that the densest points are plotted last
-                idx = z.argsort()
-                x, y, z = x[idx], y[idx], z[idx]
-                ax.scatter(x, y, c=z, s=100, edgecolor='')
-                ax.set_xlabel("FUV luminosity of young stars")
-                ax.set_ylabel("Dust mass")
-                ax.set_xlim([self.config.young_stars.min, self.config.young_stars.max])
-                ax.set_ylim([self.config.dust.min, self.config.dust.max])
-
-                # Add fourth subplot
-                ax = fig.add_subplot(2, 2, 4)
-
-                # Density plot of FUV ionizing vs. dust mass
-                x = np.array(self.parameters["FUV ionizing"])
-                y = np.array(self.parameters["Dust mass"])
-                xy = np.vstack([x, y])
-                z = gaussian_kde(xy)(xy)
-                # Sort the points by density, so that the densest points are plotted last
-                idx = z.argsort()
-                x, y, z = x[idx], y[idx], z[idx]
-                ax.scatter(x, y, c=z, s=100, edgecolor='')
-                ax.set_xlabel("FUV luminosity of ionizing stars")
-                ax.set_ylabel("Dust mass")
-                ax.set_xlim([self.config.ionizing_stars.min, self.config.ionizing_stars.max])
-                ax.set_ylim([self.config.dust.min, self.config.dust.max])
-
-                plt.tight_layout()
-
-                plt.savefig(buf, format="png")
-                plt.close()
-                buf.seek(0)
-                im = imageio.imread(buf)
-                buf.close()
-                points_animation.add_frame(im)
+            # Add the point (and thus a frame) to the animation of parameter points
+            if scatter_animation is not None: scatter_animation.add_point(young_luminosity, ionizing_luminosity, dust_mass)
 
             plotter = DistributionPlotter()
 
@@ -372,9 +288,9 @@ class AdvancedParameterExplorer(ParameterExplorer):
                 dust_mass_animation.add_frame(im)
 
         # Save the animation of the parameter values as points in a 3D plot
-        if points_animation is not None:
+        if scatter_animation is not None:
             path = fs.join(self.visualisation_path, time.unique_name("advancedparameterexploration") + ".gif")
-            points_animation.save(path)
+            scatter_animation.save(path)
 
         # Save the animation of the distribution of values for the FUV luminosity of the young stars
         if fuv_young_animation is not None:

@@ -29,7 +29,7 @@ from ..basics.mask import Mask
 from ..basics.coordinatesystem import CoordinateSystem
 from .frame import Frame
 from ..tools import headers, transformations
-from ...core.tools import filesystem
+from ...core.tools import filesystem as fs
 from ...core.tools.logging import log
 
 # -----------------------------------------------------------------
@@ -82,7 +82,7 @@ class Image(object):
         """
 
         # If no name is given, determine the name from the file path
-        if name is None: name = filesystem.strip_extension(filesystem.name(path))
+        if name is None: name = fs.strip_extension(fs.name(path))
 
         # Create a new image
         image = cls(name)
@@ -98,7 +98,7 @@ class Image(object):
 
     # -----------------------------------------------------------------
 
-    def asarray(self):
+    def asarray(self, axis=3):
 
         """
         This function ...
@@ -109,7 +109,11 @@ class Image(object):
         frame_list = self.frames.as_list()
 
         # Stack the frames into a 3D numpy array
-        return np.dstack(frame_list)
+        if axis == 3: return np.dstack(frame_list)
+        elif axis == 2: return np.hstack(frame_list)
+        elif axis == 1: return np.vstack(frame_list)
+        elif axis == 0: return np.stack(frame_list)
+        else: raise ValueError("'axis' parameter should be integer 0-3")
 
     # -----------------------------------------------------------------
 
@@ -427,7 +431,7 @@ class Image(object):
         """
 
         # Check if the region file exists
-        if not filesystem.is_file(path): raise IOError("The region file does not exist")
+        if not fs.is_file(path): raise IOError("The region file does not exist")
 
         # Create an Region object from the regions file
         region = Region.from_file(path)
@@ -961,7 +965,7 @@ class Image(object):
         """
 
         # Check if the file exists
-        if not filesystem.is_file(filename): raise IOError("File " + filename + " does not exist")
+        if not fs.is_file(filename): raise IOError("File " + filename + " does not exist")
 
         # Show which image we are importing
         log.debug("Reading in file " + filename + " ...")

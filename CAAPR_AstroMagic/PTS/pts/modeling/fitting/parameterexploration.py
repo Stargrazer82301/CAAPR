@@ -15,15 +15,21 @@ from __future__ import absolute_import, division, print_function
 # Import standard modules
 from collections import defaultdict
 
+# Import astronomical modules
+from astropy.units import Unit
+
 # Import the relevant PTS classes and modules
 from .component import FittingComponent
-from ...core.tools import filesystem, time, tables
+from ...core.tools import filesystem as fs
+from ...core.tools import time, tables
 from ...core.simulation.arguments import SkirtArguments
 from ...core.basics.filter import Filter
 from ...core.simulation.skifile import SkiFile
 from ...core.launch.batchlauncher import BatchLauncher
 from ...core.tools.logging import log
 from ...core.launch.parallelization import Parallelization
+from ...core.launch.options import AnalysisOptions
+from ...magic.misc.kernels import AnianoKernels
 
 # -----------------------------------------------------------------
 
@@ -44,6 +50,9 @@ class ParameterExplorer(FittingComponent):
         # Call the constructor of the base class
         super(ParameterExplorer, self).__init__(config)
 
+        # The names of the filters for which we have photometry
+        self.filter_names = []
+
         # The SKIRT batch launcher
         self.launcher = BatchLauncher()
 
@@ -55,6 +64,9 @@ class ParameterExplorer(FittingComponent):
 
         # The table with the parameter values for each simulation
         self.table = None
+
+        # A dictionary with the scheduling options for the different remote hosts
+        self.scheduling_options = dict()
 
     # -----------------------------------------------------------------
 
@@ -69,15 +81,7 @@ class ParameterExplorer(FittingComponent):
         super(ParameterExplorer, self).setup()
 
         # Get the names of the filters for which we have photometry
-        filter_names = []
-        fluxes_table_path = filesystem.join(self.phot_path, "fluxes.dat")
-        #fluxes_table = tables.from_file(fluxes_table_path, format="ascii.ecsv")
-        fluxes_table = tables.from_file(fluxes_table_path)
-        # Loop over the entries in the fluxes table, get the filter
-        for entry in fluxes_table:
-            # Get the filter
-            filter_id = entry["Instrument"] + "." + entry["Band"]
-            filter_names.append(filter_id)
+        self.filter_names = self.get_filter_names()
 
         # Set options for the BatchLauncher: basic options
         self.launcher.config.shared_input = True  # The input directories for the different simulations are shared
@@ -90,13 +94,17 @@ class ParameterExplorer(FittingComponent):
         self.launcher.config.analysis.plotting.path = self.fit_plot_path # The base directory where all of the simulations will have a seperate directory with the plotting analysis output
         self.launcher.config.analysis.extraction.timeline = True # extract the simulation timeline
         self.launcher.config.analysis.plotting.seds = True  # Plot the output SEDs
-        self.launcher.config.analysis.plotting.reference_sed = filesystem.join(self.phot_path, "fluxes.dat") # the path to the reference SED (for plotting the simulated SED against the reference points)
+        #self.launcher.config.analysis.plotting.reference_sed = fs.join(self.phot_path, "fluxes.dat") # the path to the reference SED (for plotting the simulated SED against the reference points)
+        self.launcher.config.analysis.plotting.reference_sed = fs.join(self.data_path, "fluxes.dat") # the path to the DustPedia SED
         self.launcher.config.analysis.misc.fluxes = True  # Calculate observed fluxes
-        self.launcher.config.analysis.misc.images = True  # Make observed images
-        self.launcher.config.analysis.misc.observation_filters = filter_names  # The filters for which to create the observations
+        #self.launcher.config.analysis.misc.images = True  # Make observed images
+        self.launcher.config.analysis.misc.observation_filters = self.filter_names  # The filters for which to create the observations
         self.launcher.config.analysis.plotting.format = "png" # plot in PNG format so that an animation can be made from the fit SEDs
         self.launcher.config.analysis.timing_table_path = self.timing_table_path # The path to the timing table file
         self.launcher.config.analysis.memory_table_path = self.memory_table_path # The path to the memory table file
+
+        # Set remote for the 'extra' simulations
+        self.launcher.config.extra_remote = "nancy"
 
     # -----------------------------------------------------------------
 
@@ -184,9 +192,12 @@ class ParameterExplorer(FittingComponent):
 
         # Set the paths to the directories to contain the launch scripts (job scripts) for the different remote hosts
         for host_id in self.launcher.host_ids:
-            script_dir_path = filesystem.join(self.fit_scripts_path, host_id)
-            if not filesystem.is_directory(script_dir_path): filesystem.create_directory(script_dir_path)
+            script_dir_path = fs.join(self.fit_scripts_path, host_id)
+            if not fs.is_directory(script_dir_path): fs.create_directory(script_dir_path)
             self.launcher.set_script_path(host_id, script_dir_path)
+
+        # Set the paths to the screen output directories (for debugging) for remotes without a scheduling system for jobs
+        for host_id in self.launcher.no_scheduler_host_ids: self.launcher.enable_screen_output(host_id)
 
         # Create a FUV filter object
         fuv = Filter.from_string("FUV")
@@ -203,22 +214,24 @@ class ParameterExplorer(FittingComponent):
             simulation_name = time.unique_name()
 
             # Change the parameter values in the ski file
-            self.ski.set_stellar_component_luminosity("Young stars", young_luminosity, fuv)
-            self.ski.set_stellar_component_luminosity("Ionizing stars", ionizing_luminosity, fuv)
+            #self.ski.set_stellar_component_luminosity("Young stars", young_luminosity, fuv)
+            #self.ski.set_stellar_component_luminosity("Ionizing stars", ionizing_luminosity, fuv)
+            self.ski.set_stellar_component_luminosity("Young stars", young_luminosity, fuv.centerwavelength() * Unit("micron"))
+            self.ski.set_stellar_component_luminosity("Ionizing stars", ionizing_luminosity, fuv.centerwavelength() * Unit("micron"))
             self.ski.set_dust_component_mass(0, dust_mass)
 
             # Determine the directory for this simulation
-            simulation_path = filesystem.join(self.fit_out_path, simulation_name)
+            simulation_path = fs.join(self.fit_out_path, simulation_name)
 
             # Create the simulation directory
-            filesystem.create_directory(simulation_path)
+            fs.create_directory(simulation_path)
 
             # Create an 'out' directory within the simulation directory
-            output_path = filesystem.join(simulation_path, "out")
-            filesystem.create_directory(output_path)
+            output_path = fs.join(simulation_path, "out")
+            fs.create_directory(output_path)
 
             # Put the ski file with adjusted parameters into the simulation directory
-            ski_path = filesystem.join(simulation_path, self.galaxy_name + ".ski")
+            ski_path = fs.join(simulation_path, self.galaxy_name + ".ski")
             self.ski.saveto(ski_path)
 
             # Create the SKIRT arguments object
@@ -238,17 +251,131 @@ class ParameterExplorer(FittingComponent):
             # Add an entry to the parameter table
             self.table.add_row([simulation_name, young_luminosity, ionizing_luminosity, dust_mass])
 
+        # Add simulations to the extra queue to calculate the contribution of the various stellar components
+        self.add_contribution_simulations()
+
+        # Add simulation to the extra queue to create simulated images
+        self.add_images_simulation()
+
         # Run the launcher, schedules the simulations
         simulations = self.launcher.run()
 
         # Loop over the scheduled simulations
         for simulation in simulations:
 
+            # Skip simulations for which analysis options are not defined (the contribution simulations and the images simulation)
+            if simulation.analysis is None or simulation.name == "images": continue
+
             # Add the path to the modeling directory to the simulation object
             simulation.analysis.modeling_path = self.config.path
 
             # Save the simulation object
             simulation.save()
+
+    # -----------------------------------------------------------------
+
+    def add_contribution_simulations(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Adding simulations to check the contribution of the various stellar components ...")
+
+        # Loop over the contributions
+        contributions = ["old", "young", "ionizing"]
+        for contribution in contributions:
+
+            # Simulation name
+            simulation_name = contribution
+
+            # Create the SkirtArguments instance
+            arguments = SkirtArguments()
+
+            # Set the ski file path
+            ski_path = fs.join(self.fit_best_path, contribution, self.galaxy_name + ".ski")
+            arguments.ski_pattern = ski_path
+            arguments.single = True
+            arguments.recursive = False
+            arguments.relative = False
+            arguments.parallel.threads = None
+            arguments.parallel.processes = None
+            arguments.input_path = self.fit_in_path
+            arguments.output_path = fs.join(self.fit_best_path, contribution)
+
+            # Create the AnalysisOptions instance
+            #analysis_options = AnalysisOptions()
+
+            # Add the arguments object
+            #self.launcher.add_to_extra_queue(arguments, analysis_options, simulation_name, share_input=True)
+            self.launcher.add_to_extra_queue(arguments, name=simulation_name, share_input=True)
+
+            # Set scheduling options if necessary
+            #for host_id in self.scheduling_options: self.launcher.set_scheduling_options(host_id, simulation_name, self.scheduling_options[host_id])
+
+    # -----------------------------------------------------------------
+
+    def add_images_simulation(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Adding simulation to generate simulated images ...")
+
+        # Set the ski file path
+        ski_path = fs.join(self.fit_best_path, "images", self.galaxy_name + ".ski")
+
+        # Set the input and output path
+        input_path = self.fit_in_path
+        output_path = fs.join(self.fit_best_path, "images")
+
+        # Create the SkirtArguments instance
+        arguments = SkirtArguments.single(ski_path, input_path, output_path, verbose=True, memory=True)
+
+        # Create the AnalysisOptions instance
+        analysis_options = AnalysisOptions()
+
+        # Set extraction options
+        analysis_options.extraction.path = output_path
+        analysis_options.extraction.progress = True
+        analysis_options.extraction.timeline = True
+        analysis_options.extraction.memory = True
+
+        # Set plotting options
+        analysis_options.plotting.path = output_path
+        analysis_options.plotting.progress = True
+        analysis_options.plotting.timeline = True
+        analysis_options.plotting.memory = True
+        analysis_options.plotting.seds = True
+        analysis_options.plotting.reference_sed = fs.join(self.phot_path, "fluxes.dat")
+
+        # Set the paths to the for each image (except for the SPIRE images)
+        kernel_paths = dict()
+        aniano = AnianoKernels()
+        pacs_red_psf_path = aniano.get_psf_path("PACS_160")
+        for filter_name in self.filter_names:
+            if "SPIRE" in filter_name: continue
+            kernel_paths[filter_name] = pacs_red_psf_path
+
+        # Set misc options
+        analysis_options.misc.path = output_path
+        analysis_options.misc.images = True
+        analysis_options.misc.observation_filters = self.filter_names
+        analysis_options.misc.make_images_remote = "nancy"
+        analysis_options.misc.images_wcs = self.reference_path
+        analysis_options.misc.images_unit = "MJy/sr"
+        analysis_options.misc.images_kernels = kernel_paths
+
+        # Add the arguments object
+        self.launcher.add_to_extra_queue(arguments, analysis_options, "images", share_input=True)
+
+        # Set scheduling options if necessary
+        #for host_id in self.scheduling_options: self.launcher.set_scheduling_options(host_id, "images", self.scheduling_options[host_id])
 
     # -----------------------------------------------------------------
 

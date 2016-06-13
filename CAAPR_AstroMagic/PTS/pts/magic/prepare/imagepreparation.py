@@ -13,8 +13,6 @@
 from __future__ import absolute_import, division, print_function
 
 # Import standard modules
-import io
-import imageio
 import numpy as np
 
 # Import astronomical modules
@@ -30,10 +28,12 @@ from ...core.basics.configurable import Configurable
 from ...core.tools.logging import log
 from ...modeling.preparation import unitconversion
 from ...core.tools import special
-from ...core.basics.animatedgif import AnimatedGif
+from ...core.basics.animation import Animation
 from ...core.tools import filesystem as fs
 from ...core.tools import time
 from ..tools import plotting
+from ..animation.imageblink import ImageBlinkAnimation
+from ..animation.sourceextraction import SourceExtractionAnimation
 
 # -----------------------------------------------------------------
 
@@ -52,7 +52,7 @@ class ImagePreparer(Configurable):
         """
 
         # Call the constructor of the base class
-        super(ImagePreparer, self).__init__(config, "modeling")
+        super(ImagePreparer, self).__init__(config, "magic")
 
         # -- Attributes --
 
@@ -148,26 +148,26 @@ class ImagePreparer(Configurable):
         # 1. Call the setup function
         self.setup(image, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments, visualisation_path)
 
-        # 2. Calculate the calibration uncertainties
-        if self.config.calculate_calibration_uncertainties: self.calculate_calibration_uncertainties()
-
-        # 3. Extract stars and galaxies from the image
+        # 2. Extract stars and galaxies from the image
         if self.config.extract_sources: self.extract_sources()
 
-        # 4. If requested, correct for galactic extinction
+        # 3. If requested, correct for galactic extinction
         if self.config.correct_for_extinction: self.correct_for_extinction()
 
-        # 5. If requested, convert the unit
+        # 4. If requested, convert the unit
         if self.config.convert_unit: self.convert_unit()
 
-        # 6. If requested, convolve
+        # 5. If requested, convolve
         if self.config.convolve: self.convolve()
 
-        # 7. If requested, rebin
+        # 6. If requested, rebin
         if self.config.rebin: self.rebin()
 
-        # 8. If requested, subtract the sky
+        # 7. If requested, subtract the sky
         if self.config.subtract_sky: self.subtract_sky()
+
+        # 8. Calculate the calibration uncertainties
+        if self.config.calculate_calibration_uncertainties: self.calculate_calibration_uncertainties()
 
         # 9. If requested, set the uncertainties
         if self.config.set_uncertainties: self.set_uncertainties()
@@ -246,7 +246,7 @@ class ImagePreparer(Configurable):
         log.info("Calculating the calibration uncertainties ...")
 
         # Add the calibration uncertainty defined in (AB) magnitude
-        if "mag" in self.config.uncertainties.calibration_error:
+        if self.config.uncertainties.calibration_error.magnitude:
 
             # -----------------------------------------------------------------
 
@@ -259,7 +259,7 @@ class ImagePreparer(Configurable):
             # -----------------------------------------------------------------
 
             # The calibration uncertainty in AB magnitude
-            mag_error = float(self.config.uncertainties.calibration_error.split("mag")[0])
+            mag_error = self.config.uncertainties.calibration_error.value
 
             # a = image[mag] - mag_error
             a = ab_frame - mag_error
@@ -308,10 +308,10 @@ class ImagePreparer(Configurable):
             # -----------------------------------------------------------------
 
         # The calibration uncertainty is expressed in a percentage (from the flux values)
-        elif "%" in self.config.uncertainties.calibration_error:
+        elif self.config.uncertainties.calibration_error.percentage:
 
             # Calculate calibration errors with percentage
-            fraction = float(self.config.uncertainties.calibration_error.split("%")[0]) * 0.01
+            fraction = self.config.uncertainties.calibration_error.value * 0.01
             calibration_frame = self.image.frames.primary * fraction
 
         # Unrecognized calibration error (not a magnitude, not a percentage)
@@ -338,19 +338,12 @@ class ImagePreparer(Configurable):
         # Create an animation to show the result of this step
         if self.visualisation_path is not None:
 
-            # Create an animation to show the result of the source extraction step
-            max_frame_value = np.nanmax(self.image.frames.primary)
-            animation = AnimatedGif()
-            buf = io.BytesIO()
-            plotting.plot_box(self.image.frames.primary, path=buf, format="png", vmin=0.0, vmax=max_frame_value)
-            buf.seek(0)
-            im = imageio.imread(buf)
-            buf.close()
-            animation.add_frame(im)
+            # Create an animation
+            animation = ImageBlinkAnimation()
+            animation.add_image(self.image.frames.primary)
 
             # Create an animation to show the progress of the SourceExtractor
-            source_extractor_animation = AnimatedGif()
-            source_extractor_animation.fps = 1 # 1 frame per second because the frames are very distinct
+            source_extractor_animation = SourceExtractionAnimation(self.image.frames.primary)
         else:
             animation = None
             source_extractor_animation = None
@@ -363,19 +356,13 @@ class ImagePreparer(Configurable):
         if self.visualisation_path is not None:
 
             # Determine the path to the animation
-            path = fs.join(self.visualisation_path, time.unique_name(self.image.name + "_sourceextraction") + ".avi")
+            path = fs.join(self.visualisation_path, time.unique_name(self.image.name + "_sourceextraction") + ".gif")
 
             # Save the animation
             source_extractor_animation.save(path)
 
-            # ----
-
-            buf = io.BytesIO()
-            plotting.plot_box(self.image.frames.primary, path=buf, format="png", vmin=0.0, vmax=max_frame_value)
-            buf.seek(0)
-            im = imageio.imread(buf)
-            buf.close()
-            animation.add_frame(im)
+            # ...
+            animation.add_image(self.image.frames.primary)
 
             # Determine the path to the animation
             path = fs.join(self.visualisation_path, time.unique_name(self.image.name + "_imagepreparation_extractsources") + ".gif")
@@ -472,14 +459,9 @@ class ImagePreparer(Configurable):
         # Create an animation to show the result of this step
         if self.visualisation_path is not None:
 
-            max_frame_value = np.nanmax(self.image.frames.primary)
-            animation = AnimatedGif()
-            buf = io.BytesIO()
-            plotting.plot_box(self.image.frames.primary, path=buf, format="png", vmin=0.0, vmax=max_frame_value)
-            buf.seek(0)
-            im = imageio.imread(buf)
-            buf.close()
-            animation.add_frame(im)
+            # Create an animation
+            animation = ImageBlinkAnimation()
+            animation.add_image(self.image.frames.primary)
 
         else: animation = None
 
@@ -517,13 +499,7 @@ class ImagePreparer(Configurable):
 
         # Write the animation
         if self.visualisation_path is not None:
-
-            buf = io.BytesIO()
-            plotting.plot_box(self.image.frames.primary, path=buf, format="png", vmin=0.0, vmax=max_frame_value)
-            buf.seek(0)
-            im = imageio.imread(buf)
-            buf.close()
-            animation.add_frame(im)
+            animation.add_image(self.image.frames.primary)
 
             # Determine the path to the animation
             path = fs.join(self.visualisation_path, time.unique_name(self.image.name + "_imagepreparation_convolve") + ".gif")
@@ -580,17 +556,11 @@ class ImagePreparer(Configurable):
         if self.visualisation_path is not None:
 
             # Create an animation to show the result of the sky subtraction step
-            max_frame_value = np.nanmax(self.image.frames.primary)
-            animation = AnimatedGif()
-            buf = io.BytesIO()
-            plotting.plot_box(self.image.frames.primary, path=buf, format="png", vmin=0.0, vmax=max_frame_value)
-            buf.seek(0)
-            im = imageio.imread(buf)
-            buf.close()
-            animation.add_frame(im)
+            animation = ImageBlinkAnimation()
+            animation.add_image(self.image.frames.primary)
 
             # Create an animation to show the progress of the SkySubtractor
-            skysubtractor_animation = AnimatedGif()
+            skysubtractor_animation = Animation()
         else:
             animation = None
             skysubtractor_animation = None
@@ -626,6 +596,10 @@ class ImagePreparer(Configurable):
         # Write sky annuli maps if requested
         if self.config.write_sky_annuli:
 
+            # Write the annulus region
+            annulus_path = fs.join(self.config.sky_annuli_path, "annulus.reg")
+            self.sky_subtractor.annulus_region.save(annulus_path)
+
             # Write the apertures frame
             apertures_frame_path = fs.join(self.config.sky_annuli_path, "apertures.fits")
             self.sky_subtractor.apertures_frame.save(apertures_frame_path)
@@ -647,12 +621,8 @@ class ImagePreparer(Configurable):
             # Save the animation
             skysubtractor_animation.save(path)
 
-            buf = io.BytesIO()
-            plotting.plot_box(self.image.frames.primary, path=buf, format="png", vmin=0.0, vmax=max_frame_value)
-            buf.seek(0)
-            im = imageio.imread(buf)
-            buf.close()
-            animation.add_frame(im)
+            # ...
+            animation.add_image(self.image.frames.primary)
 
             # Determine the path to the animation
             path = fs.join(self.visualisation_path, time.unique_name(self.image.name + "_imagepreparation_subtractsky") + ".gif")

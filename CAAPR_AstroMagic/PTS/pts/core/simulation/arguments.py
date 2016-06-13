@@ -20,6 +20,7 @@ import fnmatch
 # Import the relevant PTS classes and modules
 from .simulation import SkirtSimulation
 from ..basics.map import Map
+from ..tools import filesystem as fs
 
 # -----------------------------------------------------------------
 
@@ -77,6 +78,41 @@ class SkirtArguments(object):
 
     # -----------------------------------------------------------------
 
+    @classmethod
+    def single(cls, ski_path, input_path, output_path, processes=None, threads=None, verbose=False, memory=False):
+
+        """
+        This function ...
+        :param ski_path:
+        :param input_path:
+        :param output_path:
+        :param processes:
+        :param threads:
+        :param verbose:
+        :param memory:
+        :return:
+        """
+
+        # Create a SkirtArguments instance
+        arguments = cls()
+
+        # Set the options
+        arguments.ski_pattern = ski_path
+        arguments.single = True
+        arguments.recursive = False
+        arguments.relative = False
+        arguments.parallel.processes = processes
+        arguments.parallel.threads = threads
+        arguments.input_path = input_path
+        arguments.output_path = output_path
+        arguments.logging.verbose = verbose
+        arguments.logging.memory = memory
+
+        # Return the new instance
+        return arguments
+
+    # -----------------------------------------------------------------
+
     def simulations(self):
 
         """
@@ -92,8 +128,7 @@ class SkirtArguments(object):
         for skifile in pattern:
 
             # Determine the directory path and the actual file descriptor
-            root, name = os.path.split(skifile)
-            root = os.path.realpath(root)
+            root, name = fs.directory_and_name(skifile)
 
             # Construct the 'dirlist' variable; this is a list of 3-tuples (dirpath, dirnames, filenames)
             if self.recursive: dirlist = os.walk(root)
@@ -103,8 +138,8 @@ class SkirtArguments(object):
             for dirpath, dirnames, filenames in dirlist:
                 for filename in fnmatch.filter(filenames, name):
 
-                    inp = os.path.join(dirpath, self.input_path)  if (self.relative) else self.input_path
-                    out = os.path.join(dirpath, self.output_path) if (self.relative) else self.output_path
+                    inp = os.path.join(dirpath, self.input_path) if (self.relative and self.input_path is not None) else self.input_path
+                    out = os.path.join(dirpath, self.output_path) if (self.relative and self.output_path is not None) else self.output_path
 
                     # Create the simulation and add it to the list
                     simulations.append(SkirtSimulation(filename, inpath=inp, outpath=out))

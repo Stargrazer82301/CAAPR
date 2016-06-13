@@ -75,10 +75,20 @@ def remote_convolution(image, kernel_path, kernel_fwhm, host_id):
 
     # Save the frames
     local_frame_paths = []
+    constant_frames = []
     for frame_name in image.frames:
         frame_path = fs.join(local_temp_path, frame_name + ".fits")
-        image.frames[frame_name].save(frame_path)
-        local_frame_paths.append(frame_path)
+
+        # Only upload and convolve non-constant frames
+        if not image.frames[frame_name].is_constant():
+
+            image.frames[frame_name].save(frame_path)
+            local_frame_paths.append(frame_path)
+
+        else:
+
+            log.debug("The " + frame_name + " frame is constant, so this won't be uploaded and convolved")
+            constant_frames.append(frame_name)
 
     # Upload the frames
     remote_frame_paths = []
@@ -200,6 +210,7 @@ def remote_convolution(image, kernel_path, kernel_fwhm, host_id):
     #self.image = Image.from_file(local_result_path)
 
     for frame_name in image.frames.keys():
+        if frame_name in constant_frames: continue # Skip constant frames, these are not convolved
         local_frame_path = fs.join(local_temp_path, frame_name + ".fits")
         image.frames[frame_name] = Frame.from_file(local_frame_path)
 
@@ -217,6 +228,9 @@ def remote_convolution_frame(frame, kernel_path, host_id):
     :param host_id:
     :return:
     """
+
+    # Check whether the frame is constant. If it is, we don't have to convolve!
+    if frame.is_constant(): return frame.copy()
 
     # Check whether we are already connected to the specified remote host
     if host_id in connected_remotes and connected_remotes[host_id] is not None:
@@ -550,10 +564,11 @@ def remote_filter_convolution(host_id, datacube_path, wavelengths, filters, keep
     script_file.write("# Loop over the filters, perform the convolution\n")
     script_file.write("for filter_name in filters:\n")
     script_file.write("\n")
-    script_file.write("    log.info('Creating the ' + str(fltr) + ' image ...')\n")
+    script_file.write("    log.info('Making the observed image for the ' + str(fltr) + ' filter ...')\n")
     script_file.write("    fltr = filters[filter_name]\n")
     script_file.write("    data = fltr.convolve(wavelengths, fluxdensities)\n")
     script_file.write("    frame = Frame(data)\n")
+    script_file.write("    frame.unit = 'W/(m2 * arcsec2 * micron)'\n")
     script_file.write("    path = fs.join('" + remote_temp_path + "', filter_name + '.fits')\n")
     script_file.write("    frame.save(path)\n")
 

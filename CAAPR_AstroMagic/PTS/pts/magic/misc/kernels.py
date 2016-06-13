@@ -5,7 +5,7 @@
 # **       © Astronomical Observatory, Ghent University          **
 # *****************************************************************
 
-## \package pts.core.basics.kernels Contains the AnianoKernels class.
+## \package pts.magic.misc.kernels Contains the AnianoKernels class.
 
 # -----------------------------------------------------------------
 
@@ -25,13 +25,14 @@ from astropy.units import Unit
 
 # Import the relevant PTS classes and modules
 from ..core.frame import Frame
-from ...core.tools import inspection, filesystem
+from ...core.tools import inspection
+from ...core.tools import filesystem as fs
 from ...core.tools.logging import log
 
 # -----------------------------------------------------------------
 
 # The path to the PTS kernels directory
-kernels_path = filesystem.join(inspection.pts_user_dir, "kernels")
+kernels_path = fs.join(inspection.pts_user_dir, "kernels")
 
 # -----------------------------------------------------------------
 
@@ -65,6 +66,36 @@ fwhms = {"GALEX_FUV": 4.48 * Unit("arcsec"),
 
 # -----------------------------------------------------------------
 
+aniano_names = {"GALEX FUV": "GALEX_FUV",
+                "GALEX NUV": "GALEX_NUV",
+                "SDSS u": "BiGauss_02.0",  # FWHM is actually variable
+                "SDSS g": "BiGauss_02.0",  # FWHM is actually variable
+                "SDSS r": "BiGauss_02.0",  # FWHM is actually variable
+                "Mosaic Halpha": "Gauss_03.0",
+                "SDSS i": "BiGauss_02.0",  # FWHM is actually variable
+                "SDSS z": "BiGauss_02.0",  # FWHM is actually variable
+                "2MASS J": "Gauss_03.5",
+                "2MASS H": "Gauss_03.0",
+                "2MASS Ks": "Gauss_03.5",
+                "WISE W1": "WISE_FRAME_3.4",
+                "IRAC I1": "IRAC_3.6",
+                "IRAC I2": "IRAC_4.5",
+                "WISE W2": "WISE_FRAME_4.6",
+                "IRAC I3": "IRAC_5.8",
+                "IRAC I4": "IRAC_8.0",
+                "WISE W3": "WISE_FRAME_11.6",
+                "WISE W4": "WISE_FRAME_22.1",
+                "MIPS 24mu": "MIPS_24",
+                "MIPS 70mu": None,
+                "MIPS 160mu": None,
+                "Pacs blue": "PACS_70",
+                "Pacs red": "PACS_160",
+                "SPIRE PSW": None,
+                "SPIRE PMW": None,
+                "SPIRE PLW": None}
+
+# -----------------------------------------------------------------
+
 class AnianoKernels(object):
 
     """
@@ -79,7 +110,7 @@ class AnianoKernels(object):
         """
 
         # The path to the directory where the Aniano kernels are saved (to be reused)
-        self.kernels_path = filesystem.join(kernels_path, "aniano")
+        self.kernels_path = fs.join(kernels_path, "aniano")
 
     # -----------------------------------------------------------------
 
@@ -132,10 +163,10 @@ class AnianoKernels(object):
         # Determine the path to the kernel file
         if high_res: kernel_file_basename = "Kernel_HiRes_" + from_psf_name + "_to_" + to_psf_name
         else: kernel_file_basename = "Kernel_LoRes_" + from_psf_name + "_to_" + to_psf_name
-        kernel_file_path = filesystem.join(self.kernels_path, kernel_file_basename + ".fits")
+        kernel_file_path = fs.join(self.kernels_path, kernel_file_basename + ".fits")
 
         # Download the kernel if it is not present
-        if not filesystem.is_file(kernel_file_path):
+        if not fs.is_file(kernel_file_path):
 
             # Download the kernel
             self.download_kernel(kernel_file_basename)
@@ -195,10 +226,10 @@ class AnianoKernels(object):
 
         # Determine the path to the PSF file
         basename = "PSF_" + psf_name
-        psf_file_path = filesystem.join(self.kernels_path, basename + ".fits")
+        psf_file_path = fs.join(self.kernels_path, basename + ".fits")
 
         # Download the PSF file if it is not present
-        if not filesystem.is_file(psf_file_path):
+        if not fs.is_file(psf_file_path):
 
             # Download the PSF
             self.download_psf(basename)
@@ -226,7 +257,7 @@ class AnianoKernels(object):
         :return:
         """
 
-        return filesystem.files_in_path(self.kernels_path, extension="fits", startswith="Kernel", returns="name")
+        return fs.files_in_path(self.kernels_path, extension="fits", startswith="Kernel", returns="name")
 
     # -----------------------------------------------------------------
 
@@ -238,7 +269,7 @@ class AnianoKernels(object):
         :return:
         """
 
-        return filesystem.files_in_path(self.kernels_path, extension="fits", startswith="PSF", returns="name")
+        return fs.files_in_path(self.kernels_path, extension="fits", startswith="PSF", returns="name")
 
     # -----------------------------------------------------------------
 
@@ -308,8 +339,8 @@ class AnianoKernels(object):
         link = aniano_kernels_highres_link if "HiRes" in kernel_basename else aniano_kernels_lowres_link
         kernel_link = link + kernel_gzname
 
-        gz_path = filesystem.join(self.kernels_path, kernel_gzname)
-        fits_path = filesystem.join(self.kernels_path, kernel_fitsname)
+        gz_path = fs.join(self.kernels_path, kernel_gzname)
+        fits_path = fs.join(self.kernels_path, kernel_fitsname)
 
         # Inform the user
         log.info("Downloading kernel " + kernel_basename + " from " + link + " ...")
@@ -326,7 +357,7 @@ class AnianoKernels(object):
                 shutil.copyfileobj(f_in, f_out)
 
         # Remove the fits.gz file
-        filesystem.remove_file(gz_path)
+        fs.remove_file(gz_path)
 
     # -----------------------------------------------------------------
 
@@ -344,8 +375,8 @@ class AnianoKernels(object):
         # Determine the link to the online PSF file
         psf_link = aniano_psf_files_link + psf_gzname
 
-        gz_path = filesystem.join(self.kernels_path, psf_gzname)
-        fits_path = filesystem.join(self.kernels_path, psf_fitsname)
+        gz_path = fs.join(self.kernels_path, psf_gzname)
+        fits_path = fs.join(self.kernels_path, psf_fitsname)
 
         # Inform the user
         log.info("Downloading PSF file " + psf_basename + " from " + aniano_psf_files_link + " ...")
@@ -362,7 +393,106 @@ class AnianoKernels(object):
                 shutil.copyfileobj(f_in, f_out)
 
         # Remove the fits.gz file
-        filesystem.remove_file(gz_path)
+        fs.remove_file(gz_path)
+
+# -----------------------------------------------------------------
+
+pacs_fwhms = [5.67 * Unit("arcsec"), 7.04 * Unit("arcsec"), 11.18 * Unit("arcsec")]
+spire_fwhms = [18.15 * Unit("arcsec"), 24.88 * Unit("arcsec"), 36.09 * Unit("arcsec")]
+
+# -----------------------------------------------------------------
+
+class HerschelKernels(object):
+
+    """
+    This class ...
+    """
+
+    def __init__(self):
+
+        """
+        This function ...
+        """
+
+        # The path to the directory where the Aniano kernels are saved (to be reused)
+        self.spire_path = fs.join(kernels_path, "herschel", "spire")
+        self.pacs_path = fs.join(kernels_path, "herschel", "pacs")
+
+    # -----------------------------------------------------------------
+
+    def get_spire_psf(self, band, one_arcsec=False):
+
+        """
+        This function ...
+        :param band:
+        :param one_arcsec:
+        :return:
+        """
+
+        if band == 1 or band == "PSW":
+
+            if one_arcsec: psf_path = fs.join(self.spire_path, "0x5000241aL_PSW_bgmod10_1arcsec.fits")
+            else: psf_path = fs.join(self.spire_path, "0x5000241aL_PSW_bgmod10_6arcsec.fits")
+            fwhm = spire_fwhms[0]
+
+        elif band == 2 or band == "PMW":
+
+            if one_arcsec: psf_path = fs.join(self.spire_path, "0x5000241aL_PMW_bgmod10_1arcsec.fits")
+            else: psf_path = fs.join(self.spire_path, "0x5000241aL_PMW_bgmod10_10arcsec.fits")
+            fwhm = spire_fwhms[1]
+
+        elif band == 3 or band == "PLW":
+
+            if one_arcsec: psf_path = fs.join(self.spire_path, "0x5000241aL_PLW_bgmod10_1arcsec.fits")
+            else: psf_path = fs.join(self.spire_path, "0x5000241aL_PLW_bgmod10_14arcsec.fits")
+            fwhm = spire_fwhms[2]
+
+        else: raise ValueError("Invalid option for 'band'")
+
+        # Load the PSF frame
+        psf = Frame.from_file(psf_path)
+
+        # Set the FWHM of the PSF
+        if psf.fwhm is None: psf.fwhm = fwhm
+
+        # Return the PSF frame
+        return psf
+
+    # -----------------------------------------------------------------
+
+    def get_pacs_psf(self, band):
+
+        """
+        This function ...
+        :param band:
+        :return:
+        """
+
+        if band == 1 or band == "70" or band == "70mu":
+
+            psf_path = fs.join()
+            fwhm = pacs_fwhms[0]
+
+        elif band == 2 or band == "100" or band == "100mu":
+
+            psf_path = fs.join()
+            fwhm = pacs_fwhms[1]
+
+        elif band == 3 or band == "160" or band == "160mu":
+
+            psf_path = fs.join()
+            fwhm = pacs_fwhms[2]
+
+        else: raise ValueError("Invalid option for 'band'")
+
+        # Load the PSF frame
+        psf = Frame.from_file(psf_path)
+
+        # Set the FWHM of the PSF
+        if psf.fwhm is None: psf.fwhm = fwhm
+
+        # Return the PSF frame
+        return psf
 
 # -----------------------------------------------------------------
 
@@ -384,6 +514,6 @@ class PypherKernels(object):
         """
 
         # The path to the directory where the generated Pypher kernels are saved (to be reused)
-        self.path = filesystem.join(kernels_path, "pypher")
+        self.path = fs.join(kernels_path, "pypher")
 
 # -----------------------------------------------------------------

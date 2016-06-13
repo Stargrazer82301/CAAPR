@@ -15,6 +15,7 @@ from __future__ import absolute_import, division, print_function
 # Import standard modules
 import numpy as np
 from scipy import ndimage
+from skimage.feature import match_template
 
 # Import astronomical modules
 from photutils import detect_sources
@@ -33,6 +34,7 @@ from ..train import Classifier
 from ..object.star import Star
 from ...core.basics.configurable import Configurable
 from ...core.tools.logging import log
+from ..basics.geometry import Coordinate
 
 # -----------------------------------------------------------------
 
@@ -162,6 +164,9 @@ class TrainedFinder(Configurable):
 
         # Find sources by using SExtractor
         elif self.config.detection.method == "sextractor": self.find_sources_sextractor()
+
+        # Find sources using experimental method
+        elif self.config.detection.method == "experimental": self.find_sources_experimental()
 
         # Unknown source detection method
         else: raise ValueError("Unknown source detection method")
@@ -512,6 +517,55 @@ class TrainedFinder(Configurable):
 
         # Run SExtractor on the image frame
         sextractor.run(self.frame)
+
+    # -----------------------------------------------------------------
+
+    def find_sources_experimental(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        kernel = self.star_finder.kernel._array
+
+        result = match_template(self.frame, kernel, pad_input=True)
+
+        #plotting.plot_box(result)
+
+        #y, x = np.unravel_index(np.argmax(result), result.shape)
+        #source = Source.around_coordinate(self.frame, Coordinate(x,y), radius=5, factor=1.3)
+        #source.plot()
+
+        #from ...core.basics.distribution import Distribution
+        #distribution = Distribution.from_values(result.flatten())
+        #distribution.plot()
+
+        from photutils import find_peaks
+
+        mask = Mask(self.galaxy_finder.segments) + Mask(self.star_finder.segments)
+
+        peaks = find_peaks(result, 0.8, box_size=5, mask=mask)
+
+        index = 1
+
+        self.segments = Frame.zeros_like(self.frame)
+
+        # Loop over the peaks
+        for peak in peaks:
+
+            # Calculate the absolute x and y coordinate of the peak
+            x = peak['x_peak']
+            y = peak['y_peak']
+            coordinate = Coordinate(x,y)
+
+            source = Source.around_coordinate(self.frame, coordinate, radius=5, factor=1.3)
+
+            self.segments[source.y_slice, source.x_slice][source.mask] = index
+
+            index += 1
+
+            #self.sources.append(source)
 
     # -----------------------------------------------------------------
 

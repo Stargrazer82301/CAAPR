@@ -24,8 +24,9 @@ from ...magic.misc.imageimporter import ImageImporter
 from ...magic.catalog.importer import CatalogImporter
 from ...magic.core.image import Image
 from ...magic.core.frame import Frame
-from ...core.basics.animatedgif import AnimatedGif
+from ...core.basics.animation import Animation
 from ...core.tools import time
+from ...core.tools import parsing
 
 # -----------------------------------------------------------------
 
@@ -67,10 +68,6 @@ fwhms = {"GALEX FUV": 4.48 * Unit("arcsec"),
 # The total H-alpha flux (reference: FAR-ULTRAVIOLET AND Ha IMAGING OF NEARBY SPIRAL GALAXIES: THE OB STELLAR,
 # POPULATION IN THE DIFFUSE IONIZED GAS (Hoopes et. al 2001)
 halpha_flux = 7.8e40 * Unit("erg/s")
-
-# -----------------------------------------------------------------
-
-reference_image = "Pacs red"
 
 # -----------------------------------------------------------------
 
@@ -183,7 +180,7 @@ class PreparationInitializer(PreparationComponent):
         log.info("Loading the reference image ...")
 
         # Get the path to the reference image
-        reference_path = self.original_paths[reference_image]
+        reference_path = self.original_paths[self.reference_image]
         self.reference = Frame.from_file(reference_path)
 
     # -----------------------------------------------------------------
@@ -366,7 +363,7 @@ class PreparationInitializer(PreparationComponent):
         fwhm = None
         with open(statistics_path) as statistics_file:
             for line in statistics_file:
-                if "FWHM" in line: fwhm = get_quantity(line.split("FWHM: ")[1].replace("\n", ""))
+                if "FWHM" in line: fwhm = parsing.get_quantity(line.split("FWHM: ")[1].replace("\n", ""))
 
         # Check whether the FWHM is valid
         if fwhm is None: raise RuntimeError("The FWHM could not be found")
@@ -397,7 +394,7 @@ class PreparationInitializer(PreparationComponent):
         else: self.source_finder.config.find_other_sources = True
 
         # Create an animation for the source finder
-        if self.config.visualise: animation = AnimatedGif()
+        if self.config.visualise: animation = Animation()
         else: animation = None
 
         # Run the source finder on this image
@@ -474,25 +471,5 @@ class PreparationInitializer(PreparationComponent):
 
         # Clear the source finder
         self.source_finder.clear()
-
-# -----------------------------------------------------------------
-
-def get_quantity(entry, default_unit=None):
-
-    """
-    This function ...
-    :param entry:
-    :param default_unit:
-    :return:
-    """
-
-    splitted = entry.split()
-    value = float(splitted[0])
-    try: unit = splitted[1]
-    except IndexError: unit = default_unit
-
-    # Create a quantity object and return it
-    if unit is not None: value = value * Unit(unit)
-    return value
 
 # -----------------------------------------------------------------

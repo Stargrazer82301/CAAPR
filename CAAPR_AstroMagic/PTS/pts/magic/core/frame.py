@@ -29,7 +29,7 @@ from ..basics.geometry import Rectangle
 from ..basics.skygeometry import SkyCoordinate
 from ..basics.coordinatesystem import CoordinateSystem
 from ..tools import coordinates, cropping, transformations, interpolation, headers, fitting
-from ...core.tools import filesystem
+from ...core.tools import filesystem as fs
 from ...core.tools.logging import log
 from ..basics.mask import Mask
 
@@ -75,7 +75,7 @@ class Frame(np.ndarray):
     # -----------------------------------------------------------------
 
     @classmethod
-    def from_file(cls, path, index=0, name=None, description=None, plane=None, hdulist_index=0, no_filter=False):
+    def from_file(cls, path, index=None, name=None, description=None, plane=None, hdulist_index=0, no_filter=False):
 
         """
         This function ...
@@ -130,7 +130,7 @@ class Frame(np.ndarray):
         else:
 
             # Obtain the filter for this image
-            fltr = headers.get_filter(filesystem.name(path[:-5]), header)
+            fltr = headers.get_filter(fs.name(path[:-5]), header)
 
         # Obtain the units of this image
         unit = headers.get_unit(header)
@@ -160,10 +160,22 @@ class Frame(np.ndarray):
                 # If a break is not encountered, a matching plane name is not found
                 else: raise ValueError("Plane with name '" + plane + "' not found")
 
-            else: name, description, plane_type = headers.get_frame_name_and_description(header, index, always_call_first_primary=False)
+            elif index is not None:
+
+                name, description, plane_type = headers.get_frame_name_and_description(header, index, always_call_first_primary=False)
+
+            else: # index and plane is None
+
+                for i in range(nframes):
+                    # Get name and description of frame
+                    name, description, plane_type = headers.get_frame_name_and_description(header, i, always_call_first_primary=False)
+                    if name == "primary": index = i
+                    break
+
+                if index is None: index = 0 # if index is still None, set it to zero (take the first plane)
 
             # Get the name from the file path
-            if name is None: name = filesystem.name(path[:-5])
+            if name is None: name = fs.name(path[:-5])
 
             # Return the frame
             # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
@@ -183,7 +195,7 @@ class Frame(np.ndarray):
             if len(hdu.data.shape) == 3: hdu.data = hdu.data[0]
 
             # Get the name from the file path
-            if name is None: name = filesystem.name(path[:-5])
+            if name is None: name = fs.name(path[:-5])
 
             # Return the frame
             # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None

@@ -19,7 +19,8 @@ import types
 import numpy as np
 
 # Import the relevant PTS classes and modules
-from ..tools import serialization, filesystem
+from ..tools import serialization
+from ..tools import filesystem as fs
 from .skifile import SkiFile
 from .logfile import LogFile
 from ..tools import archive as arch
@@ -523,7 +524,7 @@ class RemoteSimulation(SkirtSimulation):
         """
 
         # Determine the simulation prefix
-        prefix = filesystem.strip_extension(filesystem.name(ski_path))
+        prefix = fs.strip_extension(fs.name(ski_path))
 
         # Call the constructor of the base class
         super(RemoteSimulation, self).__init__(prefix, input_path, output_path, ski_path)
@@ -670,6 +671,22 @@ class RemoteSimulation(SkirtSimulation):
 
         # Check whether a path is defined for the simulation file
         if self.path is None: raise RuntimeError("The simulation file does not exist yet")
+
+        # Save to the original path
+        self.saveto(self.path)
+
+    # -----------------------------------------------------------------
+
+    def saveto(self, path):
+
+        """
+        This function ...
+        :param path:
+        :return:
+        """
+
+        # Set the new path
+        self.path = path
 
         # Set the _parameters to None to avoid an error when trying to pickle the SkiFile instance
         self._parameters = None

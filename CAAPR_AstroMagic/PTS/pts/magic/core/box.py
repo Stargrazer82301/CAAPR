@@ -547,12 +547,13 @@ class Box(np.ndarray):
 
     # -----------------------------------------------------------------
 
-    def interpolated(self, mask, method):
+    def interpolated(self, mask, method, no_clip_mask=None):
 
         """
         This function ...
         :param mask:
         :param method:
+        :param no_clip_mask:
         :return:
         """
 
@@ -628,16 +629,31 @@ class Box(np.ndarray):
         # Use the 'PTS' method
         elif method == "pts":
 
+            polynomial_fit_mask = mask if no_clip_mask is None else no_clip_mask # determine the mask to use for fitting the polynomial
             order = 3
-            try: polynomial = fitting.fit_polynomial(self, order, mask=mask)
+            try: polynomial = fitting.fit_polynomial(self, order, mask=polynomial_fit_mask)
             except TypeError:
-                mask = mask.eroded(connectivity=2, iterations=1)
-                polynomial = fitting.fit_polynomial(self, order, mask=mask)
+                try:
+                    polynomial_fit_mask = polynomial_fit_mask.eroded(connectivity=2, iterations=1)
+                    polynomial = fitting.fit_polynomial(self, order, mask=polynomial_fit_mask)
+                except TypeError:
+                    log.warning("Cannot interpolate over this box ...")
+                    return self.copy()
 
             # Evaluate the polynomial
             poly_data = fitting.evaluate_model(polynomial, 0, self.xsize, 0, self.ysize)
 
             subtracted = self - poly_data
+
+            #if no_clip_mask is not None:
+                #plotting.plot_difference(self, poly_data)
+                #plotting.plot_box(subtracted)
+                #plotting.plot_box(np.ma.array(subtracted, mask=mask))
+                #from ..tools import statistics
+                #new_mask = statistics.sigma_clip_mask(subtracted, sigma_level=2.0, mask=mask)
+                #plotting.plot_box(np.ma.array(subtracted, mask=new_mask))
+                #background_pixels = subtracted[new_mask.inverse()]
+            #else:
 
             background_pixels = subtracted[mask.inverse()]
 

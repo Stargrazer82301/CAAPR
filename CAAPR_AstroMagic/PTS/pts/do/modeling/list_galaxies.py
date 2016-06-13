@@ -19,6 +19,7 @@ import argparse
 # Import the relevant PTS classes and modules
 from pts.core.tools import logging, time
 from pts.core.tools import filesystem as fs
+from pts.core.tools import inspection
 from pts.magic.misc.dustpedia import DustPediaDatabase, get_account
 
 # -----------------------------------------------------------------
@@ -47,6 +48,37 @@ log.start("Starting list_galaxies ...")
 
 # -----------------------------------------------------------------
 
+# Local table path
+local_table_path = fs.join(inspection.pts_dat_dir("modeling"), "s4g", "s4g_p4_table8.dat")
+
+# -----------------------------------------------------------------
+
+def get_galaxy_names_s4g():
+
+    """
+    This function ...
+    :return:
+    """
+
+    names = []
+
+    with open(local_table_path, 'r') as s4g_table:
+
+        for line in s4g_table:
+
+            splitted = line.split()
+
+            if len(splitted) < 2: continue
+
+            # Get the galaxy name and add it to the list
+            name = splitted[1]
+            names.append(name)
+
+    # Return the list of galaxy names
+    return names
+
+# -----------------------------------------------------------------
+
 # Get the account info
 username, password = get_account()
 
@@ -59,21 +91,22 @@ database = DustPediaDatabase()
 # EARLY TYPE SPIRALS: early-type (Sa–Sab) spiral galaxies
 
 parameters = {"D25": (5., None),
-              "Hubble type": "Sab"}
-
-# Hubble Stage (T)
-# V (km/s)
-# Inclination (deg.)
-# D25 (arcmin)
-
+              "Hubble type": ["Sa", "Sab", "Sb"]}
 
 table = database.get_galaxies(parameters)
 
-print(table)
+s4g_names = get_galaxy_names_s4g()
 
-#for i in range(len(table)):
-#    hubble_type = table["Hubble Type"][i]
-#    if hubble_type == "Sab" or hubble_type == "Sa" or hubble_type == "Sb":
-#        print(table[i])
+has_s4g_column = []
+
+for i in range(len(table)):
+
+    name = table["Name"][i]
+
+    has_s4g_column.append(name in s4g_names)
+
+table["In S4G"] = has_s4g_column
+
+print(table)
 
 # -----------------------------------------------------------------

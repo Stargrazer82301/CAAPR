@@ -188,7 +188,7 @@ class ObservedImageMaker(object):
             if host_id is not None:
 
                 # Upload the datacube, wavelength grid and filter properties, perform the convolution on the remote and get the resulting image frames back (as a dictionary where the keys are the filter names)
-                frames = remote_filter_convolution(host_id, path, self.wavelengths, self.filters, keep_output=True)
+                frames = remote_filter_convolution(host_id, path, self.wavelengths, self.filters)
 
                 # Add the resulting image frames to the dictionary
                 for filter_name in frames:
@@ -202,7 +202,7 @@ class ObservedImageMaker(object):
                 datacube = Image.from_file(path, always_call_first_primary=False)
 
                 # Convert the frames from neutral surface brightness to wavelength surface brightness
-                for l in range(self.wavelengths):
+                for l in range(len(self.wavelengths)):
 
                     # Get the wavelength
                     wavelength = self.wavelengths[l]
@@ -361,7 +361,8 @@ class ObservedImageMaker(object):
                 conversion_factor *= (pivot ** 2 / speed_of_light).to("micron/Hz").value
 
                 # From W / (m2 * arcsec2 * Hz) to MJy / sr
-                conversion_factor *= (Unit("W/(m2 * arcsec2 * Hz)") / Unit("MJy/sr")).to("")
+                #conversion_factor *= (Unit("W/(m2 * arcsec2 * Hz)") / Unit("MJy/sr")).to("")
+                conversion_factor *= 1e26 * 1e-6 * (Unit("sr") / Unit("arcsec2")).to("")
 
                 # Convert
                 self.images[datacube_name][filter_name] *= conversion_factor

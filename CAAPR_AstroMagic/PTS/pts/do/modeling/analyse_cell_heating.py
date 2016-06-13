@@ -17,7 +17,8 @@ import argparse
 
 # Import the relevant PTS classes and modules
 from pts.modeling.analysis.heating.cell import CellDustHeatingAnalyser
-from pts.core.tools import logging, time, parsing, filesystem
+from pts.core.tools import logging, time, parsing
+from pts.core.tools import filesystem as fs
 
 # -----------------------------------------------------------------
 
@@ -34,13 +35,14 @@ arguments = parser.parse_args()
 
 # -----------------------------------------------------------------
 
-# Set the modeling path
-arguments.path = filesystem.cwd()
+# Set the modeling path and the log path
+arguments.path = fs.cwd()
+log_path = fs.join(arguments.path, "log")
 
 # -----------------------------------------------------------------
 
 # Determine the log file path
-logfile_path = filesystem.join(arguments.path, time.unique_name("log") + ".txt") if arguments.report else None
+logfile_path = fs.join(log_path, time.unique_name("log") + ".txt") if arguments.report else None
 
 # Determine the log level
 level = "DEBUG" if arguments.debug else "INFO"

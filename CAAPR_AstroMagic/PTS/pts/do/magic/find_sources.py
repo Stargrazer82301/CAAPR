@@ -22,7 +22,8 @@ from pts.magic.catalog.importer import CatalogImporter
 from pts.magic.core.image import Image
 from pts.magic.basics.region import Region
 from pts.core.tools import configuration
-from pts.core.tools import logging, time, filesystem
+from pts.core.tools import logging, time
+from pts.core.tools import filesystem as fs
 
 # -----------------------------------------------------------------
 
@@ -45,10 +46,12 @@ parser.add_argument("-i", "--input", type=str, help="the name of the input direc
 parser.add_argument("-o", "--output", type=str, help="the name of the output directory")
 
 # Advanced options
+parser.add_argument("--principal_region", type=str, help="the path to a region file with a contour of the principal galaxy (in sky coordinates!)")
 parser.add_argument("--synchronize", action="store_true", help="synchronize with DustPedia catalog")
 parser.add_argument("--filecatalog", action="store_true", help="use file catalogs")
 parser.add_argument("--interpolation_method", type=str, help="the interpolation method to use")
 parser.add_argument("--downsample", type=float, help="specify the degree of downsampling (no downsampling if not specified)")
+parser.add_argument("--no_saturation", action="store_true", help="don't look for saturated stars")
 
 # Input regions
 parser.add_argument("--ignore", type=str, help="the name of the file specifying regions to ignore")
@@ -64,14 +67,14 @@ arguments = parser.parse_args()
 if arguments.input is not None:
 
     # Determine the full path to the input directory
-    input_path = filesystem.absolute(arguments.input)
+    input_path = fs.absolute(arguments.input)
 
     # Give an error if the input directory does not exist
-    if not filesystem.is_directory(input_path):
+    if not fs.is_directory(input_path):
         raise argparse.ArgumentError(input_path, "The input directory does not exist")
 
 # If no input directory is given, assume the input is placed in the current working directory
-else: input_path = filesystem.cwd()
+else: input_path = fs.cwd()
 
 # -----------------------------------------------------------------
 
@@ -79,18 +82,18 @@ else: input_path = filesystem.cwd()
 if arguments.output is not None:
     
     # Determine the full path to the output directory
-    output_path = filesystem.absolute(arguments.output)
+    output_path = fs.absolute(arguments.output)
     
     # Create the directory if it does not yet exist
-    if not filesystem.is_directory(output_path): filesystem.create_directory(output_path)
+    if not fs.is_directory(output_path): fs.create_directory(output_path)
 
 # If no output directory is given, place the output in the current working directory
-else: output_path = filesystem.cwd()
+else: output_path = fs.cwd()
 
 # -----------------------------------------------------------------
 
 # Determine the log file path
-logfile_path = filesystem.join(output_path, time.unique_name("log") + ".txt") if arguments.report else None
+logfile_path = fs.join(output_path, time.unique_name("log") + ".txt") if arguments.report else None
 
 # Determine the log level
 level = "DEBUG" if arguments.debug else "INFO"
@@ -102,10 +105,10 @@ log.start("Starting find_sources ...")
 # -----------------------------------------------------------------
 
 # Determine the full path to the image
-image_path = filesystem.absolute(arguments.image)
+image_path = fs.absolute(arguments.image)
 
 # Determine the full path to the bad region file
-bad_region_path = filesystem.join(input_path, arguments.bad) if arguments.bad is not None else None
+bad_region_path = fs.join(input_path, arguments.bad) if arguments.bad is not None else None
 
 # Import the image
 importer = ImageImporter()
@@ -131,7 +134,7 @@ catalog_importer.run(image.frames.primary) # work with coordinate box instead ? 
 if arguments.special is not None:
 
     # Determine the full path to the special region file
-    path = filesystem.join(input_path, arguments.special)
+    path = fs.join(input_path, arguments.special)
 
     # Inform the user
     log.info("Creating mask covering objects that require special attention from " + path + " ...")
@@ -148,7 +151,7 @@ else: special_region = None
 if arguments.ignore is not None:
 
     # Determine the full path to the ignore region file
-    path = filesystem.join(input_path, arguments.ignore)
+    path = fs.join(input_path, arguments.ignore)
 
     # Inform the user
     log.info("Creating mask covering objects that should be ignored from " + path + " ...")
@@ -176,22 +179,22 @@ log.info("The FWHM that could be fitted to the point sources is " + str(finder.f
 
 # Save the galaxy region
 galaxy_region = finder.galaxy_sky_region.to_pixel(image.wcs)
-path = filesystem.join(output_path, "galaxies.reg")
+path = fs.join(output_path, "galaxies.reg")
 galaxy_region.save(path)
 
 # Save the star region
 star_region = finder.star_sky_region.to_pixel(image.wcs)
-path = filesystem.join(output_path, "stars.reg")
+path = fs.join(output_path, "stars.reg")
 star_region.save(path)
 
 # Save the saturation region
 saturation_region = finder.saturation_sky_region.to_pixel(image.wcs)
-path = filesystem.join(output_path, "saturation.reg")
+path = fs.join(output_path, "saturation.reg")
 saturation_region.save(path)
 
 # Save the region of other sources
 other_region = finder.other_sky_region.to_pixel(image.wcs)
-path = filesystem.join(output_path, "other_sources.reg")
+path = fs.join(output_path, "other_sources.reg")
 other_region.save(path)
 
 # -----------------------------------------------------------------
@@ -209,7 +212,13 @@ segments.add_frame(finder.star_segments, "stars")
 segments.add_frame(finder.other_segments, "other_sources")
 
 # Save the FITS file with the segmentation maps
-path = filesystem.join(output_path, "segments.fits")
+path = fs.join(output_path, "segments.fits")
 segments.save(path)
+
+# -----------------------------------------------------------------
+
+# Write statistics file
+statistics_path = fs.join(output_path, "statistics.dat")
+finder.write_statistics(statistics_path)
 
 # -----------------------------------------------------------------

@@ -17,7 +17,8 @@ import argparse
 
 # Import the relevant PTS classes and modules
 from pts.modeling.fitting.initialparameterexplorer import InitialParameterExplorer
-from pts.core.tools import logging, time, parsing, filesystem
+from pts.core.tools import logging, time, parsing
+from pts.core.tools import filesystem as fs
 
 # -----------------------------------------------------------------
 
@@ -25,7 +26,7 @@ from pts.core.tools import logging, time, parsing, filesystem
 parser = argparse.ArgumentParser()
 
 # The remote host(s)
-parser.add_argument("remote", type=parsing.string_list, help="the number of simulations to launch in the batch")
+parser.add_argument("remote", type=parsing.string_list, help="the remote hosts on which to run the initial parameter exploration")
 
 # The number of values for each parameter
 parser.add_argument("--young_nvalues", type=int, help="the number of different values for the young stellar luminosity")
@@ -47,18 +48,22 @@ parser.add_argument("--debug", action="store_true", help="add this option to ena
 parser.add_argument("--report", action='store_true', help='write a report file')
 parser.add_argument("--config", type=str, help="the name of a configuration file")
 
+# Visualisation
+parser.add_argument("--visualise", action="store_true", help="make visualisations")
+
 # Parse the command line arguments
 arguments = parser.parse_args()
 
 # -----------------------------------------------------------------
 
-# Set the modeling path
-arguments.path = filesystem.cwd()
+# Set the modeling path and the log path
+arguments.path = fs.cwd()
+log_path = fs.join(arguments.path, "log")
 
 # -----------------------------------------------------------------
 
 # Determine the log file path
-logfile_path = filesystem.join(arguments.path, time.unique_name("log") + ".txt") if arguments.report else None
+logfile_path = fs.join(log_path, time.unique_name("log") + ".txt") if arguments.report else None
 
 # Determine the log level
 level = "DEBUG" if arguments.debug else "INFO"

@@ -5,7 +5,7 @@
 # **       © Astronomical Observatory, Ghent University          **
 # *****************************************************************
 
-## \package pts.modeling.analysis.launch Contains the BestModelLauncher class
+## \package pts.modeling.analysis.launch Contains the BestModelLauncher class.
 
 # -----------------------------------------------------------------
 
@@ -15,10 +15,6 @@ from __future__ import absolute_import, division, print_function
 # Import standard modules
 import numpy as np
 
-# Import astronomical modules
-from astropy.units import Unit, dimensionless_angles
-from astropy.coordinates import Angle
-
 # Import the relevant PTS classes and modules
 from .component import AnalysisComponent
 from ...core.tools import tables, time
@@ -26,17 +22,16 @@ from ...core.tools import filesystem as fs
 from ...core.simulation.skifile import SkiFile
 from ...core.tools.logging import log
 from ..basics.instruments import FullInstrument
-from ...magic.basics.vector import Position
 from ...core.launch.options import AnalysisOptions
 from ...core.launch.options import SchedulingOptions
 from ...core.simulation.arguments import SkirtArguments
 from ...core.launch.runtime import RuntimeEstimator
 from ...core.launch.parallelization import Parallelization
-from ..decomposition.decomposition import load_parameters
 from ...magic.basics.coordinatesystem import CoordinateSystem
 from ...core.simulation.remote import SkirtRemote
 from ...core.simulation.wavelengthgrid import WavelengthGrid
 from ...magic.misc.kernels import AnianoKernels
+from ..basics.projection import GalaxyProjection
 
 # -----------------------------------------------------------------
 
@@ -71,8 +66,8 @@ class BestModelLauncher(AnalysisComponent):
         # The wavelength grid
         self.wavelength_grid = None
 
-        # The structural parameters
-        self.parameters = None
+        # The projection systems
+        self.projections = dict()
 
         # Coordinate system
         self.reference_wcs = None
@@ -124,8 +119,8 @@ class BestModelLauncher(AnalysisComponent):
         # 2. Load the ski file describing the best model
         self.load_ski()
 
-        # 3. Load the structural parameters for the galaxy
-        self.load_parameters()
+        # 3. Load the projection systems
+        self.load_projections()
 
         # 4. Create the wavelength grid
         self.create_wavelength_grid()
@@ -174,7 +169,7 @@ class BestModelLauncher(AnalysisComponent):
 
     # -----------------------------------------------------------------
 
-    def load_parameters(self):
+    def load_projections(self):
 
         """
         This function ...
@@ -182,13 +177,19 @@ class BestModelLauncher(AnalysisComponent):
         """
 
         # Inform the user
-        log.info("Loading the decomposition parameters ...")
+        log.info("Loading the projection systems ...")
 
-        # Determine the path to the parameters file
-        path = fs.join(self.components_path, "parameters.dat")
+        # Load the different projection systems
+        for name in ["earth", "faceon", "edgeon"]:
 
-        # Load the parameters
-        self.parameters = load_parameters(path)
+            # Determine the path to the projection file
+            path = fs.join(self.components_path, name + ".proj")
+
+            # Load the projection
+            projection = GalaxyProjection.from_file(path)
+
+            # Add the projection to the dictionary
+            self.projections[name] = projection
 
     # -----------------------------------------------------------------
 
@@ -267,44 +268,14 @@ class BestModelLauncher(AnalysisComponent):
         :return:
         """
 
-        # SKIRT:  incl.  azimuth PA
-        # XY-plane	0	 0	    90
-        # XZ-plane	90	 -90	0
-        # YZ-plane	90	 0	    0
+        # Inform the user
+        log.info("Creating the instruments ...")
 
-        # Determine the instrument properties
-        distance = self.parameters.distance
-        inclination = self.parameters.inclination
-        azimuth = 0.0
-        position_angle = self.parameters.disk.PA  # SAME PA AS THE DISK, BUT TILT THE BULGE W.R.T. THE DISK
-        pixels_x = self.reference_wcs.xsize
-        pixels_y = self.reference_wcs.ysize
-        pixel_center = self.parameters.center.to_pixel(self.reference_wcs)
-        # center = Position(0.5*pixels_x - pixel_center.x - 0.5, 0.5*pixels_y - pixel_center.y - 0.5) # when not convolved ...
-        center = Position(0.5 * pixels_x - pixel_center.x - 1,
-                          0.5 * pixels_y - pixel_center.y - 1)  # when convolved ...
-        center_x = center.x * Unit("pix")
-        center_y = center.y * Unit("pix")
-        center_x = (center_x * self.reference_wcs.pixelscale.x.to("deg/pix") * distance).to("pc", equivalencies=dimensionless_angles())
-        center_y = (center_y * self.reference_wcs.pixelscale.y.to("deg/pix") * distance).to("pc", equivalencies=dimensionless_angles())
-        field_x_angular = self.reference_wcs.pixelscale.x.to("deg/pix") * pixels_x * Unit("pix")
-        field_y_angular = self.reference_wcs.pixelscale.y.to("deg/pix") * pixels_y * Unit("pix")
-        field_x_physical = (field_x_angular * distance).to("pc", equivalencies=dimensionless_angles())
-        field_y_physical = (field_y_angular * distance).to("pc", equivalencies=dimensionless_angles())
+        # Loop over the projection systems
+        for name in self.projections:
 
-        # Create the 'earth' instrument
-        self.instruments["earth"] = FullInstrument(distance, inclination, azimuth, position_angle, field_x_physical,
-                                                   field_y_physical, pixels_x, pixels_y, center_x, center_y)
-
-        # Create the face-on instrument
-        position_angle = Angle(90., "deg")
-        self.instruments["faceon"] = FullInstrument(distance, 0.0, 0.0, position_angle, field_x_physical,
-                                                    field_y_physical, pixels_x, pixels_y, center_x, center_y)
-
-        # Create the edge-on instrument
-        # azimuth = Angle(-90., "deg")
-        self.instruments["edgeon"] = FullInstrument(distance, 90.0, 0.0, 0.0, field_x_physical, field_y_physical,
-                                                    pixels_x, pixels_y, center_x, center_y)
+            # Create the instrument from the projection system
+            self.instruments[name] = FullInstrument.from_projection(self.projections[name])
 
     # -----------------------------------------------------------------
 
@@ -329,6 +300,9 @@ class BestModelLauncher(AnalysisComponent):
 
         # Enable all writing options for analysis
         #self.ski.enable_all_writing_options()
+
+        # Write out the dust grid data
+        self.ski.set_write_grid()
 
     # -----------------------------------------------------------------
 
@@ -458,7 +432,7 @@ class BestModelLauncher(AnalysisComponent):
         self.analysis_options.misc.images = True
         self.analysis_options.misc.observation_filters = filter_names
         self.analysis_options.misc.observation_instruments = ["earth"]
-        self.analysis_options.misc.make_images_remote = ["nancy"]
+        self.analysis_options.misc.make_images_remote = "nancy"
         self.analysis_options.misc.images_wcs = self.reference_path
         self.analysis_options.misc.images_kernels = kernel_paths
         self.analysis_options.misc.images_unit = "MJy/sr"
@@ -588,9 +562,16 @@ class BestModelLauncher(AnalysisComponent):
         if not self.remote.is_directory(remote_skirt_run_debug_path): self.remote.create_directory(remote_skirt_run_debug_path)
         screen_output_path = fs.join(remote_skirt_run_debug_path, time.unique_name("screen") + ".txt")
 
+        # Save the script file for manual inspection
+        host_id = self.config.remote
+        scripts_host_path = fs.join(self.analysis_scripts_path, host_id)
+        if not fs.is_directory(scripts_host_path): fs.create_directory(scripts_host_path)
+        local_script_path = fs.join(scripts_host_path, time.unique_name() + ".sh")
+
         # Run the simulation
         simulation = self.remote.run(arguments, scheduling_options=self.scheduling_options,
-                                     analysis_options=self.analysis_options, screen_output_path=screen_output_path)
+                                     analysis_options=self.analysis_options, screen_output_path=screen_output_path,
+                                     local_script_path=local_script_path)
 
         # Set the retrieve types
         simulation.retrieve_types = ["log", "sed", "image-total"]

@@ -352,7 +352,7 @@ class BasicAnalyser(Configurable):
         log.info("Plotting grids ...")
 
         # Plot the dust grid for the simulation
-        plotgrids(self.simulation, output_path=self.plotting_options.path)
+        plotgrids(self.simulation, output_path=self.plotting_options.path, silent=True)
 
     # -----------------------------------------------------------------
 

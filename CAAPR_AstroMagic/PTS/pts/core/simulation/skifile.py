@@ -13,6 +13,7 @@
 
 # Import standard modules
 import os.path
+import copy
 from datetime import datetime
 from lxml import etree
 from numpy import arctan
@@ -73,8 +74,17 @@ class SkiFile:
         outfile.write(etree.tostring(self.tree, encoding="UTF-8", xml_declaration=True, pretty_print=True))
         outfile.close()
 
+        # Update the ski file path
+        self.path = filepath
+
     ## This function saves the ski file to the original path
     def save(self): self.saveto(self.path)
+
+    ## This function returns a copy (a deep copy) of this ski file
+    def copy(self):
+        ski = copy.deepcopy(self)
+        ski.path = None # set the path to None so this copy won't be involuntarily saved over the original file
+        return ski
 
     # ---------- Retrieving information -------------------------------
 
@@ -225,7 +235,7 @@ class SkiFile:
 
     ## This function returns whether transient heating is enabled
     def transientheating(self):
-        return len(self.tree.xpath("//TransientDustEmissivity"))
+        return len(self.tree.xpath("//TransientDustEmissivity")) > 0
 
     ## This function returns whether dust emission is enabled
     def dustemission(self):
@@ -246,6 +256,10 @@ class SkiFile:
             return (pandustsystem.attrib["selfAbsorption"] == "true")
         except:
             return False
+
+    ## This function returns whether data parallelization is enabled
+    def dataparallel(self):
+        return False # Not merged into the main SKIRT version yet
 
     def enable_selfabsorption(self):
 
@@ -528,6 +542,68 @@ class SkiFile:
         # extract the number from the first result, assuming units of K
         return float(results[0].split()[0])
 
+    ## This function returns whether the ski file describes a oligochromatic simulation
+    def oligochromatic(self):
+        elems = self.tree.xpath("//OligoMonteCarloSimulation")
+        return len(elems) > 0
+
+    ## This function returns whether the ski file describes a panchromatic simulation
+    def panchromatic(self):
+        elems = self.tree.xpath("//PanMonteCarloSimulation")
+        return len(elems) > 0
+
+    ## This function converts the ski file to a ski file that describes an oligochromatic simulation
+    def to_oligochromatic(self, wavelengths):
+
+        if self.oligochromatic(): warnings.warn("The simulation is already oligochromatic")
+        else:
+
+            simulation = self.tree.xpath("//PanMonteCarloSimulation")[0]
+            simulation.tag = "OligoMonteCarloSimulation"
+
+            # Remove the old wavelength grid
+            wavelength_grid = self.get_wavelength_grid()
+            parent = wavelength_grid.getparent()
+            parent.set("type", "OligoWavelengthGrid")
+            parent.remove(wavelength_grid)
+
+            # Make the oligochromatic wavelength grid
+            attrs = {"wavelengths": ", ".join(map(str_from_quantity, wavelengths))}
+            parent.append(parent.makeelement("OligoWavelengthGrid", attrs))
+
+            components = self.get_stellar_components()
+            for component in components:
+
+                component.tag = "OligoStellarComp"
+                component.set("luminosities", "1")
+
+                for child in component.getchildren():
+                    if child.tag == "sed" or child.tag == "normalization": component.remove(child)
+
+            dust_system = self.get_dust_system()
+            parent = dust_system.getparent()
+            parent.set("type", "OligoDustSystem")
+            dust_system.tag = "OligoDustSystem"
+
+            dust_system.attrib.pop("writeAbsorption")
+            dust_system.attrib.pop("writeISRF")
+            dust_system.attrib.pop("writeTemperature")
+            dust_system.attrib.pop("writeEmissivity")
+            dust_system.attrib.pop("selfAbsorption")
+            dust_system.attrib.pop("emissionBoost")
+
+            for child in dust_system.getchildren():
+                if child.tag == "dustEmissivity" or child.tag == "dustLib": dust_system.remove(child)
+
+    ## This function converts the ski file to a ski file that describes a panchromatic simulation
+    def to_panchromatic(self):
+
+        if self.panchromatic(): warnings.warn("The simulation is already panchromatic")
+        else:
+
+            simulation = self.tree.xpath("//OligoMonteCarloSimulation")[0]
+            simulation.tag = "PanMonteCarloSimulation"
+
     # ---------- Updating information ---------------------------------
 
     ## This function applies an XSLT transform to the ski file if an XPath condition evaluates to true.
@@ -669,6 +745,13 @@ class SkiFile:
     def get_dust_system(self):
 
         return self.get_unique_base_element("dustSystem")
+
+    ## This function removes the complete dust system
+    def remove_dust_system(self):
+
+        dust_system = self.get_dust_system()
+        parent = dust_system.getparent()
+        parent.getparent().remove(parent)
 
     ## This function returns the list of stellar components
     def get_stellar_components(self, include_comments=False):
@@ -931,25 +1014,17 @@ class SkiFile:
         # Get the stellar component
         stellar_component = self.get_stellar_component(component_id)
 
-        properties = dict()
+        # Get the properties
+        return get_properties(stellar_component)
 
-        def add_properties(element, dictionary):
-            for key, value in element.items(): properties[key] = value
+    ## This function returns all properties of the stellar component with the specified id
+    def get_dust_component_properties(self, component_id):
 
-        def add_children(element, dictionary):
+        # Get the dust component
+        dust_component = self.get_dust_component(component_id)
 
-            dictionary["children"] = dict()
-            for child in element.getchildren():
-
-                dictionary["children"][child.tag] = dict()
-
-                add_properties(child, dictionary["children"][child.tag])
-                add_children(child, dictionary["children"][child.tag])
-
-        add_properties(stellar_component, properties)
-        add_children(stellar_component, properties)
-
-        return properties
+        # Get the properties
+        return get_properties(dust_component)
 
     ## This functions returns the normalization of the stellar component with the specified id
     def get_stellar_component_normalization(self, component_id):
@@ -1116,6 +1191,15 @@ class SkiFile:
 
         # Get the wavelength grid
         return self.get_unique_base_element("wavelengthGrid")
+
+    ## This function sets the number of wavelength points
+    def set_nwavelengths(self, value):
+
+        # Get the wavelength grid
+        grid = self.get_wavelength_grid()
+
+        # Set the number of points
+        grid.set("points", str(value))
 
     ## This function sets the wavelength grid to a file
     def set_file_wavelength_grid(self, filename):
@@ -1645,9 +1729,102 @@ class SkiFile:
         # Return the dust grid
         return get_unique_element(dust_system, "dustGrid")
 
+    ## This function sets the dust grid
+    def set_dust_grid(self, grid):
+
+        from ...modeling.basics.grids import BinaryTreeDustGrid, OctTreeDustGrid, CartesianDustGrid
+
+        if isinstance(grid, CartesianDustGrid):
+
+            # Set cartesian dust grid
+            self.set_cartesian_dust_grid(grid.min_x, grid.max_x, grid.min_y, grid.max_y, grid.min_z, grid.max_z,
+                                         grid.x_bins, grid.y_bins, grid.mesh_type, grid.ratio, grid.write)
+
+        elif isinstance(grid, BinaryTreeDustGrid):
+
+            # Set binary tree dust grid
+            self.set_binary_tree_dust_grid(grid.min_x, grid.max_x, grid.min_y, grid.max_y, grid.min_z, grid.max_z,
+                                           grid.write, grid.min_level, grid.max_level, grid.search_method,
+                                           grid.sample_count, grid.max_optical_depth, grid.max_mass_fraction,
+                                           grid.max_dens_disp_fraction, grid.direction_method)
+
+        elif isinstance(grid, OctTreeDustGrid):
+
+            # Set octtree dust grid
+            self.set_octtree_dust_grid(grid.min_x, grid.max_x, grid.min_y, grid.max_y, grid.min_z, grid.max_z,
+                                       grid.write, grid.min_level, grid.max_level, grid.search_method,
+                                       grid.sample_count, grid.max_optical_depth, grid.max_mass_fraction,
+                                       grid.max_dens_disp_fraction, grid.barycentric)
+
+        else: raise ValueError("Invalid grid type")
+
+    ## This function sets a cartesian dust grid for the dust system
+    def set_cartesian_dust_grid(self, min_x, max_x, min_y, max_y, min_z, max_z, x_bins, y_bins, z_bins, mesh_type="linear", ratio=1., write_grid=True):
+
+        # Get the dust grid
+        grid = self.get_dust_grid()
+
+        # Get the parent
+        parent = grid.getparent()
+
+        # Remove the old grid element
+        parent.remove(grid)
+
+        # Create and add the new grid
+        attrs = {"minX": str_from_quantity(min_x), "maxX": str_from_quantity(max_x), "minY": str_from_quantity(min_y),
+                 "maxY": str_from_quantity(max_y), "minZ": str_from_quantity(min_z), "maxZ": str_from_quantity(max_z),
+                 "writeGrid": str_from_bool(write_grid)}
+        grid = parent.makeelement("CartesianDustGrid", attrs)
+        parent.append(grid)
+
+        # Create the X mesh
+        attrs = {"type": "MoveableMesh"}
+        x_mesh = grid.makeelement("meshX", attrs)
+        grid.append(x_mesh)
+        if mesh_type == "linear":
+            attrs = {"numBins": str(x_bins)}
+            x_mesh.append(x_mesh.makeelement("LinMesh", attrs))
+        elif mesh_type == "power":
+            attrs = {"numBins": str(x_bins), "ratio": str(ratio)}
+            x_mesh.append(x_mesh.makeelement("PowMesh", attrs))
+        elif mesh_type == "symmetric_power":
+            attrs = {"numBins": str(x_bins), "ratio": str(ratio)}
+            x_mesh.append(x_mesh.makeelement("SymPowMesh", attrs))
+        else: raise ValueError("Unrecognized mesh type")
+
+        # Create the Y mesh
+        attrs = {"type": "MoveableMesh"}
+        y_mesh = grid.makeelement("meshY", attrs)
+        grid.append(y_mesh)
+        if mesh_type == "linear":
+            attrs = {"numBins": str(y_bins)}
+            y_mesh.append(y_mesh.makeelement("LinMesh", attrs))
+        elif mesh_type == "power":
+            attrs = {"numBins": str(y_bins), "ratio": str(ratio)}
+            y_mesh.append(y_mesh.makeelement("PowMesh", attrs))
+        elif mesh_type == "symmetric_power":
+            attrs = {"numBins": str(z_bins), "ratio": str(ratio)}
+            y_mesh.append(y_mesh.makeelement("SymPowMesh", attrs))
+        else: raise ValueError("Unrecognized mesh type")
+
+        # Create the Z mesh
+        attrs = {"type": "MovableMesh"}
+        z_mesh = grid.makeelement("meshZ", attrs)
+        grid.append(z_mesh)
+        if mesh_type == "linear":
+            attrs = {"numBins": str(z_bins)}
+            z_mesh.append(z_mesh.makeelement("LinMesh", attrs))
+        elif mesh_type == "power":
+            attrs = {"numBins": str(z_bins), "ratio": str(ratio)}
+            y_mesh.append(z_mesh.makeelement("PowMesh", attrs))
+        elif mesh_type == "symmetric_power":
+            attrs = {"numBins": str(z_bins), "ratio": str(ratio)}
+            z_mesh.append(z_mesh.makeelement("SymPowMesh", attrs))
+        else: raise ValueError("Unrecognized mesh type")
+
     ## This function sets a binary tree dust grid for the dust system
-    def set_binary_tree_dust_grid(self, min_x, max_x, min_y, max_y, min_z, max_z, write_grid=True, min_level=15,
-                                  max_level=25, search_method="Neighbor", sample_count=100, max_optical_depth=0,
+    def set_binary_tree_dust_grid(self, min_x, max_x, min_y, max_y, min_z, max_z, write_grid=True, min_level=2,
+                                  max_level=10, search_method="Neighbor", sample_count=100, max_optical_depth=0,
                                   max_mass_fraction=1e-6, max_dens_disp_fraction=0, direction_method="Alternating",
                                   assigner="IdenticalAssigner"):
 
@@ -1669,6 +1846,28 @@ class SkiFile:
                  #"assigner": assigner}
         parent.append(parent.makeelement("BinTreeDustGrid", attrs))
 
+    ## This function sets the maximal optical depth
+    def set_binary_tree_max_optical_depth(self, value):
+
+        # Get the dust grid
+        grid = self.get_dust_grid()
+
+        if grid.tag != "BinTreeDustGrid": raise ValueError("The ski file does not specify a binary tree dust grid")
+
+        # Set the optical depth
+        grid.set("maxOpticalDepth", str(value))
+
+    ## This function sets the maximal mass fraction
+    def set_binary_tree_max_mass_fraction(self, value):
+
+        # Get the dust grid
+        grid = self.get_dust_grid()
+
+        if grid.tag != "BinTreeDustGrid": raise ValueError("The ski file does not specify a binary tree dust grid")
+
+        # Set the max mass fraction
+        grid.set("maxMassFraction", str(value))
+
     ## This function sets an octtree dust grid for the dust system
     def set_octtree_dust_grid(self, min_x, max_x, min_y, max_y, min_z, max_z, write_grid=True, min_level=2,
                               max_level=6, search_method="Neighbor", sample_count=100, max_optical_depth=0,
@@ -1689,15 +1888,27 @@ class SkiFile:
                  "maxZ": str(max_z), "writeGrid": str_from_bool(write_grid), "minLevel": str(min_level),
                  "maxLevel": str(max_level), "searchMethod": search_method, "sampleCount": sample_count,
                  "maxOpticalDepth": str(max_optical_depth), "maxMassFraction": str(max_mass_fraction),
-                 "maxDensDispFraction": str(max_dens_disp_fraction), "barycentric": str_from_bool(barycentric),
-                 "assigner": assigner}
+                 "maxDensDispFraction": str(max_dens_disp_fraction), "barycentric": str_from_bool(barycentric)}
+                 #"assigner": assigner}
         parent.append(parent.makeelement("OctTreeDustGrid", attrs))
+
+    ## This function returns the instrument system
+    def get_instrument_system(self):
+
+        return self.get_unique_base_element("instrumentSystem")
+
+    ## This funcion removes the complete instrument system
+    def remove_instrument_system(self):
+
+        instrument_system = self.get_instrument_system()
+        parent = instrument_system.getparent()
+        parent.getparent().remove(parent)
 
     ## This function returns a list of the instruments in the ski file, or the 'instruments' element if as_list is False
     def get_instruments(self, as_list=True):
 
         # Get the instrument system
-        instrument_system = self.get_unique_base_element("instrumentSystem")
+        instrument_system = self.get_instrument_system()
 
         # Get the 'instruments' element
         instruments_parents = instrument_system.xpath("instruments")
@@ -1753,7 +1964,7 @@ class SkiFile:
     ## This function adds an instrument
     def add_instrument(self, name, instrument):
 
-        from ...modeling.basics.instruments import SEDInstrument, SimpleInstrument, FullInstrument
+        from ...modeling.basics.instruments import SEDInstrument, FrameInstrument, SimpleInstrument, FullInstrument
 
         distance = instrument.distance
         inclination = instrument.inclination
@@ -1764,6 +1975,18 @@ class SkiFile:
 
             # Add the SED instrument to the ski file
             self.add_sed_instrument(name, distance, inclination, azimuth, position_angle)
+
+        elif isinstance(instrument, FrameInstrument):
+
+            field_x = instrument.field_x
+            field_y = instrument.field_y
+            pixels_x = instrument.pixels_x
+            pixels_y = instrument.pixels_y
+            center_x = instrument.center_x
+            center_y = instrument.center_y
+
+            # Add the simple instrument to the ski file
+            self.add_frame_instrument(name, distance, inclination, azimuth, position_angle, field_x, field_y, pixels_x, pixels_y, center_x, center_y)
 
         elif isinstance(instrument, SimpleInstrument):
 
@@ -1790,6 +2013,20 @@ class SkiFile:
             self.add_full_instrument(name, distance, inclination, azimuth, position_angle, field_x, field_y, pixels_x, pixels_y, center_x, center_y)
 
         else: raise ValueError("Instruments other than SimpleInstrument, SEDInstrument and FullInstrument are not yet supported")
+
+    ## This function adds a FrameInstrument to the instrument system
+    def add_frame_instrument(self, name, distance, inclination, azimuth, position_angle, field_x, field_y,
+                                  pixels_x, pixels_y, center_x, center_y):
+
+        # Get the 'instruments' element
+        instruments = self.get_instruments(as_list=False)
+
+        # Make and add the new FrameInstrument
+        attrs = {"instrumentName": name, "distance": str(distance), "inclination": str_from_angle(inclination),
+                 "azimuth": str_from_angle(azimuth), "positionAngle": str_from_angle(position_angle),
+                 "fieldOfViewX": str(field_x), "fieldOfViewY": str(field_y), "pixelsX": str(pixels_x),
+                 "pixelsY": str(pixels_y), "centerX": str(center_x), "centerY": str(center_y)}
+        instruments.append(instruments.makeelement("FrameInstrument", attrs))
 
     ## This function adds a FullInstrument to the instrument system
     def add_full_instrument(self, name, distance, inclination, azimuth, position_angle, field_x, field_y,
@@ -2123,5 +2360,45 @@ def str_from_quantity(quantity, unit=None):
 
 def str_from_bool(boolean):
     return str(boolean).lower()
+
+# -----------------------------------------------------------------
+
+def add_properties(element, dictionary):
+    for key, value in element.items(): dictionary[key] = value
+
+# -----------------------------------------------------------------
+
+def add_children(element, dictionary):
+
+    """
+    This function ...
+    :param element:
+    :param dictionary:
+    :return:
+    """
+
+    dictionary["children"] = dict()
+
+    for child in element.getchildren():
+
+        dictionary["children"][child.tag] = dict()
+
+        add_properties(child, dictionary["children"][child.tag])
+        add_children(child, dictionary["children"][child.tag])
+
+# -----------------------------------------------------------------
+
+def get_properties(element):
+
+    """
+    This function ...
+    :param element:
+    :return:
+    """
+
+    properties = dict()
+    add_properties(element, properties)
+    add_children(element, properties)
+    return properties
 
 # -----------------------------------------------------------------

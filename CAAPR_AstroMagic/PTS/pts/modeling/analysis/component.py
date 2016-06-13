@@ -79,6 +79,9 @@ class AnalysisComponent(ModelingComponent):
         # The path to the reference image
         self.reference_path = None
 
+        # The path to the analysis/scripts directory
+        self.analysis_scripts_path = None
+
     # -----------------------------------------------------------------
 
     def setup(self):
@@ -123,6 +126,12 @@ class AnalysisComponent(ModelingComponent):
                                self.analysis_plot_path, self.analysis_misc_path, self.analysis_attenuation_path,
                                self.analysis_colours_path, self.analysis_residuals_path, self.analysis_heating_path])
 
+        # Set the path to the analysis/scripts directory
+        self.analysis_scripts_path = fs.join(self.analysis_path, "scripts")
+
+        # Create the analysis/scripts directory
+        if not fs.is_directory(self.analysis_scripts_path): fs.create_directory(self.analysis_scripts_path)
+
         # Set the path to the ski file and wavelength grid file
         self.analysis_ski_path = fs.join(self.analysis_path, self.galaxy_name + ".ski")
         self.analysis_wavelengths_path = fs.join(self.analysis_in_path, "wavelengths.txt")
@@ -140,7 +149,6 @@ class AnalysisComponent(ModelingComponent):
         memory_table = MemoryTable(self.memory_table_path)
 
         # Set the path to the reference image
-        reference_image = "Pacs red"
-        self.reference_path = fs.join(self.truncation_path, reference_image + ".fits")
+        self.reference_path = fs.join(self.truncation_path, self.reference_image + ".fits")
 
 # -----------------------------------------------------------------
