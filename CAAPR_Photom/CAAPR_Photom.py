@@ -16,6 +16,9 @@ import matplotlib.pyplot as plt
 import astropy.io.fits
 import astropy.wcs
 import astropy.convolution
+import astropy.modeling
+import skimage.restoration
+import lmfit
 import skimage
 import ChrisFuncs
 import CAAPR_Pipeline
@@ -140,8 +143,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
         # If star-removal is required, run pod through AstroMagic
         if kwargs_dict['starsub']==True:
             if band_dict['remove_stars']==True:
-                if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
-                pod = CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict, do_sat=False)
+                pod = CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
 
 
 
@@ -204,10 +206,9 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
 
-            """
             # Run pod through function that performs aperture correction
-            pod = ApCorrect(pod)
-            """
+            if str(band_dict['beam_correction'])!='False':
+                pod = ApCorrect(pod, source_dict, band_dict, kwargs_dict)
 
 
 
@@ -367,7 +368,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
 
 
     # Define how many random aperture are desired/required/permitted
-    sky_success_target = 50
+    sky_success_target = 100
     sky_success_min = 20
     sky_gen_max = 100
 
@@ -624,8 +625,8 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
     sky_ap_rad_pix = ( ap_area / np.pi )**0.5
 
     # Generate list of mini-aperture sizes to use, and declare result lists
-    mini_ap_rad_base = 2.0 #2.0**0.5 #1.25
-    mini_ap_rad_pix_input = mini_ap_rad_base**np.arange( 1.0, np.ceil( 1.0 + math.log( sky_ap_rad_pix, mini_ap_rad_base ) ) )
+    mini_ap_rad_base = 2.0
+    mini_ap_rad_pix_input = mini_ap_rad_base**np.arange( 1.0, np.ceil( math.log( sky_ap_rad_pix, mini_ap_rad_base ) ) )[::-1]
     min_ap_rad_pix_output = []
     mini_ap_noise_output = []
     mini_ap_num_output = []
@@ -640,7 +641,9 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
             min_ap_rad_pix_output.append(mini_ap_rad_pix)
             mini_ap_noise_output.append(mini_ap_noise_dict['ap_noise'])
             mini_ap_num_output.append(mini_ap_noise_dict['ap_num'])
-        else:
+        elif mini_ap_noise_dict['fail']==True:
+            if kwargs_dict['verbose']:print '['+source_id+'] Unable to place sufficient number of mini-apertures at this radius.'
+        if len(mini_ap_noise_output)>=6:
             break
 
     # Convert output lists into arrays
@@ -663,9 +666,9 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
         # Calculate values to plot
         log_mini_ap_area = np.log10(np.pi*min_ap_rad_pix_output**2.0)
         log_mini_ap_noise = np.log10(mini_ap_noise_output)
-        mini_ap_noise_err_rel = np.abs( log_mini_ap_noise * ( mini_ap_num_output**0.5 / mini_ap_num_output ) )
-        mini_ap_noise_err = mini_ap_noise_err_rel * mini_ap_noise_output
-        log_mini_ap_noise_err = ChrisFuncs.LogError(mini_ap_noise_output, mini_ap_noise_err)
+        mini_ap_noise_err_rel = mini_ap_num_output**0.5 / mini_ap_num_output
+        #mini_ap_noise_err = np.abs( mini_ap_noise_output * mini_ap_noise_err_rel )
+        log_mini_ap_noise_err = mini_ap_noise_err_rel#ChrisFuncs.LogError(mini_ap_noise_output, mini_ap_noise_err)
 
         # Define straight-line function, and fit it to points
         def Line(x,m,c):
