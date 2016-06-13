@@ -729,7 +729,193 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
 
 # Define function that uses provided beam profile to aperture-correct photometry
 def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
-    pass
+    if kwargs_dict['verbose']: print '['+pod['id']+'] Determining aperture correction factor due to PSF.'
+
+
+
+    # If SNR ratio is <3, do not perform aperture correction
+    snr = pod['ap_sum'] / abs(pod['ap_error'])
+    if snr<3.0:
+        if kwargs_dict['verbose']: print '['+pod['id']+'] Source SNR<3; not applying aperture correction, as reuslt would be unreliable.'
+        return pod
+
+
+
+    # Read in PSF, and establish pixel size
+    psf_in, psf_header = astropy.io.fits.getdata(band_dict['beam_correction'], header=True)
+    psf_wcs = astropy.wcs.WCS(psf_header)
+    psf_cdelt = psf_wcs.wcs.cdelt.max()
+    psf_cdelt_arcsec = abs( psf_cdelt * 3600.0 )
+
+    # If PSF pixel size is different to map pixel size, rescale PSF accordingly
+    if (pod['pix_arcsec']/psf_cdelt_arcsec)>1.001 or (pod['pix_arcsec']/psf_cdelt_arcsec)<0.999:
+
+        # 'Trim' the edges of the input PSF until the rescaled PSF has odd dimensions
+        psf_even = True
+        while psf_even:
+            zoom_factor = float(psf_cdelt_arcsec) / float(pod['pix_arcsec'])
+            psf = scipy.ndimage.zoom(psf_in, (zoom_factor,zoom_factor), mode='nearest')
+            if (psf.shape[0]%2!=0) and (psf.shape[1]%2!=0):
+                psf_even = False
+            else:
+                psf_in = psf_in[1:,1:]
+                psf_in = psf_in[:-1,:-1]
+
+    # Else, if pixel sizes are already the same, leave as-is
+    elif ((pod['pix_arcsec']/psf_cdelt_arcsec)>=0.999) and ((pod['pix_arcsec']/psf_cdelt_arcsec)<=0.001):
+        psf = psf_in.copy()
+
+
+
+    # Normalise PSF
+    psf /= np.nansum(psf)
+
+    # Background-subtract cutout
+    cutout = pod['cutout'] - pod['bg_avg']
+
+    # Produce mask for pixels we care about for fitting (ie, are inside photometric aperture)
+    mask = ChrisFuncs.Photom.EllipseMask(cutout, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
+
+    # Produce guess values
+    initial_sersic_amplitide = cutout[ pod['centre_i'], pod['centre_j'] ]
+    initial_sersic_r_eff = pod['adj_semimaj_pix'] / 10.0
+    initial_sersic_n = 1.0
+    initial_sersic_x_0 = pod['centre_j']
+    initial_sersic_y_0 = pod['centre_i']
+    initial_sersic_ellip = ( pod['adj_axial_ratio'] - 1.0 ) / pod['adj_axial_ratio']
+    initial_sersic_theta = np.deg2rad( pod['adj_angle'] )
+
+    # Produce sersic model from guess parameters, for time trials
+    sersic_x, sersic_y = np.meshgrid( np.arange(cutout.shape[1]), np.arange(cutout.shape[0]) )
+    sersic_model = astropy.modeling.models.Sersic2D(amplitude=initial_sersic_amplitide, r_eff=initial_sersic_r_eff, n=initial_sersic_n, x_0=initial_sersic_x_0, y_0=initial_sersic_y_0, ellip=initial_sersic_ellip, theta=initial_sersic_theta)
+    sersic_map = sersic_model(sersic_x,sersic_y)
+
+    # Make sure that PSF array is smaller than sersic model array (as required for convolution); if not, remove its edges such that it is
+    if psf.shape[0]>sersic_map.shape[0] or psf.shape[1]>sersic_map.shape[1]:
+        excess = max( psf.shape[0]-sersic_map.shape[0], psf.shape[1]-sersic_map.shape[1] )
+        border = int( np.round( np.ceil( float(excess) / 2.0 ) - 1.0 ) )
+        psf = psf[border:,border:]
+        psf = psf[:-border,:-border]
+
+    # Determine wither FFT convolution or direct convolution is faster for this kernel, using sersic model produced with guess parameters
+    time_fft = time.time()
+    conv_map = astropy.convolution.convolve_fft(sersic_map, psf, normalize_kernel=True)
+    time_fft = time.time() - time_fft
+    time_direct = time.time()
+    conv_map = astropy.convolution.convolve(sersic_map, psf, normalize_kernel=True)
+    time_direct = time.time() - time_direct
+    if time_fft<time_direct:
+        use_fft = True
+    else:
+        use_fft = False
+
+
+
+
+    # Set up parameters to fit galaxy with 2-dimensional sersic profile
+    params = lmfit.Parameters()
+    params.add('sersic_amplitide', value=initial_sersic_amplitide, vary=True)
+    params.add('sersic_r_eff', value=initial_sersic_r_eff, vary=True, min=0.0, max=pod['adj_semimaj_pix'])
+    params.add('sersic_n', value=initial_sersic_n, vary=True, min=0.1, max=10)
+    params.add('sersic_x_0', value=initial_sersic_x_0, vary=False)
+    params.add('sersic_y_0', value=initial_sersic_y_0, vary=False)
+    params.add('sersic_ellip', value=initial_sersic_ellip, vary=False)
+    params.add('sersic_theta', value=initial_sersic_theta, vary=False)
+
+    # Solve with LMfit to find marameters of best-fit sersic profile
+    result = lmfit.minimize(Sersic_LMfit, params, args=(pod, cutout, psf, mask, use_fft), method='leastsq', ftol=1E-5, xtol=1E-5)
+
+    # Extract best-fit results
+    sersic_amplitide = result.params['sersic_amplitide'].value
+    sersic_r_eff = result.params['sersic_r_eff'].value
+    sersic_n = result.params['sersic_n'].value
+    sersic_x_0 = result.params['sersic_x_0'].value
+    sersic_y_0 = result.params['sersic_y_0'].value
+    sersic_ellip = result.params['sersic_ellip'].value
+    sersic_theta = result.params['sersic_theta'].value
+
+    # Construct underlying sersic map and convolved sersic map, using best-fit parameters
+    sersic_model = astropy.modeling.models.Sersic2D(amplitude=sersic_amplitide, r_eff=sersic_r_eff, n=sersic_n, x_0=sersic_x_0, y_0=sersic_y_0, ellip=sersic_ellip, theta=sersic_theta)
+    sersic_map = sersic_model(sersic_x, sersic_y)
+    if use_fft==True:
+        conv_map = astropy.convolution.convolve_fft(sersic_map, psf, normalize_kernel=True)
+    elif use_fft==False:
+        conv_map = astropy.convolution.convolve(sersic_map, psf, normalize_kernel=True)
+
+
+
+    # Evaluate pixels in source aperture in convolved sersic map
+    if float(band_dict['subpixel_factor'])==1.0:
+        conv_ap_calc = ChrisFuncs.Photom.EllipseSum(conv_map, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
+    elif float(band_dict['subpixel_factor'])>1.0:
+        conv_ap_calc = ChrisFuncs.Photom.EllipseSumUpscale(conv_map, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], upscale=band_dict['subpixel_factor'])
+
+    # Evaluate pixels in background annulus in convolved sersic map
+    bg_inner_semimaj_pix = pod['adj_semimaj_pix'] * band_dict['annulus_inner']
+    bg_width = (pod['adj_semimaj_pix'] * band_dict['annulus_outer']) - bg_inner_semimaj_pix
+    if float(band_dict['subpixel_factor'])==1.0:
+        conv_bg_calc = ChrisFuncs.Photom.AnnulusSum(conv_map, bg_inner_semimaj_pix, bg_width, pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
+    elif float(band_dict['subpixel_factor'])>1.0:
+        conv_bg_calc = ChrisFuncs.Photom.AnnulusSumUpscale(conv_map, bg_inner_semimaj_pix, bg_width, pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], upscale=band_dict['subpixel_factor'])
+
+    # Background-subtract and measure  convolved sersic source flux
+    conv_bg_clip = ChrisFuncs.SigmaClip(conv_bg_calc[2], median=False, sigma_thresh=3.0)
+    conv_bg_avg = conv_bg_clip[1] * float(band_dict['subpixel_factor'])**2.0
+    conv_ap_sum = conv_ap_calc[0] - (conv_ap_calc[1] * conv_bg_avg)
+
+    # Find difference between total flux ascribed to best-fit underlying sersic model, to flux measured via aperture photometry on the convolved map
+    ap_correction = np.sum(sersic_map) / conv_ap_sum
+
+
+
+    # Apply aperture correction to pod, and return
+    if kwargs_dict['verbose']: print '['+pod['id']+'] Applying aperture correction factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_correction,4))+'.'
+    pod['ap_sum'] *= ap_correction
+    return pod
+
+
+
+
+
+# Defie LMfit convolved-sersic function
+def Sersic_LMfit(params, pod, cutout, psf, mask, use_fft, lmfit=True): #astropy.io.fits.writeto('/home/saruman/spx7cjc/DustPedia/Sersic.fits', sersic_map, clobber=True)
+
+
+
+    # Extract variable parameters
+    sersic_amplitide = params['sersic_amplitide'].value
+    sersic_r_eff = params['sersic_r_eff'].value
+    sersic_n = params['sersic_n'].value
+    sersic_x_0 = params['sersic_x_0'].value
+    sersic_y_0 = params['sersic_y_0'].value
+    sersic_ellip = params['sersic_ellip'].value
+    sersic_theta = params['sersic_theta'].value
+
+    # Generate sersic model given current paramters
+    sersic_x, sersic_y = np.meshgrid( np.arange(cutout.shape[1]), np.arange(cutout.shape[0]) )
+    sersic_model = astropy.modeling.models.Sersic2D(amplitude=sersic_amplitide, r_eff=sersic_r_eff, n=sersic_n, x_0=sersic_x_0, y_0=sersic_y_0, ellip=sersic_ellip, theta=sersic_theta)
+    sersic_map = sersic_model( sersic_x, sersic_y )
+
+    # Convolve sersic model with PSF
+    if use_fft==True:
+        conv_map = astropy.convolution.convolve_fft(sersic_map, psf, normalize_kernel=True)
+    elif use_fft==False:
+        conv_map = astropy.convolution.convolve(sersic_map, psf, normalize_kernel=True)
+
+    # Calculate residuals, filtered by mask
+    residuals = cutout - conv_map
+    mask[ np.where(mask==0.0) ] = np.nan
+    residuals *= mask
+    residuals.flatten()
+    residuals = residuals[ np.where( np.isnan(residuals)==False ) ]
+
+    # Return residuals
+    if lmfit==True:
+        return residuals
+    elif lmfit==False:
+        return residuals, cutout-conv_map
+
+
 
 
 
