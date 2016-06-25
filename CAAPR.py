@@ -70,7 +70,7 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
 
     # Prepare output directory
     if os.path.exists(output_dir_path):
-        print 'Warning: Output directory already exists; some files may be overridden'
+        print '[CAAPR] Warning: Output directory already exists; some files may be overridden'
     else:
         os.mkdir(output_dir_path)
     if fit_apertures and thumbnails and not os.path.exists( os.path.join(output_dir_path,'Aperture_Fitting_Thumbnails') ):
@@ -133,9 +133,11 @@ if __name__ == "__main__":
 
     # Run function
     testing = True
-    parallel = False
+    parallel = True
+    starsub = True
+    aperture_table_path = None#'CAAPR_Aperture_Table_Test.csv'
     if testing:
-        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=18, sources_table_path='CAAPR_Source_Table_Test.csv', polysub=True, starsub=True, fit_apertures=True, do_photom=True, aperture_table_path=None, parallel=parallel)
+        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=8, sources_table_path='CAAPR_Source_Table_Test.csv', polysub=True, starsub=starsub, fit_apertures=True, do_photom=True, aperture_table_path=aperture_table_path, parallel=parallel)
 
         # Jubilate
         print 'All done!'

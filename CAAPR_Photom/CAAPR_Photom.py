@@ -141,9 +141,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
         # If star-removal is required, run pod through AstroMagic
-        if kwargs_dict['starsub']==True:
-            if band_dict['remove_stars']==True:
-                pod = CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+        pod = CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
 
 
 
