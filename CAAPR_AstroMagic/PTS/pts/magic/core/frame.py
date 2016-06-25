@@ -35,6 +35,35 @@ from ..basics.mask import Mask
 
 # -----------------------------------------------------------------
 
+def get_frame_names(path):
+
+    """
+    This function ...
+    :param path:
+    :return:
+    """
+
+    # Load the header
+    header = fits.getheader(path)
+
+    # Get the number of planes
+    nplanes = headers.get_number_of_frames(header)
+
+    # Initialize a dictionary to contain the frame names and corresponding descriptions
+    frames = dict()
+
+    # Look at the properties of each plane
+    for i in range(nplanes):
+
+        # Get name and description of plane
+        name, description, plane_type = headers.get_frame_name_and_description(header, i, always_call_first_primary=False)
+        if plane_type == "frame": frames[name] = description
+
+    # Return the frames with their name and description
+    return frames
+
+# -----------------------------------------------------------------
+
 class Frame(np.ndarray):
 
     """
@@ -153,7 +182,7 @@ class Frame(np.ndarray):
                     # Get name and description of frame
                     name, description, plane_type = headers.get_frame_name_and_description(header, i, always_call_first_primary=False)
 
-                    if plane == name:
+                    if plane == name and plane_type == "frame":
                         index = i
                         break
 
@@ -282,6 +311,22 @@ class Frame(np.ndarray):
 
         # Return a zero-filled copy of the frame
         return np.zeros_like(frame)
+
+    # -----------------------------------------------------------------
+
+    @classmethod
+    def nans_like(cls, frame):
+
+        """
+        This function ...
+        :param frame:
+        :return:
+        """
+
+        # Return a NaN-filled copy of the frame
+        nans = cls.zeros_like(frame)
+        nans.fill(np.nan)
+        return nans
 
     # -----------------------------------------------------------------
 
@@ -442,12 +487,6 @@ class Frame(np.ndarray):
             copy = self.copy()
             copy.fwhm = kernel_fwhm
             return copy
-
-        # Calculate the zooming factor
-        factor = (self.xy_average_pixelscale.to("arcsec/pix").value / kernel.xy_average_pixelscale.to("arcsec/pix").value)
-
-        # Rebin the kernel to the same grid of the image
-        kernel = ndimage.interpolation.zoom(kernel, zoom=1.0/factor)
 
         nans_mask = np.isnan(self)
 

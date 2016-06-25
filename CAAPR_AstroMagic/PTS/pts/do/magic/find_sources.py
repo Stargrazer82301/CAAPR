@@ -45,6 +45,9 @@ parser.add_argument('--report', action='store_true', help='write a report file')
 parser.add_argument("-i", "--input", type=str, help="the name of the input directory")
 parser.add_argument("-o", "--output", type=str, help="the name of the output directory")
 
+# Writing
+parser.add_argument("--catalogs", action="store_true", help="save the catalog files")
+
 # Advanced options
 parser.add_argument("--principal_region", type=str, help="the path to a region file with a contour of the principal galaxy (in sky coordinates!)")
 parser.add_argument("--synchronize", action="store_true", help="synchronize with DustPedia catalog")
@@ -52,6 +55,8 @@ parser.add_argument("--filecatalog", action="store_true", help="use file catalog
 parser.add_argument("--interpolation_method", type=str, help="the interpolation method to use")
 parser.add_argument("--downsample", type=float, help="specify the degree of downsampling (no downsampling if not specified)")
 parser.add_argument("--no_saturation", action="store_true", help="don't look for saturated stars")
+parser.add_argument("--no_other", action="store_true", help="don't look for sources outside of the catalogs")
+parser.add_argument("--saturation_dilation_factor", type=float, help="the dilation factor to be used for the detected saturation")
 
 # Input regions
 parser.add_argument("--ignore", type=str, help="the name of the file specifying regions to ignore")
@@ -125,8 +130,31 @@ bad_mask = image.masks.bad if "bad" in image.masks else None
 # Create a CatalogImporter instance
 catalog_importer = CatalogImporter()
 
+# Set file catalog options
+if arguments.filecatalog:
+
+    catalog_importer.config.galaxies.use_catalog_file = True
+    catalog_importer.config.galaxies.catalog_path = fs.join(input_path, "galaxies.cat")
+    catalog_importer.config.stars.use_catalog_file = True
+    catalog_importer.config.stars.catalog_path = fs.join(input_path, "stars.cat")
+
 # Run the catalog importer
 catalog_importer.run(image.frames.primary) # work with coordinate box instead ? image.coordinate_box ?
+
+# Save the catalogs if requested
+if arguments.catalogs:
+
+    # Determine the full path to the galactic catalog file
+    path = fs.join(output_path, "galaxies.cat")
+
+    # Save the galactic catalog
+    catalog_importer.write_galactic_catalog_to(path)
+
+    # Determine the full path to the stellar catalog file
+    path = fs.join(output_path, "stars.cat")
+
+    # Save the stellar catalog
+    catalog_importer.write_stellar_catalog_to(path)
 
 # -----------------------------------------------------------------
 
@@ -137,7 +165,7 @@ if arguments.special is not None:
     path = fs.join(input_path, arguments.special)
 
     # Inform the user
-    log.info("Creating mask covering objects that require special attention from " + path + " ...")
+    log.info("Loading region indicating areas that require special attention from " + path + " ...")
 
     # Load the region and create a mask from it
     special_region = Region.from_file(path)
@@ -154,13 +182,17 @@ if arguments.ignore is not None:
     path = fs.join(input_path, arguments.ignore)
 
     # Inform the user
-    log.info("Creating mask covering objects that should be ignored from " + path + " ...")
+    log.info("Loading region indicating areas that should be ignored from " + path + " ...")
 
     # Load the region and create a mask from it
     ignore_region = Region.from_file(path)
 
 # No ignore region
 else: ignore_region = None
+
+# -----------------------------------------------------------------
+
+if arguments.principal_region is not None: arguments.principal_region = fs.join(input_path, arguments.principal_region)
 
 # -----------------------------------------------------------------
 
@@ -178,24 +210,36 @@ log.info("The FWHM that could be fitted to the point sources is " + str(finder.f
 # -----------------------------------------------------------------
 
 # Save the galaxy region
-galaxy_region = finder.galaxy_sky_region.to_pixel(image.wcs)
-path = fs.join(output_path, "galaxies.reg")
-galaxy_region.save(path)
+galaxy_sky_region = finder.galaxy_sky_region
+if galaxy_sky_region is not None:
+
+    galaxy_region = galaxy_sky_region.to_pixel(image.wcs)
+    path = fs.join(output_path, "galaxies.reg")
+    galaxy_region.save(path)
 
 # Save the star region
-star_region = finder.star_sky_region.to_pixel(image.wcs)
-path = fs.join(output_path, "stars.reg")
-star_region.save(path)
+star_sky_region = finder.star_sky_region
+if star_sky_region is not None:
+
+    star_region = star_sky_region.to_pixel(image.wcs)
+    path = fs.join(output_path, "stars.reg")
+    star_region.save(path)
 
 # Save the saturation region
-saturation_region = finder.saturation_sky_region.to_pixel(image.wcs)
-path = fs.join(output_path, "saturation.reg")
-saturation_region.save(path)
+saturation_sky_region = finder.saturation_sky_region
+if saturation_sky_region is not None:
+
+    saturation_region = saturation_sky_region.to_pixel(image.wcs)
+    path = fs.join(output_path, "saturation.reg")
+    saturation_region.save(path)
 
 # Save the region of other sources
-other_region = finder.other_sky_region.to_pixel(image.wcs)
-path = fs.join(output_path, "other_sources.reg")
-other_region.save(path)
+other_sky_region = finder.other_sky_region
+if other_sky_region is not None:
+
+    other_region = other_sky_region.to_pixel(image.wcs)
+    path = fs.join(output_path, "other_sources.reg")
+    other_region.save(path)
 
 # -----------------------------------------------------------------
 

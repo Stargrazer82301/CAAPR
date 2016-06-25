@@ -63,9 +63,6 @@ class SourceFinder(Configurable):
         # The animation
         self.animation = None
 
-        # The output mask
-        self.mask = None
-
         # The name of the principal galaxy
         self.galaxy_name = None
 
@@ -84,23 +81,22 @@ class SourceFinder(Configurable):
         elif arguments.settings is not None: finder = cls(arguments.settings)
         else: finder = cls()
 
-        # Options for using a file as input catalog
-        if arguments.filecatalog:
-
-            finder.config.catalogs.galaxies.use_catalog_file = True
-            finder.config.catalogs.galaxies.catalog_path = "galaxies.cat"
-
-            finder.config.catalogs.stars.use_catalog_file = True
-            finder.config.catalogs.stars.catalog_path = "stars.cat"
-
         # Set the downsample factor
         if arguments.downsample is not None: finder.config.downsample_factor = arguments.downsample
 
         # Don't look for saturated stars if requested
         if arguments.no_saturation: finder.config.stars.find_saturation = False
 
+        # Don't look for other sources if requested
+        if arguments.no_other: finder.config.find_other_sources = False
+
         # Set the region describing the principal galaxy
         if arguments.principal_region is not None: finder.config.galaxies.principal_region = arguments.principal_region
+
+        # Set the dilation factor for saturation segments
+        if arguments.saturation_dilation_factor is not None:
+            finder.config.stars.saturation.dilate = True
+            finder.config.stars.saturation.dilation_factor = arguments.saturation_dilation_factor
 
         # Return the new instance
         return finder
@@ -130,7 +126,7 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        return self.galaxy_finder.region.to_sky(self.frame.wcs)
+        return self.galaxy_finder.region.to_sky(self.frame.wcs) if self.galaxy_finder.region is not None else None
 
     # -----------------------------------------------------------------
 
@@ -157,7 +153,7 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        return self.star_finder.star_region.to_sky(self.frame.wcs)
+        return self.star_finder.star_region.to_sky(self.frame.wcs) if self.star_finder.star_region is not None else None
 
     # -----------------------------------------------------------------
 
@@ -184,7 +180,7 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        return self.star_finder.saturation_region.to_sky(self.frame.wcs)
+        return self.star_finder.saturation_region.to_sky(self.frame.wcs) if self.star_finder.saturation_region is not None else None
 
     # -----------------------------------------------------------------
 
@@ -285,7 +281,7 @@ class SourceFinder(Configurable):
 
         # 2. Find the galaxies
         self.find_galaxies()
-        
+
         # 3. Find the stars
         if self.config.find_stars: self.find_stars()
 
@@ -316,7 +312,6 @@ class SourceFinder(Configurable):
         self.ignore_mask = None
         self.bad_mask = None
         self.animation = None
-        self.mask = None
         self.galaxy_name = None
 
     # -----------------------------------------------------------------

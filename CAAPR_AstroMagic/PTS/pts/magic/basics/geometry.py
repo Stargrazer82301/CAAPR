@@ -15,6 +15,10 @@ from __future__ import absolute_import, division, print_function
 # Import standard modules
 import math
 import numpy as np
+from matplotlib.patches import Circle as mpl_Circle
+from matplotlib.patches import Rectangle as mpl_Rectangle
+from matplotlib.patches import Ellipse as mpl_Ellipse
+from matplotlib.patches import Polygon as mpl_Polygon
 
 # Import astronomical modules
 from astropy.coordinates import Angle
@@ -86,24 +90,30 @@ class Composite(object):
         exclude = self.exclude.to_mask(x_size, y_size)
 
         # Return the mask
-        return base + np.logical_not(exclude)
+        return base * np.logical_not(exclude)
 
     # -----------------------------------------------------------------
 
-    def to_region_string(self):
+    def to_region_string(self, coordinate_system=True):
 
         """
         This function ...
         :return:
         """
 
-        # Create the suffix
-        if len(self.meta) > 0:
-            suffix = " #"
-            for key in self.meta: suffix += " " + key + " = " + str(self.meta[key])
-        else: suffix = ""
+        if coordinate_system:
 
-        pass
+            line1 = self.base.to_region_string()
+            line2 = self.exclude.to_region_string()
+
+            return line1 + "\n" + line2.replace("image;", "image;-")
+
+        else:
+
+            line1 = self.base.to_region_string(coordinate_system=False)
+            line2 = self.base.to_region_string(coordinate_system=False)
+
+            return line1 + "\n-" + line2
 
     # -----------------------------------------------------------------
 
@@ -229,6 +239,17 @@ class Composite(object):
 
         return self
 
+    # -----------------------------------------------------------------
+
+    def to_mpl_patch(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        raise NotImplementedError("This function should not be called: no MatplotLib patch for Composite shape")
+
 # -----------------------------------------------------------------
 
 class Coordinate(Position):
@@ -284,7 +305,7 @@ class Coordinate(Position):
 
     # -----------------------------------------------------------------
 
-    def to_region_string(self):
+    def to_region_string(self, coordinate_system=True):
 
         """
         This function ...
@@ -300,7 +321,8 @@ class Coordinate(Position):
         else: suffix = ""
 
         # Create and return the line
-        line = "image;point({},{})".format(self.x+1, self.y+1) + suffix
+        if coordinate_system: line = "image;point({},{})".format(self.x+1, self.y+1) + suffix
+        else: line = "point({},{})".format(self.x+1, self.y+1) + suffix
         return line
 
     # -----------------------------------------------------------------
@@ -441,6 +463,17 @@ class Coordinate(Position):
 
         return self.__idiv__(value)
 
+    # -----------------------------------------------------------------
+
+    def to_mpl_patch(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return None
+
 # -----------------------------------------------------------------
 
 class Line(object):
@@ -580,7 +613,7 @@ class Line(object):
 
     # -----------------------------------------------------------------
 
-    def to_region_string(self):
+    def to_region_string(self, coordinate_system=True):
 
         """
         This function ...
@@ -600,7 +633,8 @@ class Line(object):
         end = self.end
 
         # Create and return the line
-        line = "image;line({},{},{},{})".format(start.x+1, start.y+1, end.x+1, end.y+1) + suffix
+        if coordinate_system: line = "image;line({},{},{},{})".format(start.x+1, start.y+1, end.x+1, end.y+1) + suffix
+        else: line = "line({},{},{},{})".format(start.x+1, start.y+1, end.x+1, end.y+1) + suffix
         return line
 
     # -----------------------------------------------------------------
@@ -674,6 +708,17 @@ class Line(object):
         self.end -= extent
 
         return self
+
+    # -----------------------------------------------------------------
+
+    def to_mpl_patch(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return None
 
 # -----------------------------------------------------------------
 
@@ -834,10 +879,11 @@ class Circle(object):
 
     # -----------------------------------------------------------------
 
-    def to_region_string(self):
+    def to_region_string(self, coordinate_system=True):
 
         """
         This function ...
+        :param coordinate_system:
         :return:
         """
 
@@ -854,7 +900,8 @@ class Circle(object):
         radius = self.radius
 
         # Create and return the line
-        line = "image;circle({},{},{})".format(center.x+1, center.y+1, radius) + suffix
+        if coordinate_system: line = "image;circle({},{},{})".format(center.x+1, center.y+1, radius) + suffix
+        else: line = "circle({},{},{})".format(center.x + 1, center.y + 1, radius) + suffix
         return line
 
     # -----------------------------------------------------------------
@@ -893,6 +940,17 @@ class Circle(object):
         """
 
         return Circle(self.center - extent, self.radius, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def to_mpl_patch(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return mpl_Circle((self.center.x, self.center.y), self.radius, edgecolor='green', facecolor='none', lw=3, alpha=0.7)
 
 # -----------------------------------------------------------------
 
@@ -944,6 +1002,30 @@ class Ellipse(object):
         """
 
         return self.radius.y
+
+    # -----------------------------------------------------------------
+
+    @property
+    def major_axis_length(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return 2.0 * self.radius.x
+
+    # -----------------------------------------------------------------
+
+    @property
+    def minor_axis_length(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return 2.0 * self.radius.y
 
     # -----------------------------------------------------------------
 
@@ -1177,7 +1259,7 @@ class Ellipse(object):
 
     # -----------------------------------------------------------------
 
-    def to_region_string(self):
+    def to_region_string(self, coordinate_system=True):
 
         """
         This function ...
@@ -1199,8 +1281,20 @@ class Ellipse(object):
         angle = self.angle.degree
 
         # Create and return the line
-        line = "image;ellipse({},{},{},{},{})".format(center.x+1, center.y+1, major, minor, angle) + suffix
+        if coordinate_system: line = "image;ellipse({},{},{},{},{})".format(center.x+1, center.y+1, major, minor, angle) + suffix
+        else: line = "ellipse({},{},{},{},{})".format(center.x+1, center.y+1, major, minor, angle) + suffix
         return line
+
+    # -----------------------------------------------------------------
+
+    def to_mpl_patch(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return mpl_Ellipse((self.center.x, self.center.y), self.major_axis_length, self.minor_axis_length, self.angle.to("deg").value, edgecolor='green', facecolor='none', lw=3, alpha=0.7)
 
 # -----------------------------------------------------------------
 
@@ -1288,6 +1382,30 @@ class Rectangle(object):
         """
 
         return 4. * self.radius.x * self.radius.y
+
+    # -----------------------------------------------------------------
+
+    @property
+    def width(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return 2.0 * self.radius.x
+
+    # -----------------------------------------------------------------
+
+    @property
+    def height(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return 2.0 * self.radius.y
 
     # -----------------------------------------------------------------
 
@@ -1496,7 +1614,7 @@ class Rectangle(object):
 
     # -----------------------------------------------------------------
 
-    def to_region_string(self):
+    def to_region_string(self, coordinate_system=True):
 
         """
         This function ...
@@ -1519,7 +1637,8 @@ class Rectangle(object):
         angle = self.angle.degree
 
         # Create and return the line
-        line = "image;box({},{},{},{},{})".format(center.x+1, center.y+1, width, height, angle) + suffix
+        if coordinate_system: line = "image;box({},{},{},{},{})".format(center.x+1, center.y+1, width, height, angle) + suffix
+        else: line = "box({},{},{},{},{})".format(center.x + 1, center.y + 1, width, height, angle) + suffix
         return line
 
     # -----------------------------------------------------------------
@@ -1557,6 +1676,17 @@ class Rectangle(object):
         """
 
         return Rectangle(self.center - extent, self.radius, self.angle, self.meta)
+
+    # -----------------------------------------------------------------
+
+    def to_mpl_patch(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return mpl_Rectangle((self.center.x, self.center.y), self.width, self.height, edgecolor='green', facecolor='none', lw=3, alpha=0.7)
 
 # -----------------------------------------------------------------
 
@@ -1675,15 +1805,13 @@ class Polygon(object):
         #points = [(x1,y1),(x2,y2),...] or [x1,y1,x2,y2,...]
         points = []
         for point in self.points:
+
             #points.append((point.x, point.y))
-            points.append(point.x)
-            points.append(point.y)
+            points.append(float(point.x))
+            points.append(float(point.y))
 
         img = Image.new('L', (width, height), 0)
         ImageDraw.Draw(img).polygon(points, outline=1, fill=1)
-
-        #from ..tools import plotting
-        #plotting.plot_box(np.array(img))
 
         return Mask(np.array(img))
 
@@ -1705,7 +1833,7 @@ class Polygon(object):
 
     # -----------------------------------------------------------------
 
-    def to_region_string(self):
+    def to_region_string(self, coordinate_system=True):
 
         """
         This function ...
@@ -1721,13 +1849,16 @@ class Polygon(object):
         else: suffix = ""
 
         # Initialize line
-        line = "image;polygon("
+        if coordinate_system: line = "image;polygon("
+        else: line = "polygon("
+
+        lines = []
 
         # Add the points to the line
-        for point in self.points: line += "{},{}".format(point.x+1, point.y+1)
+        for point in self.points: lines.append("{},{}".format(point.x+1, point.y+1))
 
         # Finish line
-        line += ")" + suffix
+        line += ",".join(lines) + ")" + suffix
 
         # Return the line
         return line
@@ -1751,6 +1882,21 @@ class Polygon(object):
         radius = Extent(0.5*(x_max - x_min), 0.5*(y_max - y_min))
 
         return Rectangle(center, radius)
+
+    # -----------------------------------------------------------------
+
+    @property
+    def center(self):
+
+        """
+        This property returns the center coordinate of the polygon, calcualted as the mean x value with the mean y value
+        :return:
+        """
+
+        x = np.array([point.x for point in self.points])
+        y = np.array([point.y for point in self.points])
+
+        return Coordinate(np.mean(x), np.mean(y))
 
     # -----------------------------------------------------------------
 
@@ -1785,5 +1931,111 @@ class Polygon(object):
         for point in self.points: polygon.add_point(point - extent)
 
         return polygon
+
+    # -----------------------------------------------------------------
+
+    def __mul__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        new = Polygon(meta=self.meta)
+
+        center = self.center
+
+        for point in self.points:
+
+            point_to_center = point - self.center # is Extent with x and y
+            new_point = Coordinate(center.x + point_to_center.x * value, center.y + point_to_center.y * value)
+            new.add_point(new_point)
+
+        # Return the new polygon
+        return new
+
+    # -----------------------------------------------------------------
+
+    def __imul__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        center = self.center
+
+        for point in self.points:
+
+            point_to_center = point - self.center  # is Extent with x and y
+            point.x = center.x + point_to_center.x * value
+            point.y = center.y + point_to_center.y * value
+
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __div__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.__mul__(1./value)
+
+    # -----------------------------------------------------------------
+
+    def __idiv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.__imul__(1./value)
+
+    # -----------------------------------------------------------------
+
+    def __truediv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.__div__(value)
+
+    # -----------------------------------------------------------------
+
+    def __itruediv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.__idiv__(value)
+
+    # -----------------------------------------------------------------
+
+    def to_mpl_patch(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        points = []
+        for point in self.points: points.append([point.x, point.y])
+        points = np.array(points)
+
+        return mpl_Polygon(points, edgecolor='green', facecolor='none', lw=3, alpha=0.7)
 
 # -----------------------------------------------------------------

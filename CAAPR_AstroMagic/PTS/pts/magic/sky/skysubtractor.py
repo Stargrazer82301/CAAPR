@@ -16,10 +16,8 @@ from __future__ import absolute_import, division, print_function
 import io
 import imageio
 import numpy as np
-from scipy import interpolate
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
-from matplotlib.figure import Figure
 
 from scipy.interpolate import CloughTocher2DInterpolator as intp
 from scipy.interpolate import SmoothBivariateSpline
@@ -39,9 +37,9 @@ from astropy import stats
 from ..core.frame import Frame
 from ..basics.mask import Mask
 from ..core.source import Source
-from ..basics.geometry import Coordinate, Circle
+from ..basics.geometry import Coordinate, Circle, Composite
 from ..basics.region import Region
-from ..basics.vector import Position, Extent
+from ..basics.skyregion import SkyRegion
 from ..tools import plotting, statistics, fitting, plotting
 from ...core.basics.configurable import Configurable
 from ...core.tools.logging import log
@@ -77,8 +75,8 @@ class SkySubtractor(Configurable):
         # The extra mask
         self.extra_mask = None
 
-        # The principal ellipse
-        self.principal_ellipse = None
+        # The principal shape
+        self.principal_shape = None
 
         # The region of saturated stars
         self.saturation_region = None
@@ -86,9 +84,8 @@ class SkySubtractor(Configurable):
         # The animation
         self.animation = None
 
-        # The annulus ellipses
-        self.inner_ellipse = None
-        self.outer_ellipse = None
+        # The sky region
+        self.region = None
 
         # The output mask (combined input + bad mask + galaxy annulus mask + expanded saturation mask + sigma-clipping mask)
         self.mask = None
@@ -129,12 +126,12 @@ class SkySubtractor(Configurable):
 
     # -----------------------------------------------------------------
 
-    def run(self, frame, principal_ellipse, sources_mask, extra_mask=None, saturation_region=None, animation=None):
+    def run(self, frame, principal_shape, sources_mask, extra_mask=None, saturation_region=None, animation=None):
 
         """
         This function ...
         :param frame:
-        :param principal_ellipse:
+        :param principal_shape:
         :param sources_mask:
         :param extra_mask:
         :param saturation_region:
@@ -142,10 +139,10 @@ class SkySubtractor(Configurable):
         """
 
         # 1. Call the setup function
-        self.setup(frame, principal_ellipse, sources_mask, extra_mask, saturation_region, animation)
+        self.setup(frame, principal_shape, sources_mask, extra_mask, saturation_region, animation)
 
-        # 2. Create the annulus
-        self.create_annulus()
+        # 2. Create the sky region
+        self.create_region()
 
         # 3. Create mask
         self.create_mask()
@@ -181,7 +178,7 @@ class SkySubtractor(Configurable):
         self.frame = None
         self.sources_mask = None
         self.extra_mask = None
-        self.principal_ellipse = None
+        self.principal_shape = None
         self.saturation_region = None
         self.animation = None
         self.mask = None
@@ -195,12 +192,12 @@ class SkySubtractor(Configurable):
 
     # -----------------------------------------------------------------
 
-    def setup(self, frame, principal_ellipse, sources_mask, extra_mask=None, saturation_region=None, animation=None):
+    def setup(self, frame, principal_shape, sources_mask, extra_mask=None, saturation_region=None, animation=None):
 
         """
         This function ...
         :param frame:
-        :param principal_ellipse:
+        :param principal_shape:
         :param sources_mask:
         :param extra_mask:
         :param saturation_region:
@@ -214,8 +211,8 @@ class SkySubtractor(Configurable):
         # Make a local reference to the image frame
         self.frame = frame
 
-        # Make a reference to the principal ellipse
-        self.principal_ellipse = principal_ellipse
+        # Make a reference to the principal shape
+        self.principal_shape = principal_shape
 
         # Set the masks
         self.sources_mask = sources_mask
@@ -229,7 +226,7 @@ class SkySubtractor(Configurable):
 
     # -----------------------------------------------------------------
 
-    def create_annulus(self):
+    def create_region(self):
 
         """
         This function ...
@@ -237,13 +234,28 @@ class SkySubtractor(Configurable):
         """
 
         # Inform the user
-        log.info("Creating the annulus ellipses ...")
+        log.info("Creating the sky region ...")
 
-        # Create the sky annulus
-        annulus_outer_factor = self.config.mask.annulus_outer_factor
-        annulus_inner_factor = self.config.mask.annulus_inner_factor
-        self.inner_ellipse = self.principal_ellipse * annulus_inner_factor
-        self.outer_ellipse = self.principal_ellipse * annulus_outer_factor
+        # If the sky region has to be loaded from file
+        if self.config.sky_region is not None:
+            sky_region = SkyRegion.from_file(self.config.sky_region)
+            self.region = sky_region.to_pixel(self.frame.wcs)
+
+        # If no region file is given by the user, create an annulus from the principal ellipse
+        else:
+
+            # Create the sky annulus
+            annulus_outer_factor = self.config.mask.annulus_outer_factor
+            annulus_inner_factor = self.config.mask.annulus_inner_factor
+            inner_shape = self.principal_shape * annulus_inner_factor
+            outer_shape = self.principal_shape * annulus_outer_factor
+
+            # Create the annulus
+            annulus = Composite(outer_shape, inner_shape)
+
+            # Create the sky region consisting of only the annulus
+            self.region = Region()
+            self.region.append(annulus)
 
     # -----------------------------------------------------------------
 
@@ -257,12 +269,18 @@ class SkySubtractor(Configurable):
         # Inform the user
         log.info("Creating the sky mask ...")
 
-        # Create a mask for all the pixels outside of the annulus
-        annulus_mask = Mask.from_shape(self.outer_ellipse, self.frame.xsize, self.frame.ysize).inverse() + \
-                       Mask.from_shape(self.inner_ellipse, self.frame.xsize, self.frame.ysize)
+        # Create a mask from the pixels outside of the sky region
+        outside_mask = self.region.to_mask(self.frame.xsize, self.frame.ysize).inverse()
+
+        # Create a mask from the principal shape
+        principal_mask = self.principal_shape.to_mask(self.frame.xsize, self.frame.ysize)
+
+        #plotting.plot_mask(outside_mask, title="outside mask")
+        #plotting.plot_mask(principal_mask, title="principal mask")
+        #plotting.plot_mask(self.sources_mask, title="sources mask")
 
         # Set the mask, make a copy of the input mask initially
-        self.mask = self.sources_mask + annulus_mask
+        self.mask = self.sources_mask + outside_mask + principal_mask
 
         # Add the extra mask (if specified)
         if self.extra_mask is not None: self.mask += self.extra_mask
@@ -723,9 +741,9 @@ class SkySubtractor(Configurable):
         :return:
         """
 
-        self.apertures_frame = Frame.zeros_like(self.frame)
-        self.apertures_mean_frame = Frame.zeros_like(self.frame)
-        self.apertures_noise_frame = Frame.zeros_like(self.frame)
+        self.apertures_frame = Frame.nans_like(self.frame)
+        self.apertures_mean_frame = Frame.nans_like(self.frame)
+        self.apertures_noise_frame = Frame.nans_like(self.frame)
 
         for i in range(len(aperture_centers)):
 
@@ -1015,22 +1033,6 @@ class SkySubtractor(Configurable):
         # Save the figure
         plt.savefig(self.config.writing.histogram_path, bbox_inches='tight', pad_inches=0.25)
         plt.close()
-
-    # -----------------------------------------------------------------
-
-    @property
-    def annulus_region(self):
-
-        """
-        This function ...
-        :return:
-        """
-
-        # Create the region and return it
-        region = Region()
-        region.append(self.inner_ellipse)
-        region.append(self.outer_ellipse)
-        return region
 
     # -----------------------------------------------------------------
 

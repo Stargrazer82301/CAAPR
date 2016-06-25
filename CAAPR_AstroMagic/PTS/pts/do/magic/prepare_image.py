@@ -17,12 +17,14 @@ import argparse
 
 # Import the relevant PTS classes and modules
 from pts.magic.prepare.imagepreparation import ImagePreparer
-from pts.core.tools import logging, time, tables
+from pts.core.tools import logging, time, tables, parsing
 from pts.core.tools import filesystem as fs
 from pts.magic.core.image import Image
 from pts.magic.basics.region import Region
 from pts.magic.misc.calibration import CalibrationError
 from pts.magic.misc.extinction import GalacticExtinction
+from pts.core.basics.filter import Filter
+from pts.magic.misc.kernels import AnianoKernels, aniano_names, variable_fwhms
 
 # -----------------------------------------------------------------
 
@@ -30,14 +32,16 @@ from pts.magic.misc.extinction import GalacticExtinction
 parser = argparse.ArgumentParser()
 
 # Basic
-parser.add_argument("image", type=str, nargs='?', help="the name/path of the image for which to run the preparation")
-parser.add_argument("kernel", type=str, help="the name/path of the kernel file for the convolution")
-parser.add_argument("reference", type=str, help="the name/path of the reference image (to which the image is rebinned)")
+parser.add_argument("image", type=str, help="the name/path of the image for which to run the preparation")
+parser.add_argument("convolve_to", type=str, help="the name of the band to convolve the image to")
+parser.add_argument("rebin_to", type=str, nargs='?', help="the name/path of the reference image to which the image is rebinned")
 
 # Advanced options
 parser.add_argument("--sky_annulus_outer", type=float, help="the factor to which the ellipse describing the principal galaxy should be multiplied to represent the outer edge of the sky annulus")
 parser.add_argument("--sky_annulus_inner", type=float, help="the factor to which the ellipse describing the principal galaxy should be multiplied to represent the inner edge of the sky annulus")
 parser.add_argument("--convolution_remote", type=str, help="the name of the remote host to be used for the convolution step")
+parser.add_argument("--sky_region", type=str, help="the name/path of a file with manually selected regions for the sky estimation (not apertures but extended regions of any shape and number) (in sky coordinates!)")
+parser.add_argument("--error_frames", type=parsing.string_list, help="the names of planes in the input image which have to be regarded as error maps (seperated by commas)")
 
 # Input and output
 parser.add_argument("--input", type=str, help="the input path (output of find_sources step)")
@@ -84,11 +88,7 @@ image_path = fs.absolute(arguments.image)
 # Load the image
 image = Image.from_file(image_path)
 
-# Determine the absolute path to the reference image
-arguments.reference = fs.absolute(arguments.reference)
-
-# Determine the absolute path to the convolution kernel
-arguments.kernel = fs.absolute(arguments.kernel)
+# -----------------------------------------------------------------
 
 # Determine the path to the galaxy region
 galaxy_region_path = fs.join(arguments.input, "galaxies.reg")
@@ -123,6 +123,15 @@ galaxy_segments = segments.frames.galaxies
 star_segments = segments.frames.stars
 other_segments = segments.frames.other_sources
 
+# Load the statistics file
+statistics_path = fs.join(arguments.input, "statistics.dat")
+
+# Get the FWHM from the statistics file
+fwhm = None
+with open(statistics_path) as statistics_file:
+    for line in statistics_file:
+        if "FWHM" in line: fwhm = parsing.get_quantity(line.split("FWHM: ")[1].replace("\n", ""))
+
 # -----------------------------------------------------------------
 
 # Get the center coordinate of the frame
@@ -150,6 +159,35 @@ arguments.calibration = CalibrationError.from_filter(image.filter)
 # If visualisation is enabled, set the visualisation path (=output path)
 if arguments.visualise: visualisation_path = arguments.output
 else: visualisation_path = None
+
+# -----------------------------------------------------------------
+
+# Get the filter to which to convolve to
+convolve_to_filter = Filter.from_string(arguments.convolve_to)
+
+# Create an AnianoKernels instance
+kernels = AnianoKernels()
+
+# Get the aniano names for the image filter and the filter to which to convolve
+from_instrument = aniano_names[str(image.filter)]
+to_instrument = aniano_names[str(convolve_to_filter)]
+
+# Give a warning for the user to check the FWHM and the aniano name
+if from_instrument in variable_fwhms: log.warning("The FWHM of this image was found to be " + str(fwhm) + " by the SourceFinder. Please check that this corresponds to the aniano PSF that will be used: " + to_instrument)
+
+# Get the path to the appropriate convolution kernel
+kernel_path = kernels.get_kernel_path(from_instrument, to_instrument)
+
+# Set the kernel path
+arguments.kernel = kernel_path
+
+# -----------------------------------------------------------------
+
+# Determine the absolute path to the reference image
+arguments.rebin_to = fs.absolute(arguments.rebin_to)
+
+# Determine the full path to the sky region file
+if arguments.sky_region is not None: arguments.sky_region = fs.absolute(arguments.sky_region)
 
 # -----------------------------------------------------------------
 

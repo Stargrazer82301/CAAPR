@@ -13,19 +13,16 @@
 from __future__ import absolute_import, division, print_function
 
 # Import standard modules
+import math
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 from textwrap import wrap
 #import seaborn as sns
+import matplotlib.gridspec as gridspec
 
 # Import the relevant PTS classes and modules
 from ..tools.logging import log
-
-# -----------------------------------------------------------------
-
-line_styles = ['-', '--', '-.', ':']
-filled_markers = ['o', 'v', '^', '<', '>', '8', 's', 'p', '*', 'h', 'H', 'D', 'd']
-pretty_colors = ["dodgerblue", "r", "purple", "darkorange", "lawngreen", "yellow", "darkblue", "teal", "darkgreen", "lightcoral", "crimson", "saddlebrown"]
+from ...magic.tools.plotting import line_styles, filled_markers, pretty_colours
 
 # -----------------------------------------------------------------
 
@@ -179,7 +176,7 @@ class DistributionPlotter(object):
         # Create the figure
         self._figure = plt.figure()
 
-        colors = iter(pretty_colors)
+        colors = iter(pretty_colours)
 
         # Plot the distributions
         for label in self.distributions:
@@ -255,6 +252,149 @@ class DistributionPlotter(object):
 
         # Save the figure
         plt.savefig(path, bbox_inches='tight', pad_inches=0.25, format=format, transparent=self.transparent)
+        plt.close()
+
+# -----------------------------------------------------------------
+
+class DistributionGridPlotter(object):
+
+    """
+    This class ...
+    """
+
+    def __init__(self, title=None):
+
+        """
+        The constructor ...
+        """
+
+        # Set the title
+        self.title = title
+
+        # The different distributions
+        self.distributions = OrderedDict()
+        self.extra_distributions = dict()
+
+        # Properties
+        self.format = None
+        self.transparent = False
+        self.ncols = 7
+        self.width = 16
+
+    # -----------------------------------------------------------------
+
+    def add_distribution(self, distribution, label):
+
+        """
+        This function ...
+        :return:
+        """
+
+        if label in self.distributions: self.extra_distributions[label] = distribution
+        else: self.distributions[label] = distribution
+
+    # -----------------------------------------------------------------
+
+    def run(self, path):
+
+        """
+        This function ...
+        :param path:
+        :return:
+        """
+
+        # Make the plot
+        self.plot(path)
+
+    # -----------------------------------------------------------------
+
+    @property
+    def npanels(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return len(self.distributions)
+
+    # -----------------------------------------------------------------
+
+    def plot(self, path):
+
+        """
+        This function ...
+        :parm path:
+        :return:
+        """
+
+        # Determine the necessary number of rows
+        nrows = int(math.ceil(self.npanels / self.ncols))
+
+        ratio = float(nrows) / float(self.ncols)
+        height = ratio * self.width
+
+        # Create the figure
+        self._figure = plt.figure(figsize=(self.width, height))
+
+        self._figure.subplots_adjust(hspace=0.0, wspace=0.0)
+
+
+        gs = gridspec.GridSpec(nrows, self.ncols, wspace=0.0, hspace=0.0)
+
+        # Loop over the distributions
+        counter = 0
+        ax = None
+        for label in self.distributions:
+
+            row = int(counter / self.ncols)
+            col = counter % self.ncols
+
+            subplotspec = gs[row, col]
+
+            ax = plt.subplot(subplotspec)
+
+            distribution = self.distributions[label]
+
+            # Plot the distribution as a histogram
+            ax.bar(distribution.edges[:-1], distribution.counts, linewidth=0, width=distribution.bin_width, alpha=0.5, color=pretty_colours[0])
+
+            if label in self.extra_distributions:
+
+                extra_distribution = self.extra_distributions[label]
+
+                # Plot the distribution as a histogram
+                ax.bar(extra_distribution.edges[:-1], extra_distribution.counts, linewidth=0, width=extra_distribution.bin_width, alpha=0.5, color=pretty_colours[1])
+
+            counter += 1
+
+        # Finish
+        self.finish_plot(path)
+
+    # -----------------------------------------------------------------
+
+    def finish_plot(self, path):
+
+        """
+        This function ...
+        :param path:
+        :return:
+        """
+
+        # Set the title
+        if self.title is not None: self._figure.suptitle("\n".join(wrap(self.title, 60)))
+
+        # plt.tight_layout()
+
+        # Debugging
+        if type(path).__name__ == "BytesIO": log.debug("Saving the distribution plot to a buffer ...")
+        elif path is None: log.debug("Showing the distribution plot ...")
+        else: log.debug("Saving the distribution plot to " + str(path) + " ...")
+
+        if path is not None:
+            # Save the figure
+            plt.savefig(path, bbox_inches='tight', pad_inches=0.25, transparent=self.transparent, format=self.format)
+        else: plt.show()
         plt.close()
 
 # -----------------------------------------------------------------

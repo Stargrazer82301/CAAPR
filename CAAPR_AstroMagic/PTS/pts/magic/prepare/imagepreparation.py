@@ -34,6 +34,7 @@ from ...core.tools import time
 from ..tools import plotting
 from ..animation.imageblink import ImageBlinkAnimation
 from ..animation.sourceextraction import SourceExtractionAnimation
+from ..misc.kernels import rebin_kernel_for_image
 
 # -----------------------------------------------------------------
 
@@ -71,7 +72,7 @@ class ImagePreparer(Configurable):
         self.other_segments = None
 
         # The principal ellipse and saturation region in sky coordinates
-        self.principal_ellipse_sky = None
+        self.principal_shape_sky = None
         self.saturation_region_sky = None
 
         # The path to the directory where the visualisation output should be placed
@@ -92,7 +93,7 @@ class ImagePreparer(Configurable):
         preparer = cls()
 
         # The path to the reference image (for rebinning)
-        preparer.config.rebinning.rebin_to = arguments.reference
+        preparer.config.rebinning.rebin_to = arguments.rebin_to
 
         # The path to the convolution kernel
         preparer.config.convolution.kernel_path = arguments.kernel
@@ -123,6 +124,8 @@ class ImagePreparer(Configurable):
         if arguments.sky_annulus_inner is not None: preparer.config.sky_subtraction.mask.annulus_inner_factor = arguments.sky_annulus_inner
         if arguments.sky_annulus_outer is not None: preparer.config.sky_subtraction.mask.annulus_outer_factor = arguments.sky_annulus_outer
         if arguments.convolution_remote is not None: preparer.config.convolution.remote = arguments.convolution_remote
+        if arguments.sky_region is not None: preparer.config.sky_subtraction.sky_region = arguments.sky_region
+        if arguments.error_frames is not None: preparer.config.error_frame_names = arguments.error_frames
 
         # Return the new instance
         return preparer
@@ -151,31 +154,34 @@ class ImagePreparer(Configurable):
         # 2. Extract stars and galaxies from the image
         if self.config.extract_sources: self.extract_sources()
 
-        # 3. If requested, correct for galactic extinction
+        # 3. If requested, calculate the poisson noise
+        if self.config.calculate_poisson_noise: self.calculate_poisson_noise()
+
+        # 4. If requested, correct for galactic extinction
         if self.config.correct_for_extinction: self.correct_for_extinction()
 
-        # 4. If requested, convert the unit
+        # 5. If requested, convert the unit
         if self.config.convert_unit: self.convert_unit()
 
-        # 5. If requested, convolve
+        # 6. If requested, convolve
         if self.config.convolve: self.convolve()
 
-        # 6. If requested, rebin
+        # 7. If requested, rebin
         if self.config.rebin: self.rebin()
 
-        # 7. If requested, subtract the sky
+        # 8. If requested, subtract the sky
         if self.config.subtract_sky: self.subtract_sky()
 
-        # 8. Calculate the calibration uncertainties
+        # 9. Calculate the calibration uncertainties
         if self.config.calculate_calibration_uncertainties: self.calculate_calibration_uncertainties()
 
-        # 9. If requested, set the uncertainties
+        # 10. If requested, set the uncertainties
         if self.config.set_uncertainties: self.set_uncertainties()
 
-        # 10. If requested, crop to a smaller coordinate grid
+        # 11. If requested, crop to a smaller coordinate grid
         if self.config.crop: self.crop()
 
-        # 11. Save the result
+        # 12. Save the result
         self.save_result()
 
     # -----------------------------------------------------------------
@@ -235,96 +241,6 @@ class ImagePreparer(Configurable):
 
     # -----------------------------------------------------------------
 
-    def calculate_calibration_uncertainties(self):
-
-        """
-        This function ...
-        :return:
-        """
-
-        # Inform the user
-        log.info("Calculating the calibration uncertainties ...")
-
-        # Add the calibration uncertainty defined in (AB) magnitude
-        if self.config.uncertainties.calibration_error.magnitude:
-
-            # -----------------------------------------------------------------
-
-            # Convert the frame into AB magnitudes
-            invalid = Mask.is_zero_or_less(self.image.frames.primary)
-            ab_frame = unitconversion.jansky_to_ab(self.image.frames.primary)
-            # Set infinites to zero
-            ab_frame[invalid] = 0.0
-
-            # -----------------------------------------------------------------
-
-            # The calibration uncertainty in AB magnitude
-            mag_error = self.config.uncertainties.calibration_error.value
-
-            # a = image[mag] - mag_error
-            a = ab_frame - mag_error
-
-            # b = image[mag] + mag_error
-            b = ab_frame + mag_error
-
-            # Convert a and b to Jy
-            a = unitconversion.ab_mag_zero_point.to("Jy").value * np.power(10.0, -2./5.*a)
-            b = unitconversion.ab_mag_zero_point.to("Jy").value * np.power(10.0, -2./5.*b)
-
-            # c = a[Jy] - image[Jy]
-            #c = a - jansky_frame
-            c = a - self.image.frames.primary
-
-            # d = image[Jy] - b[Jy]
-            #d = jansky_frame - b
-            d = self.image.frames.primary - b
-
-            # ----------------------------------------------------------------- BELOW: if frame was not already in Jy
-
-            # Calibration errors = max(c, d)
-            #calibration_errors = np.maximum(c, d)  # element-wise maxima
-            #calibration_errors[invalid] = 0.0 # set zero where AB magnitude could not be calculated
-
-            #relative_calibration_errors = calibration_errors / jansky_frame
-            #relative_calibration_errors[invalid] = 0.0
-
-            # Check that there are no infinities or nans in the result
-            #assert not np.any(np.isinf(relative_calibration_errors)) and not np.any(np.isnan(relative_calibration_errors))
-
-            # The actual calibration errors in the same unit as the data
-            #calibration_frame = self.image.frames.primary * relative_calibration_errors
-
-            # -----------------------------------------------------------------
-
-            calibration_frame = np.maximum(c, d) # element-wise maxima
-            calibration_frame[invalid] = 0.0 # set zero where AB magnitude could not be calculated
-
-            new_invalid = Mask.is_nan(calibration_frame) + Mask.is_inf(calibration_frame)
-            calibration_frame[new_invalid] = 0.0
-
-            # Check that there are no infinities or nans in the result
-            assert not np.any(np.isinf(calibration_frame)) and not np.any(np.isnan(calibration_frame))
-
-            # -----------------------------------------------------------------
-
-        # The calibration uncertainty is expressed in a percentage (from the flux values)
-        elif self.config.uncertainties.calibration_error.percentage:
-
-            # Calculate calibration errors with percentage
-            fraction = self.config.uncertainties.calibration_error.value * 0.01
-            calibration_frame = self.image.frames.primary * fraction
-
-        # Unrecognized calibration error (not a magnitude, not a percentage)
-        else: raise ValueError("Unrecognized calibration error")
-
-        # Add the calibration frame
-        self.image.add_frame(calibration_frame, "calibration_errors")
-
-        # Inform the user
-        log.success("Calibration uncertainties calculated")
-
-    # -----------------------------------------------------------------
-
     def extract_sources(self):
 
         """
@@ -373,8 +289,8 @@ class ImagePreparer(Configurable):
         # Add the sources mask to the image
         self.image.add_mask(self.extractor.mask, "sources")
 
-        # Get the principal ellipse in sky coordinates
-        self.principal_ellipse_sky = self.extractor.principal_ellipse.to_sky(self.image.wcs)
+        # Get the principal shape in sky coordinates
+        self.principal_shape_sky = self.extractor.principal_shape.to_sky(self.image.wcs)
 
         # Get the saturation region in sky coordinates
         self.saturation_region_sky = self.saturation_region.to_sky(self.image.wcs) if self.saturation_region is not None else None
@@ -384,6 +300,18 @@ class ImagePreparer(Configurable):
 
         # Inform the user
         log.success("Sources extracted")
+
+    # -----------------------------------------------------------------
+
+    def calculate_poisson_noise(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Calculating the poisson noise on the image pixels ... (but not really)")
 
     # -----------------------------------------------------------------
 
@@ -465,34 +393,32 @@ class ImagePreparer(Configurable):
 
         else: animation = None
 
+        # Open the kernel frame
+        kernel = Frame.from_file(self.config.convolution.kernel_path)
+
+        # Set the kernel FWHM
+        if kernel.fwhm is None and self.config.convolution.kernel_fwhm is not None: kernel.fwhm = self.config.convolution.kernel_fwhm
+        if kernel.fwhm is None: raise RuntimeError("Kernel must either have its FWHM defined in the header or the kernel FWHM must be specified as a configuration option for the ImagePreparer")
+
+        # Rebin the kernel
+        kernel = rebin_kernel_for_image(kernel, self.image)
+
+        # Save the kernel frame for manual inspection
+        if self.config.write_steps:
+            kernel_path = self.full_output_path("kernel.fits")
+            kernel.save(kernel_path)
+
         # Check whether the convolution has to be performed remotely
         if self.config.convolution.remote is not None:
 
             # Inform the user
             log.info("Convolution will be performed remotely on host '" + self.config.convolution.remote + "' ...")
 
-            # Check whether the FWHM of the kernel is defined
-            kernel = Frame.from_file(self.config.convolution.kernel_path)
-            if kernel.fwhm is not None:
-                kernel_fwhm = kernel.fwhm
-            elif self.config.convolution.kernel_fwhm is not None:
-                kernel_fwhm = self.config.convolution.kernel_fwhm
-            else: raise RuntimeError("Kernel must either have its FWHM defined in the header or the kernel FWHM must be specified as a configuration option for the ImagePreparer")
-
             # Perform the remote convolution
-            special.remote_convolution(self.image, self.config.convolution.kernel_path, kernel_fwhm, self.config.convolution.remote)
+            special.remote_convolution(self.image, kernel, self.config.convolution.remote)
 
-        # The convolution is performed locally
-        else:
-
-            # Open the kernel frame
-            kernel = Frame.from_file(self.config.convolution.kernel_path)
-
-            # Set the kernel FWHM
-            if kernel.fwhm is None and self.config.convolution.kernel_fwhm is not None: kernel.fwhm = self.config.convolution.kernel_fwhm
-
-            # Convolve the image (the primary and errors frame)
-            self.image.convolve(kernel, allow_huge=True)
+        # The convolution is performed locally. # Convolve the image (the primary and errors frame)
+        else: self.image.convolve(kernel, allow_huge=True)
 
         # Save convolved frame
         if self.config.write_steps: self.write_intermediate_result("convolved.fits")
@@ -566,7 +492,12 @@ class ImagePreparer(Configurable):
             skysubtractor_animation = None
 
         # Convert the principal ellipse in sky coordinates into pixel coordinates
-        principal_ellipse = self.principal_ellipse_sky.to_pixel(self.image.wcs)
+        principal_shape = self.principal_shape_sky.to_pixel(self.image.wcs)
+
+        from ..basics.region import Region
+        test_reg = Region()
+        test_reg.append(principal_shape)
+        test_reg.save("testreg.reg")
 
         # Convert the saturation region in sky coordinates into pixel coordinates
         if self.saturation_region_sky is not None:
@@ -582,7 +513,7 @@ class ImagePreparer(Configurable):
         elif "padded" in self.image.masks: extra_mask = self.image.masks.padded # just use padded mask
 
         # Run the sky subtractor
-        self.sky_subtractor.run(self.image.frames.primary, principal_ellipse, self.image.masks.sources, extra_mask, saturation_region, skysubtractor_animation)
+        self.sky_subtractor.run(self.image.frames.primary, principal_shape, self.image.masks.sources, extra_mask, saturation_region, skysubtractor_animation)
 
         # Add the sky frame to the image
         self.image.add_frame(self.sky_subtractor.sky_frame, "sky")
@@ -590,15 +521,18 @@ class ImagePreparer(Configurable):
         # Add the mask that is used for the sky estimation
         self.image.add_mask(self.sky_subtractor.mask, "sky")
 
+        # Add the sky noise frame
+        self.image.add_frame(self.sky_subtractor.noise_frame, "sky_errors")
+
         # Write intermediate result if requested
         if self.config.write_steps: self.write_intermediate_result("sky_subtracted.fits")
 
         # Write sky annuli maps if requested
         if self.config.write_sky_annuli:
 
-            # Write the annulus region
-            annulus_path = fs.join(self.config.sky_annuli_path, "annulus.reg")
-            self.sky_subtractor.annulus_region.save(annulus_path)
+            # Write the sky region
+            region_path = fs.join(self.config.sky_annuli_path, "sky.reg")
+            self.sky_subtractor.region.save(region_path)
 
             # Write the apertures frame
             apertures_frame_path = fs.join(self.config.sky_annuli_path, "apertures.fits")
@@ -635,6 +569,96 @@ class ImagePreparer(Configurable):
 
     # -----------------------------------------------------------------
 
+    def calculate_calibration_uncertainties(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Calculating the calibration uncertainties ...")
+
+        # Add the calibration uncertainty defined in (AB) magnitude
+        if self.config.uncertainties.calibration_error.magnitude:
+
+            # -----------------------------------------------------------------
+
+            # Convert the frame into AB magnitudes
+            invalid = Mask.is_zero_or_less(self.image.frames.primary)
+            ab_frame = unitconversion.jansky_to_ab(self.image.frames.primary)
+            # Set infinites to zero
+            ab_frame[invalid] = 0.0
+
+            # -----------------------------------------------------------------
+
+            # The calibration uncertainty in AB magnitude
+            mag_error = self.config.uncertainties.calibration_error.value
+
+            # a = image[mag] - mag_error
+            a = ab_frame - mag_error
+
+            # b = image[mag] + mag_error
+            b = ab_frame + mag_error
+
+            # Convert a and b to Jy
+            a = unitconversion.ab_mag_zero_point.to("Jy").value * np.power(10.0, -2. / 5. * a)
+            b = unitconversion.ab_mag_zero_point.to("Jy").value * np.power(10.0, -2. / 5. * b)
+
+            # c = a[Jy] - image[Jy]
+            # c = a - jansky_frame
+            c = a - self.image.frames.primary
+
+            # d = image[Jy] - b[Jy]
+            # d = jansky_frame - b
+            d = self.image.frames.primary - b
+
+            # ----------------------------------------------------------------- BELOW: if frame was not already in Jy
+
+            # Calibration errors = max(c, d)
+            # calibration_errors = np.maximum(c, d)  # element-wise maxima
+            # calibration_errors[invalid] = 0.0 # set zero where AB magnitude could not be calculated
+
+            # relative_calibration_errors = calibration_errors / jansky_frame
+            # relative_calibration_errors[invalid] = 0.0
+
+            # Check that there are no infinities or nans in the result
+            # assert not np.any(np.isinf(relative_calibration_errors)) and not np.any(np.isnan(relative_calibration_errors))
+
+            # The actual calibration errors in the same unit as the data
+            # calibration_frame = self.image.frames.primary * relative_calibration_errors
+
+            # -----------------------------------------------------------------
+
+            calibration_frame = np.maximum(c, d)  # element-wise maxima
+            calibration_frame[invalid] = 0.0  # set zero where AB magnitude could not be calculated
+
+            new_invalid = Mask.is_nan(calibration_frame) + Mask.is_inf(calibration_frame)
+            calibration_frame[new_invalid] = 0.0
+
+            # Check that there are no infinities or nans in the result
+            assert not np.any(np.isinf(calibration_frame)) and not np.any(np.isnan(calibration_frame))
+
+            # -----------------------------------------------------------------
+
+        # The calibration uncertainty is expressed in a percentage (from the flux values)
+        elif self.config.uncertainties.calibration_error.percentage:
+
+            # Calculate calibration errors with percentage
+            fraction = self.config.uncertainties.calibration_error.value * 0.01
+            calibration_frame = self.image.frames.primary * fraction
+
+        # Unrecognized calibration error (not a magnitude, not a percentage)
+        else: raise ValueError("Unrecognized calibration error")
+
+        # Add the calibration frame
+        self.image.add_frame(calibration_frame, "calibration_errors")
+
+        # Inform the user
+        log.success("Calibration uncertainties calculated")
+
+    # -----------------------------------------------------------------
+
     def set_uncertainties(self):
 
         """
@@ -645,11 +669,25 @@ class ImagePreparer(Configurable):
         # Inform the user
         log.info("Calculating the uncertainties ...")
 
-        # Add all the errors quadratically: existing error map + large scale variations + pixel to pixel noise + calibration error
-        #if "errors" in self.image.frames: self.image.frames.errors = np.sqrt(self.image.frames.errors**2 + self.sky_subtractor.noise**2 + self.image.frames.calibration_errors**2)
+        # Create a list to contain (the squares of) all the individual error contributions so that we can sum these arrays element-wise later
+        squared_error_maps = []
 
-        # Calculate the total error map
-        errors = np.sqrt(self.sky_subtractor.noise**2 + self.image.frames.calibration_errors**2)
+        # Add the Poisson errors
+        if "poisson_errors" in self.image.frames: squared_error_maps.append(self.image.frames.poisson_errors**2)
+
+        # Add the sky errors
+        squared_error_maps.append(self.sky_subtractor.noise_frame**2)
+
+        # Add the calibration errors
+        squared_error_maps.append(self.image.frames.calibration_errors**2)
+
+        # Add additional error frames indicated by the user
+        for error_frame_name in self.config.error_frame_names: squared_error_maps.append(self.image.frames[error_frame_name]**2)
+
+        # Calculate the final error map
+        errors = Frame(np.sqrt(np.sum(squared_error_maps, axis=0)))
+
+        # Add the combined errors frame
         self.image.add_frame(errors, "errors")
 
         # Inform the user

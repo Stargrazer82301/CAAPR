@@ -5,8 +5,8 @@
 # **       © Astronomical Observatory, Ghent University          **
 # *****************************************************************
 
-## \package pts.core.extract.progress Contains the ProgressExtractor class, used for extracting simulation progress
-#  from a simulation's log files.
+## \package pts.core.extract.progress Contains the ProgressTable class and the the ProgressExtractor class.
+# The latter class is used for extracting simulation progress from a simulation's log files into a ProgressTable object.
 
 # -----------------------------------------------------------------
 
@@ -15,7 +15,85 @@ from __future__ import absolute_import, division, print_function
 
 # Import astronomical modules
 from astropy.table import Table
-from astropy.io import ascii
+
+# -----------------------------------------------------------------
+
+class ProgressTable(Table):
+
+    """
+    This function ...
+    """
+
+    def __init__(self, process_list, phase_list, seconds_list, progress_list):
+
+        """
+        The constructor ...
+        :param process_list:
+        :param phase_list:
+        :param seconds_list:
+        :param progress_list:
+        """
+
+        names = ["Process rank", "Simulation phase", "Time", "Progress"]
+        data = [process_list, phase_list, seconds_list, progress_list]
+
+        # Call the constructor of the base class
+        super(ProgressTable, self).__init__(data, names=names, masked=True)
+
+        # Set the column units
+        self["Time"].unit = "s"
+        self["Progress"].unit = "%"
+
+        # The path to the table file
+        self.path = None
+
+    # -----------------------------------------------------------------
+
+    @classmethod
+    def from_file(cls, path):
+
+        """
+        This function ...
+        :param path:
+        :return:
+        """
+
+        # Open the table
+        table = super(ProgressTable, cls).read(path, format="ascii.ecsv")
+
+        # Set the path
+        table.path = path
+
+        # Return the table
+        return table
+
+    # -----------------------------------------------------------------
+
+    def save(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Save to the current path
+        self.saveto(self.path)
+
+    # -----------------------------------------------------------------
+
+    def saveto(self, path):
+
+        """
+        This function ...
+        :param path:
+        :return:
+        """
+
+        # Write the table in ECSV format
+        self.write(path, format="ascii.ecsv")
+
+        # Set the path
+        self.path = path
 
 # -----------------------------------------------------------------
 
@@ -40,26 +118,6 @@ class ProgressExtractor(object):
 
     # -----------------------------------------------------------------
 
-    @classmethod
-    def open_table(cls, filepath):
-
-        """
-        This function ...
-        :param filepath:
-        :return:
-        """
-
-        # Create a new ProgressExtractor instance
-        extractor = cls()
-
-        # Set the table attribute
-        extractor.table = ascii.read(filepath)
-
-        # Return the new ProgressExtractor instance
-        return extractor
-
-    # -----------------------------------------------------------------
-
     def run(self, simulation, output_path=None):
 
         """
@@ -78,6 +136,9 @@ class ProgressExtractor(object):
 
         # Write the results
         if output_path is not None: self.write(output_path)
+
+        # Return the progress table
+        return self.table
 
     # -----------------------------------------------------------------
 
@@ -292,14 +353,8 @@ class ProgressExtractor(object):
                         # Add 100% progress to the list
                         progress_list.append(100.0)
 
-        # Create the table data structures
-        names = ["Process rank", "Simulation phase", "Time", "Progress"]
-        data = [process_list, phase_list, seconds_list, progress_list]
-
-        # Create the table
-        self.table = Table(data, names=names, masked=True)
-        self.table["Time"].unit = "s"
-        self.table["Progress"].unit = "%"
+        # Create the progress table
+        self.table = ProgressTable(process_list, phase_list, seconds_list, process_list)
 
     # -----------------------------------------------------------------
 
@@ -311,7 +366,7 @@ class ProgressExtractor(object):
         """
 
         # Write the table to file
-        self.table.write(output_path, format="ascii.commented_header")
+        self.table.saveto(output_path)
 
     # -----------------------------------------------------------------
 

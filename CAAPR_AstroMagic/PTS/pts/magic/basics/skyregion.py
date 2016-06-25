@@ -184,8 +184,8 @@ class SkyRegion(list):
                 for i in range(number_of_points):
 
                     # Create a new SkyCoordinate object
-                    ra = shape.coord_list[0]
-                    dec = shape.coord_list[1]
+                    ra = shape.coord_list[2*i]
+                    dec = shape.coord_list[2*i + 1]
                     coordinate = SkyCoordinate(ra=ra, dec=dec, unit="deg", frame=coord_format)
 
                     # Add the coordinate to the polygon
@@ -212,7 +212,7 @@ class SkyRegion(list):
         """
 
         # Check whether the shape is in sky coordinates
-        if not shape.__class__.__name__.startswith("Sky"): raise ValueError("Shape must be SkyCoordinate, SkyLine, SkyCircle, SkyEllipse or SkyRectangle")
+        if not shape.__class__.__name__.startswith("Sky"): raise ValueError("Shape must be SkyCoordinate, SkyLine, SkyCircle, SkyEllipse, SkyRectangle, SkyPolygon or SkyComposite")
 
         # Otherwise, add the shape
         super(SkyRegion, self).append(shape)
@@ -301,8 +301,11 @@ class SkyRegion(list):
         # Initialize the region string
         print("# Region file format: DS9 version 4.1", file=f)
 
+        # Write the coordinate system
+        print("fk5\n", file=f)
+
         # Loop over all shapes, get string and print it to the region file
-        for shape in self: print(shape.to_region_string(), file=f)
+        for shape in self: print(shape.to_region_string(coordinate_system=False), file=f)
 
         # Close the file
         f.close()

@@ -24,6 +24,8 @@ from astropy.visualization.mpl_normalize import ImageNormalize
 # Import the relevant PTS classes and modules
 from ...core.basics.animation import Animation
 from ..tools import plotting
+from ..basics.geometry import Ellipse
+from ..basics.mask import Mask
 
 # -----------------------------------------------------------------
 
@@ -49,8 +51,8 @@ class SourceExtractionAnimation(Animation):
         self.fps = 1 # 1 frame per second because the frames are very distinct
 
         # Have to be set
-        self.principal_ellipse = None
-        self.mask = None
+        self.principal_shape = None
+        self.mask = Mask.empty_like(self.frame)
 
     # -----------------------------------------------------------------
 
@@ -81,10 +83,12 @@ class SourceExtractionAnimation(Animation):
                           facecolor="none", lw=5)
         ax.add_patch(r)
 
-        ell = plt_Ellipse((self.principal_ellipse.center.x, self.principal_ellipse.center.y),
-                          2.0 * self.principal_ellipse.radius.x, 2.0 * self.principal_ellipse.radius.y,
-                          self.principal_ellipse.angle.to("deg").value, edgecolor="red", facecolor="none", lw=5)
-        ax.add_patch(ell)
+        if isinstance(self.principal_shape, Ellipse):
+
+            ell = plt_Ellipse((self.principal_shape.center.x, self.principal_shape.center.y),
+                              2.0 * self.principal_shape.radius.x, 2.0 * self.principal_shape.radius.y,
+                              self.principal_shape.angle.to("deg").value, edgecolor="red", facecolor="none", lw=5)
+            ax.add_patch(ell)
 
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
@@ -115,6 +119,9 @@ class SourceExtractionAnimation(Animation):
 
         # Add the third subplot
         ax = fig.add_subplot(2, 3, 3)
+
+        # Adapt the mask
+        self.mask[source.y_slice, source.x_slice] += source.mask
 
         # Plot the mask
         # ax.imshow(self.mask[new_ymin:new_ymax, new_xmin:new_xmax], origin="lower", cmap='Greys')

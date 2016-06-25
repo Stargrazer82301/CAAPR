@@ -81,7 +81,7 @@ class ParameterExplorer(FittingComponent):
         super(ParameterExplorer, self).setup()
 
         # Get the names of the filters for which we have photometry
-        self.filter_names = self.get_filter_names()
+        self.filter_names = self.get_observed_filter_names()
 
         # Set options for the BatchLauncher: basic options
         self.launcher.config.shared_input = True  # The input directories for the different simulations are shared
@@ -94,9 +94,9 @@ class ParameterExplorer(FittingComponent):
         self.launcher.config.analysis.plotting.path = self.fit_plot_path # The base directory where all of the simulations will have a seperate directory with the plotting analysis output
         self.launcher.config.analysis.extraction.timeline = True # extract the simulation timeline
         self.launcher.config.analysis.plotting.seds = True  # Plot the output SEDs
-        #self.launcher.config.analysis.plotting.reference_sed = fs.join(self.phot_path, "fluxes.dat") # the path to the reference SED (for plotting the simulated SED against the reference points)
-        self.launcher.config.analysis.plotting.reference_sed = fs.join(self.data_path, "fluxes.dat") # the path to the DustPedia SED
-        self.launcher.config.analysis.misc.fluxes = True  # Calculate observed fluxes
+        self.launcher.config.analysis.plotting.reference_sed = self.observed_sed_path # the path to the reference SED (for plotting the simulated SED against the reference points)
+        #self.launcher.config.analysis.plotting.reference_sed = self.observed_sed_dustpedia_path # the path to the DustPedia SED
+        #self.launcher.config.analysis.misc.fluxes = True  # Calculate observed fluxes
         #self.launcher.config.analysis.misc.images = True  # Make observed images
         self.launcher.config.analysis.misc.observation_filters = self.filter_names  # The filters for which to create the observations
         self.launcher.config.analysis.plotting.format = "png" # plot in PNG format so that an animation can be made from the fit SEDs
@@ -352,7 +352,7 @@ class ParameterExplorer(FittingComponent):
         analysis_options.plotting.timeline = True
         analysis_options.plotting.memory = True
         analysis_options.plotting.seds = True
-        analysis_options.plotting.reference_sed = fs.join(self.phot_path, "fluxes.dat")
+        analysis_options.plotting.reference_sed = self.observed_sed_path
 
         # Set the paths to the for each image (except for the SPIRE images)
         kernel_paths = dict()

@@ -16,6 +16,7 @@ from __future__ import absolute_import, division, print_function
 from ...core.basics.configurable import Configurable
 from ...core.tools import inspection, tables
 from ...core.tools import filesystem as fs
+from ..core.sed import ObservedSED
 
 # -----------------------------------------------------------------
 
@@ -58,6 +59,10 @@ class ModelingComponent(Configurable):
 
         # Reference image
         self.reference_image = "Pacs red"
+
+        # The path to the observed SEDs
+        self.observed_sed_path = None
+        self.observed_sed_dustpedia_path = None
 
     # -----------------------------------------------------------------
 
@@ -104,25 +109,45 @@ class ModelingComponent(Configurable):
         # Exit with an error
         else: raise ValueError("The current working directory is not a radiative transfer modeling directory (the data directory is missing)")
 
+        # Set the path to the observed SED
+        self.observed_sed_path = fs.join(self.phot_path, "fluxes.dat")
+
+        # Set the path to the DustPedia observed SED
+        self.observed_sed_dustpedia_path = fs.join(self.data_path, "fluxes.dat")
+
     # -----------------------------------------------------------------
 
-    def get_filter_names(self):
+    def get_observed_sed(self):
 
         """
         This function ...
         :return:
         """
 
-        filter_names = []
-        fluxes_table_path = fs.join(self.phot_path, "fluxes.dat")
-        fluxes_table = tables.from_file(fluxes_table_path, format="ascii.ecsv")
-        # Loop over the entries in the fluxes table, get the filter
-        for entry in fluxes_table:
+        return ObservedSED.from_file(self.observed_sed_path)
 
-            # Get the filter
-            filter_id = entry["Instrument"] + "_" + entry["Band"]
-            filter_names.append(filter_id)
+    # -----------------------------------------------------------------
 
-        return filter_names
+    def get_observed_filters(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        sed = self.get_observed_sed()
+        return sed.filters()
+
+    # -----------------------------------------------------------------
+
+    def get_observed_filter_names(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        filters = self.get_observed_filters()
+        return [str(fltr) for fltr in filters]
 
 # -----------------------------------------------------------------

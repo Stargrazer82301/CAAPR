@@ -60,6 +60,9 @@ class Source(object):
         self.peak = peak
         self.shape = shape
 
+        self.special = False
+        self.contamination = None
+
         # The elliptical contour
         self.contour = Ellipse(self.center, self.radius, self.angle)
 
@@ -464,8 +467,14 @@ class Source(object):
 
             no_clip_mask = None
 
+        if self.contamination is not None:
+            mask = mask + self.contamination
+            if no_clip_mask is not None: no_clip_mask = no_clip_mask + self.contamination
+
         # Perform the interpolation
-        self.background = self.cutout.interpolated(mask, method, no_clip_mask=no_clip_mask)
+        self.background = self.cutout.interpolated(mask, method, no_clip_mask=no_clip_mask, plot=self.special)
+
+        if self.special: self.plot(title="background estimated")
 
     # -----------------------------------------------------------------
 
@@ -489,17 +498,19 @@ class Source(object):
             #print(self.mask)
 
             # Calculate threshold for segmentation
-            try:
-                mean, median, stddev = statistics.sigma_clipped_statistics(box, mask=self.mask)
-                threshold = mean + stddev * sigma_level
-            except TypeError:
+            #try:
+            mean, median, stddev = statistics.sigma_clipped_statistics(box, mask=self.mask)
+            threshold = mean + stddev * sigma_level
+            #except TypeError:
 
-                print(box)
-                print(self.mask)
+                #print(box)
+                #print(self.mask)
 
-                print("not_nan=", np.sum(np.logical_not(np.isnan(box))))
+                #plotting.plot_box(box)
+                #plotting.plot_box(self.mask)
 
-                exit()
+                #print("not_nan=", np.sum(np.logical_not(np.isnan(box))))
+                #exit()
 
         else:
 

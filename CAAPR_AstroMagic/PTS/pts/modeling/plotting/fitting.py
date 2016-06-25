@@ -97,7 +97,7 @@ class FittingPlotter(PlottingComponent):
 
     # -----------------------------------------------------------------
 
-    def run(self):
+    def run(self, features=None):
 
         """
         This function ...
@@ -224,11 +224,8 @@ class FittingPlotter(PlottingComponent):
         # Inform the user
         log.info("Loading the transmission curves for the observation filters ...")
 
-        # Determine the path to the fluxes table
-        fluxes_path = fs.join(self.phot_path, "fluxes.dat")
-
         # Load the observed SED
-        sed = ObservedSED.from_file(fluxes_path)
+        sed = ObservedSED.from_file(self.observed_sed_path)
         for fltr in sed.filters():
 
             # Create the transmission curve
@@ -360,11 +357,8 @@ class FittingPlotter(PlottingComponent):
         # Inform the user
         log.info("Loading the observed SED ...")
 
-        # Determine the path to the observed SED
-        observed_sed_path = fs.join(self.phot_path, "fluxes.dat")
-
         # Load the observed SED
-        self.observed_sed = ObservedSED.from_file(observed_sed_path)
+        self.observed_sed = ObservedSED.from_file(self.observed_sed_path)
 
     # -----------------------------------------------------------------
 

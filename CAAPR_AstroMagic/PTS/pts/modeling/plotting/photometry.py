@@ -45,7 +45,7 @@ class PhotometryPlotter(PlottingComponent):
 
     # -----------------------------------------------------------------
 
-    def run(self):
+    def run(self, features=None):
 
         """
         This function ...
@@ -77,12 +77,10 @@ class PhotometryPlotter(PlottingComponent):
         log.info("Loading the SEDs ...")
 
         # Load the 'DustPedia' observed SED
-        dustpedia_path = fs.join(self.data_path, "fluxes.dat")
-        dustpedia_sed = ObservedSED.from_file(dustpedia_path)
+        dustpedia_sed = ObservedSED.from_file(self.observed_sed_dustpedia_path)
 
         # Load the PTS observed SED
-        pts_sed_path = fs.join(self.phot_path, "fluxes.dat")
-        pts_sed = ObservedSED.from_file(pts_sed_path)
+        pts_sed = ObservedSED.from_file(self.observed_sed_path)
 
         # Add the SEDs
         self.seds["DustPedia"] = dustpedia_sed

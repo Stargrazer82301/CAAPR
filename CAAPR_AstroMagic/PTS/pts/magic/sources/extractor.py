@@ -20,7 +20,7 @@ from astropy.utils import lazyproperty
 
 # Import the relevant PTS classes and modules
 from ..basics.mask import Mask
-from ..basics.geometry import Ellipse
+from ..basics.geometry import Ellipse, Coordinate
 from ..core.source import Source
 from ...core.tools.logging import log
 from ...core.basics.configurable import Configurable
@@ -69,6 +69,9 @@ class SourceExtractor(Configurable):
         # The animation
         self.animation = None
 
+        # Special mask
+        self.special_mask = None
+
         # Segmentation maps
         self.galaxy_segments = None
         self.star_segments = None
@@ -99,7 +102,7 @@ class SourceExtractor(Configurable):
 
     # -----------------------------------------------------------------
 
-    def run(self, frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments, animation=None):
+    def run(self, frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments, animation=None, special_region=None):
 
         """
         This function ...
@@ -116,24 +119,30 @@ class SourceExtractor(Configurable):
         """
 
         # 1. Call the setup function
-        self.setup(frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments, animation)
+        self.setup(frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments, animation, special_region)
 
         # 2. Load the sources
         self.load_sources()
 
-        # 3. Remove the sources
+        # 3. Create the mask of all sources to be removed
+        self.create_mask()
+
+        # 3. For each source, check the pixels in the background that belong to an other source
+        self.set_cross_contamination()
+
+        # 4. Remove the sources
         self.remove_sources()
 
-        # 4. Fix extreme values that showed up during the interpolation steps
+        # 5. Fix extreme values that showed up during the interpolation steps
         self.fix_extreme_values()
 
-        # 4. Set nans back into the frame
+        # 6. Set nans back into the frame
         self.set_nans()
 
     # -----------------------------------------------------------------
 
     def setup(self, frame, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments,
-              other_segments, animation=None):
+              other_segments, animation=None, special_region=None):
 
         """
         This function ...
@@ -146,6 +155,7 @@ class SourceExtractor(Configurable):
         :param star_segments:
         :param other_segments:
         :param animation:
+        :param special_region:
         :return:
         """
 
@@ -176,6 +186,9 @@ class SourceExtractor(Configurable):
 
         # Make a reference to the animation
         self.animation = animation
+
+        # Create mask from special region
+        self.special_mask = Mask.from_region(special_region, self.frame.xsize, self.frame.ysize) if special_region is not None else None
 
     # -----------------------------------------------------------------
 
@@ -224,8 +237,13 @@ class SourceExtractor(Configurable):
 
             if label == 3 or (label == 2 and self.config.remove_companions):
 
-                # Create a source and add it to the list
+                # Create a source
                 source = Source.from_shape(self.frame, shape, self.config.source_outer_factor)
+
+                # Check whether it is a 'special' source
+                source.special = self.special_mask.masks(center) if self.special_mask is not None else False
+
+                # Add the source to the list
                 self.sources.append(source)
 
     # -----------------------------------------------------------------
@@ -286,15 +304,26 @@ class SourceExtractor(Configurable):
                         # Break the loop
                         break
 
+            # Check whether the star is a 'special' region
+            special = self.special_mask.masks(shape.center) if self.special_mask is not None else False
+
             if saturation_source is not None:
+
+                # Set special
+                saturation_source.special = special
 
                 # Add the saturation source
                 self.sources.append(saturation_source)
 
             else:
 
-                # Create a new source from the shape and add it
+                # Create a new source from the shape
                 source = Source.from_shape(self.frame, shape, self.config.source_outer_factor)
+
+                # Set special
+                source.special = special
+
+                # Add it to the list
                 self.sources.append(source)
 
     # -----------------------------------------------------------------
@@ -330,8 +359,64 @@ class SourceExtractor(Configurable):
                 # Create a source
                 source = Source.from_shape(self.frame, shape, self.config.source_outer_factor)
 
+            # Check whether source is 'special'
+            source.special = self.special_mask.masks(shape.center) if self.special_mask is not None else False
+
             # Add the source to the list
             self.sources.append(source)
+
+    # -----------------------------------------------------------------
+
+    def create_mask(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("Creating the mask of all sources to be removed ...")
+
+        # Loop over all sources
+        #for source in self.sources:
+        index = 0
+        while index < len(self.sources):
+
+            # Get the current source
+            source = self.sources[index]
+
+            # If these pixels are already masked by an overlapping source (e.g. saturation), remove this source,
+            # otherwise the area will be messed up
+            current_mask_cutout = self.mask[source.y_slice, source.x_slice]
+            if current_mask_cutout.covers(source.mask):
+                self.sources.pop(index)
+                continue
+
+            # Adapt the mask
+            self.mask[source.y_slice, source.x_slice] += source.mask
+
+            # Increment the index
+            index += 1
+
+    # -----------------------------------------------------------------
+
+    def set_cross_contamination(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Inform the user
+        log.info("For each source, checking which pixels in the neighborhood are contaminated by other sources ...")
+
+        # Loop over all sources
+        for source in self.sources:
+
+            # Create the contamination mask for this source
+            other_sources_mask = Mask.empty_like(source.cutout)
+            other_sources_mask[source.background_mask] = self.mask[source.y_slice, source.x_slice][source.background_mask]
+            source.contamination = other_sources_mask
 
     # -----------------------------------------------------------------
 
@@ -348,10 +433,8 @@ class SourceExtractor(Configurable):
         nsources = len(self.sources)
         count = 0
 
-        # Set principal ellipse and mask for the animation
-        if self.animation is not None:
-            self.animation.principal_ellipse = self.principal_ellipse
-            self.animation.mask = self.mask
+        # Set principal ellipse for the source extraction animation
+        if self.animation is not None: self.animation.principal_shape = self.principal_shape
 
         # Loop over all sources and remove them from the frame
         for source in self.sources:
@@ -367,6 +450,17 @@ class SourceExtractor(Configurable):
             # Disable sigma-clipping for estimating background when the source is foreground to the principal galaxy (to avoid clipping the galaxy's gradient)
             sigma_clip = self.config.sigma_clip if not foreground else False
 
+            # Debugging
+            log.debug("Sigma-clipping enabled for estimating background gradient for this source" if sigma_clip else "Sigma-clipping disabled for estimating background gradient for this source")
+
+            # If these pixels are already replaced by an overlapping source (e.g. saturation), skip this source,
+            # otherwise the area will be messed up
+            #current_mask_cutout = self.mask[source.y_slice, source.x_slice]
+            #if current_mask_cutout.covers(source.mask):
+            #    count += 1
+            #    continue
+            ## ==> this is now also done in create_mask
+
             # Estimate the background
             try:
                 source.estimate_background(self.config.interpolation_method, sigma_clip=sigma_clip)
@@ -375,15 +469,8 @@ class SourceExtractor(Configurable):
                 count += 1
                 continue
 
-            # If these pixels are already replaced by an overlapping source (e.g. saturation), skip this source,
-            # otherwise the area will be messed up
-            current_mask_cutout = self.mask[source.y_slice, source.x_slice]
-            if current_mask_cutout.covers(source.mask):
-                count += 1
-                continue
-
             # Adapt the mask
-            self.mask[source.y_slice, source.x_slice] += source.mask
+            #self.mask[source.y_slice, source.x_slice] += source.mask # this is now done beforehand, in the create_mask function
 
             # Add frame to the animation
             if self.animation is not None and (self.principal_mask is None or self.principal_mask.masks(source.center)) and self.animation.nframes <= 20:
@@ -433,7 +520,7 @@ class SourceExtractor(Configurable):
     # -----------------------------------------------------------------
 
     @lazyproperty
-    def principal_ellipse(self):
+    def principal_shape(self):
 
         """
         This function ...
@@ -447,14 +534,17 @@ class SourceExtractor(Configurable):
         # Loop over all the shapes in the galaxy region
         for shape in self.galaxy_region:
 
-            # Skip shapes that are not ellipses
-            if not isinstance(shape, Ellipse): continue
+            # Skip single coordinates
+            if isinstance(shape, Coordinate): continue
+
+            if "principal" in shape.meta["text"]: return shape
+
+            if not isinstance(shape, Ellipse): return shape
 
             major_axis_length = shape.major
-
             if largest_shape is None or major_axis_length > largest_shape.major: largest_shape = shape
 
-        # Return the largest shape in the galaxy region
+        # Return the largest shape
         return largest_shape
 
     # -----------------------------------------------------------------
@@ -467,7 +557,7 @@ class SourceExtractor(Configurable):
         :return:
         """
 
-        if self.principal_ellipse is None: return None
-        return self.principal_ellipse.to_mask(self.frame.xsize, self.frame.ysize)
+        if self.principal_shape is None: return None
+        return self.principal_shape.to_mask(self.frame.xsize, self.frame.ysize)
 
 # -----------------------------------------------------------------
