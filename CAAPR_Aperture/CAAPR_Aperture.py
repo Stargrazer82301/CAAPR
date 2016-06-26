@@ -428,8 +428,8 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
     if cont_semimaj_arcsec<source_dict['fitting_min_semimaj_arcsec']:
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Fitted aperture is smaller than minimum permitted aperture size; reverting to minimum permitted aperture size.'
         cont_semimaj_arcsec = source_dict['fitting_min_semimaj_arcsec']
-        """cont_axial_ratio = 1.0
-        cont_angle = 0.0"""
+        cont_axial_ratio = 1.0
+        cont_angle = 0.0
 
     # Clean garbage and return results
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Final ellipse semi-major axis: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_semimaj_arcsec,4))+' arcsec; final ellipse angle: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_angle,4))+' '+' degrees; final ellipse axial ratio: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_axial_ratio,4))+'.'

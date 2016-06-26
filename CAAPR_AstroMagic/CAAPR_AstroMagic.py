@@ -38,7 +38,7 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
         return pod
     if band_dict['remove_stars']!=True:
         return pod
-    if band_dict['band_name'] in source_dict['remove_stars_bands_exclude'].split(';'):
+    if band_dict['band_name'] in str(source_dict['remove_stars_bands_exclude']).split(';'):
         print '['+pod['id']+'] User explicitly excluded current band from star subtraction for this source.'
         return pod
     if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
