@@ -12,45 +12,52 @@
 # Ensure Python 3 compatibility
 from __future__ import absolute_import, division, print_function
 
-# Import standard modules
-import argparse
-
 # Import the relevant PTS classes and modules
 from pts.modeling.maps.mapmaking import MapMaker
 from pts.core.tools import logging, time
 from pts.core.tools import filesystem as fs
+from pts.core.basics.configuration import Configuration
 
 # -----------------------------------------------------------------
 
-# Create the command-line parser
-parser = argparse.ArgumentParser()
+# Create the configuration
+config = Configuration()
 
-# Basic options
-parser.add_argument("--map", type=str, help="the map to be made (dust, old, NIY, IY)")
+# Add optional settings
+config.add_optional("map", str, "the map to be made (dust, old, NIY, IY)")
 
-# Logging options
-parser.add_argument("--debug", action="store_true", help="enable debug logging mode")
-parser.add_argument("--report", action='store_true', help='write a report file')
+config.add_section("cutoff")
+config.sections["cutoff"].add_optional("reference_path", str, "...", None)
+config.sections["cutoff"].add_optional("level", float, "cutoff when signal < level * uncertainty (ilse: 5)", 3.0)
+config.sections["cutoff"].add_optional("remove_holes", bool, "remove holes from the cutoff mask", True)
 
-# Configuration
-parser.add_argument("--config", type=str, help="the name of a configuration file")
+config.add_section("dust")
+config.sections["dust"].add_section("ssfr")
+config.sections["dust"].sections["ssfr"].add_optional("mask_low_fuv_snr", bool, "...", True)
+config.sections["dust"].sections["ssfr"].add_optional("fuv_snr_level", float, "cut-off when signal(FUV) < fuv_snr_level * uncertainty(FUV)  (Ilse: 10.0)", 0.0)
 
-# Parse the command line arguments
-arguments = parser.parse_args()
+config.add_section("old_stars")
+config.sections["old_stars"].add_optional("irac_snr_level", float, "cut-off when signal(IRAC) < irac_snr_level * uncertainty(IRAC) (Ilse: 10.0)", 0.0)
 
-# -----------------------------------------------------------------
+config.add_section("ionizing_stars")
+config.sections["ionizing_stars"].add_section("mips_young_stars")
+config.sections["ionizing_stars"].sections["mips_young_stars"].add_optional("mips_snr_level", float, "cut-off when signal(MIPS) < mips_snr_level * uncertainty(MIPS)  (Ilse: 10.0)", 0.0)
+config.sections["ionizing_stars"].add_optional("ha_snr_level", float, "cut-off ionizing stars map when signal(Ha) < ha_snr_level * uncertainty(Ha) (Ilse: 10.0)", 0.0)
+config.sections["ionizing_stars"].add_optional("mips_snr_level", float, "cut-off ionizing stars map when signal(24 micron) < mips_snr_level * uncertainty(24 micron) (Ilse: 10.0)", 0.0)
 
-# Set the modeling path and the log path
-arguments.path = fs.cwd()
-log_path = fs.join(arguments.path, "log")
+config.add_section("non_ionizing_stars")
+config.sections["non_ionizing_stars"].add_optional("fuv_snr_level", float, "cut-off when signal(FUV) < fuv_snr_level * uncertainty(FUV) (Ilse: 10.0)", 0.0)
+
+# Read the configuration settings from the provided command-line arguments
+config.read()
 
 # -----------------------------------------------------------------
 
 # Determine the log file path
-logfile_path = fs.join(log_path, time.unique_name("log") + ".txt") if arguments.report else None
+logfile_path = fs.join(fs.cwd(), "log", time.unique_name("log") + ".txt") if config.arguments.report else None
 
 # Determine the log level
-level = "DEBUG" if arguments.debug else "INFO"
+level = "DEBUG" if config.arguments.debug else "INFO"
 
 # Initialize the logger
 log = logging.setup_log(level=level, path=logfile_path)
@@ -59,7 +66,7 @@ log.start("Starting make_maps ...")
 # -----------------------------------------------------------------
 
 # Create a MapMaker object
-maker = MapMaker.from_arguments(arguments)
+maker = MapMaker(config.get_settings())
 
 # Run the map maker
 maker.run()
