@@ -10,6 +10,7 @@ import shutil
 import pts
 import pdb
 import pickle
+import time as pytime
 import astropy.io.fits
 import astropy.wcs
 from astropy.units import Unit
@@ -293,8 +294,10 @@ def OverlargeStars(pod, sat_path, star_path, gal_path, image, source_dict, band_
                 break
     if gal_found:
         gal_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(gal_region.coord_list[2:4]), np.max(gal_region.coord_list[2:4])/np.min(gal_region.coord_list[2:4]), gal_region.coord_list[4], gal_region.coord_list[0], gal_region.coord_list[1])
+        gal_area = np.pi * np.max(gal_region.coord_list[2:4]) * np.min(gal_region.coord_list[2:4])
     else:
         gal_mask = np.zeros(image.shape)
+        gal_area = 0
     #gal_mask_sum = np.sum(gal_mask)
 
     # Loop back over the saturation regions, not keeping those that aren't being retained, or which wholly encompass target galaxy
@@ -302,16 +305,23 @@ def OverlargeStars(pod, sat_path, star_path, gal_path, image, source_dict, band_
     sat_regions_out = pyregion.ShapeList([])
     for sat_region in sat_regions:
 
-        # Check that saturation region doesn't wholly emcompass target galaxy
-        sat_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(sat_region.coord_list[2:4]), np.max(sat_region.coord_list[2:4])/np.min(sat_region.coord_list[2:4]), sat_region.coord_list[4], sat_region.coord_list[0], sat_region.coord_list[1])
-        check_mask = gal_mask + sat_mask
-        if np.where(check_mask==2)[0].shape[0]>int(np.nansum(gal_mask)):
-            sat_indices_bad.append( float(sat_region.attr[1]['text']) )
-            continue
+        # As an ititial test, check that the saturation region is smaller than the target galaxy's region
+        sat_area = np.pi * np.max(sat_region.coord_list[2:4]) * np.min(sat_region.coord_list[2:4])
+        if sat_area < gal_area:
+            if int(sat_region.attr[1]['text']) in sat_indices_out:
+                sat_regions_out.append(sat_region)
 
-        # Record regions that pass all criteria
-        elif int(sat_region.attr[1]['text']) in sat_indices_out:
-            sat_regions_out.append(sat_region)
+        # Check that saturation region doesn't wholly emcompass target galaxy
+        else:
+            sat_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(sat_region.coord_list[2:4]), np.max(sat_region.coord_list[2:4])/np.min(sat_region.coord_list[2:4]), sat_region.coord_list[4], sat_region.coord_list[0], sat_region.coord_list[1])
+            check_mask = gal_mask + sat_mask
+            if np.where(check_mask==2)[0].shape[0]>int(np.nansum(gal_mask)):
+                sat_indices_bad.append( float(sat_region.attr[1]['text']) )
+                continue
+
+            # Record regions that pass all criteria
+            elif int(sat_region.attr[1]['text']) in sat_indices_out:
+                sat_regions_out.append(sat_region)
 
     # Now read in and loop over the star region file
     star_regions = pyregion.open(star_path)
