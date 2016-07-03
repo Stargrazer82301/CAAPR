@@ -306,7 +306,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
         ds_request = 1
 
     # Standard downsampling target is for aperture diameter to correspod to 200 pixels
-    ds_target = int( np.round( float(adj_semimaj_pix) ) / 100.0 )
+    ds_target = int( np.round( float(adj_semimaj_pix) ) / 50.0 )
     ds_factor = max([ ds_request, ds_target ])
 
     # If mini-apertures are being used, ensure downsampling isn't agressive
@@ -742,29 +742,34 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
 
 
 
-    # Read in PSF, and establish pixel size
-    psf_in, psf_header = astropy.io.fits.getdata(band_dict['beam_correction'], header=True)
-    psf_wcs = astropy.wcs.WCS(psf_header)
-    psf_cdelt = psf_wcs.wcs.cdelt.max()
-    psf_cdelt_arcsec = abs( psf_cdelt * 3600.0 )
+    # If no PSF given, assume Airy disc; else extract PSF from provided file
+    if str(band_dict['beam_correction'])!='True':
+        psf = astropy.convolution.kernels.AiryDisk2DKernel(pod['beam_pix']).array
+    else:
 
-    # If PSF pixel size is different to map pixel size, rescale PSF accordingly
-    if (pod['pix_arcsec']/psf_cdelt_arcsec)>1.001 or (pod['pix_arcsec']/psf_cdelt_arcsec)<0.999:
+        # Read in PSF, and establish pixel size
+        psf_in, psf_header = astropy.io.fits.getdata(band_dict['beam_correction'], header=True)
+        psf_wcs = astropy.wcs.WCS(psf_header)
+        psf_cdelt = psf_wcs.wcs.cdelt.max()
+        psf_cdelt_arcsec = abs( psf_cdelt * 3600.0 )
 
-        # 'Trim' the edges of the input PSF until the rescaled PSF has odd dimensions
-        psf_even = True
-        while psf_even:
-            zoom_factor = float(psf_cdelt_arcsec) / float(pod['pix_arcsec'])
-            psf = scipy.ndimage.zoom(psf_in, (zoom_factor,zoom_factor), mode='nearest')
-            if (psf.shape[0]%2!=0) and (psf.shape[1]%2!=0):
-                psf_even = False
-            else:
-                psf_in = psf_in[1:,1:]
-                psf_in = psf_in[:-1,:-1]
+        # If PSF pixel size is different to map pixel size, rescale PSF accordingly
+        if (pod['pix_arcsec']/psf_cdelt_arcsec)>1.001 or (pod['pix_arcsec']/psf_cdelt_arcsec)<0.999:
 
-    # Else, if pixel sizes are already the same, leave as-is
-    elif ((pod['pix_arcsec']/psf_cdelt_arcsec)>=0.999) and ((pod['pix_arcsec']/psf_cdelt_arcsec)<=0.001):
-        psf = psf_in.copy()
+            # 'Trim' the edges of the input PSF until the rescaled PSF has odd dimensions
+            psf_even = True
+            while psf_even:
+                zoom_factor = float(psf_cdelt_arcsec) / float(pod['pix_arcsec'])
+                psf = scipy.ndimage.zoom(psf_in, (zoom_factor,zoom_factor), mode='nearest')
+                if (psf.shape[0]%2!=0) and (psf.shape[1]%2!=0):
+                    psf_even = False
+                else:
+                    psf_in = psf_in[1:,1:]
+                    psf_in = psf_in[:-1,:-1]
+
+        # Else, if pixel sizes are already the same, leave as-is
+        elif ((pod['pix_arcsec']/psf_cdelt_arcsec)>=0.999) and ((pod['pix_arcsec']/psf_cdelt_arcsec)<=0.001):
+            psf = psf_in.copy()
 
 
 
