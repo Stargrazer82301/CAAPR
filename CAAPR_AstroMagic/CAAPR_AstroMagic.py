@@ -298,18 +298,31 @@ def OverlargeStars(pod, sat_path, star_path, gal_path, image, source_dict, band_
     else:
         gal_mask = np.zeros(image.shape)
         gal_area = 0
-    #gal_mask_sum = np.sum(gal_mask)
 
-    # Loop back over the saturation regions, not keeping those that aren't being retained, or which wholly encompass target galaxy
+    # Loop back over the saturation regions, not keeping those that aren't being retained, or which wholly encompass target galaxy, or are too lose to galaxy centre
     sat_indices_bad = []
     sat_regions_out = pyregion.ShapeList([])
+    principal_dist_beam_thresh = 5.0
     for sat_region in sat_regions:
 
-        # As an ititial test, check that the saturation region is smaller than the target galaxy's region
+        # Remove saturation regions that are located too close to centre of principal galaxy
+        principal_dist = np.sqrt( (gal_region.coord_list[0]-sat_region.coord_list[0])**2.0 + (gal_region.coord_list[1]-sat_region.coord_list[1])**2.0 )
+        if principal_dist<=((band_dict['beam_arcsec']/pod['pix_arcsec'])*principal_dist_beam_thresh):
+            sat_indices_bad.append( float(sat_region.attr[1]['text']) )
+            continue
+
+        # Remove saturation regions that encompass centre of principal galaxy
+        i_dist = gal_region.coord_list[0] - sat_region.coord_list[0]
+        j_dist = gal_region.coord_list[1] - sat_region.coord_list[1]
+        if (i_dist**2.0+j_dist**2.0)<=(np.min(gal_region.coord_list[2:4]))**2.0:
+            sat_indices_bad.append( float(sat_region.attr[1]['text']) )
+            continue
+
+        # As an ititial test, check that the saturation region is smaller than the target galaxy's region, and that it's not too close to the galaxy centre
         sat_area = np.pi * np.max(sat_region.coord_list[2:4]) * np.min(sat_region.coord_list[2:4])
-        if sat_area < gal_area:
-            if int(sat_region.attr[1]['text']) in sat_indices_out:
-                sat_regions_out.append(sat_region)
+        if (sat_area<gal_area) and (int(sat_region.attr[1]['text']) in sat_indices_out):
+            sat_regions_out.append(sat_region)
+            continue
 
         # Check that saturation region doesn't wholly emcompass target galaxy
         else:
@@ -335,7 +348,7 @@ def OverlargeStars(pod, sat_path, star_path, gal_path, image, source_dict, band_
 
         # Remove stars that are located too close to centre of principal galaxy
         principal_dist = np.sqrt( (gal_region.coord_list[0]-star_region.coord_list[0])**2.0 + (gal_region.coord_list[1]-star_region.coord_list[1])**2.0 )
-        if principal_dist<=((band_dict['beam_arcsec']/pod['pix_arcsec'])*6.0):
+        if principal_dist<=((band_dict['beam_arcsec']/pod['pix_arcsec'])*principal_dist_beam_thresh):
             continue
 
         # If star has passed all criteria, record it to output
