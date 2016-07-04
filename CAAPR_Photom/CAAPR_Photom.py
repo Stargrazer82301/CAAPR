@@ -366,7 +366,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
 
 
     # Define how many random aperture are desired/required/permitted
-    sky_success_target = 100
+    sky_success_target = 50
     sky_success_min = 20
     sky_gen_max = 100
 
@@ -875,7 +875,7 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
 
 
     # Apply aperture correction to pod, and return
-    if kwargs_dict['verbose']: print '['+pod['id']+'] Applying aperture correction factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_correction,4))+'.'
+    if kwargs_dict['verbose']: print '['+pod['id']+'] Applying aperture correction factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_correction,5))+'.'
     pod['ap_sum'] *= ap_correction
     return pod
 
