@@ -43,6 +43,8 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         if bands_dict[band]['make_cutout']=='False':
             bands_dict[band]['make_cutout']=False
 
+
+
         # Now check if cutouts are necessary; if so, produce them
         if bands_dict[band]['make_cutout']==True:
             raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
@@ -51,10 +53,14 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
                 bands_dict[band]['band_dir'] = bands_dict[band]['band_dir_original']
             band_cutout_dir = CAAPR_IO.Cutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
 
-            # Update current row of bands table to reflect the path of the freshly-made cutout
-            if band_cutout_dir!=None:
-                bands_dict[band]['band_dir_original'] = bands_dict[band]['band_dir']
-                bands_dict[band]['band_dir'] = band_cutout_dir
+        # Otherwise, check if it is possible to trim padding of no-coverage from edge of map
+        elif bands_dict[band]['make_cutout']==False:
+            band_cutout_dir = CAAPR_IO.UnpaddingCutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
+
+        # Update current row of bands table to reflect the path of the freshly-made cutout
+        if band_cutout_dir!=None:
+            bands_dict[band]['band_dir_original'] = bands_dict[band]['band_dir']
+            bands_dict[band]['band_dir'] = band_cutout_dir
 
 
 

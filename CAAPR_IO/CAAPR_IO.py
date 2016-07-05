@@ -130,8 +130,6 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
         print '['+source_id+'] Assuming no data in this band for current source.'
         return in_fitspath
-    if in_fitspath!=None:
-        print '['+source_id+'] Creating cutout with '+str(band_dict['make_cutout'])+' arcsec diameter.'
 
         # If error maps are being used, construct this path also
         if band_dict['use_error_map']==True:
@@ -180,6 +178,106 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         # Return the directory of the newly-created cutout
         out_fitsdir = os.path.split(out_fitspath)[0]
         return out_fitsdir
+
+
+
+
+
+# Function that determines if there is unncessary 'padding' around the coverage region of a map, that can be removed
+def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
+    source_id = source_dict['name']+'_'+band_dict['band_name']
+
+    # Determine whether the user is specificing a directroy full of FITS files in this band (in which case use standardised filename format), or just a single FITS file
+    if os.path.isdir(band_dict['band_dir']):
+        in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
+    elif os.path.isfile(band_dict['band_dir']):
+        in_fitspath = os.path.join( band_dict['band_dir'] )
+
+    # Make sure appropriate cutout sub-directories exist in temp directory
+    if not os.path.exists( os.path.join( temp_dir_path, 'Cutouts' ) ):
+        os.mkdir( os.path.join( temp_dir_path, 'Cutouts' ) )
+    if not os.path.exists( os.path.join( temp_dir_path, 'Cutouts', source_dict['name'] ) ):
+        os.mkdir( os.path.join( temp_dir_path, 'Cutouts', source_dict['name'] ) )
+
+    # Work out whether the file extension is .fits or .fits.gz
+    if os.path.exists(in_fitspath+'.fits'):
+        in_fitspath = in_fitspath+'.fits'
+    elif os.path.exists(in_fitspath+'.fits.gz'):
+        in_fitspath = in_fitspath+'.fits.gz'
+    else:
+        in_fitspath = None
+        print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
+        print '['+source_id+'] Assuming no data in this band for current source.'
+        return in_fitspath
+
+    # If error maps are being used, construct this path also
+    if band_dict['use_error_map']==True:
+        in_fitspath_error = in_fitspath.replace('.fits','_Error.fits')
+        if os.path.exists(in_fitspath_error):
+            pass
+        elif os.path.exists(in_fitspath_error+'.gz'):
+            in_fitspath_error = in_fitspath_error+'.gz'
+        else:
+            raise ValueError('No appropriately-named error file found in target directroy (please ensure that error filesnames are in \"[NAME]_[BAND]_Error.fits\" format.')
+
+    # Load in map and extract WCS
+    in_fits, in_header = astropy.io.fits.getdata(in_fitspath, header=True)
+    in_wcs = astropy.wcs.WCS(in_header)
+
+    # Measure size of padding borders
+    in_borders = np.where( np.isnan( in_fits )==False )
+    x_min_border = np.min(in_borders[1])
+    x_max_border = in_fits.shape[1] - np.max(in_borders[1]) - 1
+    y_min_border = np.min(in_borders[0])
+    y_max_border = in_fits.shape[0] - np.max(in_borders[0]) - 1
+
+    # Decide if it's worth removing the padding; if not, just return False output
+    if ((x_min_border+x_max_border)<(0.1*in_fits.shape[1])) and ((y_min_border+y_max_border)<(0.1*in_fits.shape[0])):
+        return None
+
+    # Slice smaller map out of original map
+    out_fits = in_fits.copy()
+    out_fits = out_fits[y_min_border:,:]
+    out_fits = out_fits[:,x_min_border:]
+    out_fits = out_fits[:-y_max_border,:]
+    out_fits = out_fits[:,:-x_max_border]
+
+    # Update header WCS to reflect changes
+    out_wcs = astropy.wcs.WCS(naxis=2)
+    out_wcs.wcs.crpix = [in_wcs.wcs.crpix[0]-x_min_border, in_wcs.wcs.crpix[1]-y_min_border]
+    out_wcs.wcs.cdelt = in_wcs.wcs.cdelt
+    out_wcs.wcs.crval = in_wcs.wcs.crval
+    out_wcs.wcs.ctype = in_wcs.wcs.ctype
+    out_header = out_wcs.to_header()
+
+    # Save cutout to file
+    out_fitspath = os.path.join( temp_dir_path, 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
+    out_cutout_hdu = astropy.io.fits.PrimaryHDU(data=out_fits, header=out_header)
+    out_cutout_hdulist = astropy.io.fits.HDUList([out_cutout_hdu])
+    out_cutout_hdulist.writeto(out_fitspath, clobber=True)
+
+    # Repeat process for error map, if necessary
+    if band_dict['use_error_map']==True:
+
+        # Load in error map and extract WCS
+        in_fits_error = astropy.io.fits.getdata(in_fitspath_error)
+
+        # Slice smaller map out of original map
+        out_fits_error = in_fits_error.copy()
+        out_fits_error = out_fits_error[y_min_border:,:]
+        out_fits_error = out_fits_error[:,x_min_border:]
+        out_fits_error = out_fits_error[:-y_max_border,:]
+        out_fits_error = out_fits_error[:,:-x_max_border]
+
+        # Save cutout to file
+        out_fitspath_error = os.path.join( temp_dir_path, 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
+        out_cutout_hdu_error = astropy.io.fits.PrimaryHDU(data=out_fits_error, header=out_header)
+        out_cutout_hdulist_error = astropy.io.fits.HDUList([out_cutout_hdu_error])
+        out_cutout_hdulist_error.writeto(out_fitspath_error, clobber=True)
+
+    # Return the directory of the newly-created cutout
+    out_fitsdir = os.path.split(out_fitspath)[0]
+    return out_fitsdir
 
 
 
