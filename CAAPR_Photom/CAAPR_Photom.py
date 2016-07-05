@@ -164,8 +164,6 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
             # Attempt to determine aperture noise the preferred way, using full-size randomly-placed apertures
-            if int(band_dict['downsample_factor'])>1:
-                if kwargs_dict['verbose']: print '['+source_id+'] Aperture noise will be estimated on copy of map downsampled by factor of '+str(int(band_dict['downsample_factor']))+', to improve speed.'
             if kwargs_dict['verbose']: print '['+source_id+'] Estimating aperture noise using full-size randomly-placed sky apertures.'
             CAAPR_IO.MemCheck(pod)
             ap_noise_dict = ApNoise(pod['cutout'].copy(), source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], downsample=int(band_dict['downsample_factor']))
@@ -199,8 +197,6 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
             pod['ap_error'] = ( pod['ap_noise']**2.0 + calib_err**2.0 )**0.5
             if np.isnan(pod['ap_noise'])==True:
                 pod['ap_error'] = -1.0 * pod['ap_sum'] * band_dict['calib_error']
-            if np.isnan(pod['ap_sum'])==False:
-                if pod['verbose']:print '['+pod['id']+'] Final source flux and uncertainty is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_sum'],4))+' +/- '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_error'],4))+' (in map units).'
 
 
 
@@ -217,6 +213,8 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
         # Now return final photometry informaton to main pipeline, and clean up garbage
+        if np.isnan(pod['ap_sum'])==False:
+            if pod['verbose']:print '['+pod['id']+'] Final source flux and uncertainty is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_sum'],4))+' +/- '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_error'],4))+' (in map units).'
         output_dict = {'band_name':band_dict['band_name'],
                        'ap_sum':pod['ap_sum'],
                        'ap_error':pod['ap_error']}
@@ -306,12 +304,12 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
         ds_request = 1
 
     # Standard downsampling target is for aperture diameter to correspod to 200 pixels
-    ds_target = int( np.round( float(adj_semimaj_pix) ) / 50.0 )
+    ds_target = int( np.round( float(adj_semimaj_pix) ) / 100.0 )
     ds_factor = max([ ds_request, ds_target ])
 
-    # If mini-apertures are being used, ensure downsampling isn't agressive
-    if downsample!=False:
-        ds_mini = int( np.round( float(mini) ) / 2.0 )
+    # If mini-apertures are being used, ensure downsampling isn't agressive (ie, apertures would be sub-Nyquist sampled)
+    if mini!=False:
+        ds_mini = int( np.round( float(mini-1.0) ) / 2.355 )
         if ds_mini>=2:
             ds_factor = min([ ds_factor, ds_mini ])
         else:
@@ -354,7 +352,6 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
     # Creating mask maps to describe no-go regions
     if ap_debug: print 'Setup: Creating mask maps'
     prior_mask = np.zeros(cutout.shape)
-    #ChrisFuncs.Cutout(prior_mask, '/home/saruman/spx7cjc/DustPedia/Prior.fits')
     exclude_mask = ChrisFuncs.Photom.EllipseMask(cutout, adj_semimaj_pix_full, adj_axial_ratio, adj_angle, centre_i, centre_j)
     flag_mask = np.zeros(cutout.shape)
     attempt_mask = np.zeros(cutout.shape)
@@ -648,7 +645,6 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
     min_ap_rad_pix_output = np.array(min_ap_rad_pix_output)
     mini_ap_noise_output = np.array(mini_ap_noise_output)
     mini_ap_num_output = np.array(mini_ap_num_output).astype(float)
-    #ChrisFuncs.Cutout(mini_ap_noise_dict['prior_mask'], '/home/saruman/spx7cjc/DustPedia/Prior.fits')
 
 
 
@@ -774,6 +770,7 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
 
 
     # Normalise PSF
+    psf -= np.nanmin(psf)
     psf /= np.nansum(psf)
 
     # Background-subtract cutout
@@ -850,34 +847,49 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
 
 
 
-    # Evaluate pixels in source aperture in convolved sersic map
-    if float(band_dict['subpixel_factor'])==1.0:
-        conv_ap_calc = ChrisFuncs.Photom.EllipseSum(conv_map, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
-    elif float(band_dict['subpixel_factor'])>1.0:
-        conv_ap_calc = ChrisFuncs.Photom.EllipseSumUpscale(conv_map, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], upscale=band_dict['subpixel_factor'])
-
-    # Evaluate pixels in background annulus in convolved sersic map
+    # Determine annulus properties before proceeding with photometry
     bg_inner_semimaj_pix = pod['adj_semimaj_pix'] * band_dict['annulus_inner']
     bg_width = (pod['adj_semimaj_pix'] * band_dict['annulus_outer']) - bg_inner_semimaj_pix
+
+    # Evaluate pixels in source aperture and background annulus  unconvoled sersic map
     if float(band_dict['subpixel_factor'])==1.0:
+        sersic_ap_calc = ChrisFuncs.Photom.EllipseSum(sersic_map, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
+        sersic_bg_calc = ChrisFuncs.Photom.AnnulusSum(sersic_map, bg_inner_semimaj_pix, bg_width, pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
+
+    elif float(band_dict['subpixel_factor'])>1.0:
+        sersic_ap_calc = ChrisFuncs.Photom.EllipseSumUpscale(sersic_map, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], upscale=band_dict['subpixel_factor'])
+        sersic_bg_calc = ChrisFuncs.Photom.AnnulusSumUpscale(sersic_map, bg_inner_semimaj_pix, bg_width, pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], upscale=band_dict['subpixel_factor'])
+
+    # Background-subtract and measure unconvoled sersic source flux
+    sersic_bg_clip = ChrisFuncs.SigmaClip(sersic_bg_calc[2], median=False, sigma_thresh=3.0)
+    sersic_bg_avg = sersic_bg_clip[1] * float(band_dict['subpixel_factor'])**2.0
+    sersic_ap_sum = sersic_ap_calc[0] - (sersic_ap_calc[1] * sersic_bg_avg)
+
+    # Evaluate pixels in source aperture and background annulus in convolved sersic map
+    if float(band_dict['subpixel_factor'])==1.0:
+        conv_ap_calc = ChrisFuncs.Photom.EllipseSum(conv_map, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
         conv_bg_calc = ChrisFuncs.Photom.AnnulusSum(conv_map, bg_inner_semimaj_pix, bg_width, pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
     elif float(band_dict['subpixel_factor'])>1.0:
+        conv_ap_calc = ChrisFuncs.Photom.EllipseSumUpscale(conv_map, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], upscale=band_dict['subpixel_factor'])
         conv_bg_calc = ChrisFuncs.Photom.AnnulusSumUpscale(conv_map, bg_inner_semimaj_pix, bg_width, pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], upscale=band_dict['subpixel_factor'])
 
-    # Background-subtract and measure  convolved sersic source flux
+    # Background-subtract and measure convolved sersic source flux
     conv_bg_clip = ChrisFuncs.SigmaClip(conv_bg_calc[2], median=False, sigma_thresh=3.0)
     conv_bg_avg = conv_bg_clip[1] * float(band_dict['subpixel_factor'])**2.0
     conv_ap_sum = conv_ap_calc[0] - (conv_ap_calc[1] * conv_bg_avg)
 
-    # Find difference between total flux ascribed to best-fit underlying sersic model, to flux measured via aperture photometry on the convolved map
-    ap_correction = np.sum(sersic_map) / conv_ap_sum
+
+
+    # Find difference between flux measued on convoled and unconvoled sersic maps
+    ap_correction = sersic_ap_sum / conv_ap_sum
 
 
 
     # Apply aperture correction to pod, and return
     if kwargs_dict['verbose']: print '['+pod['id']+'] Applying aperture correction factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_correction,5))+'.'
     pod['ap_sum'] *= ap_correction
-    return pod
+    pod['ap_error'] *= ap_correction
+    return pod #astropy.io.fits.writeto('/home/saruman/spx7cjc/DustPedia/Conv.fits', conv_map, header=pod['in_header'], clobber=True)
 
 
 
@@ -917,7 +929,7 @@ def Sersic_LMfit(params, pod, cutout, psf, mask, use_fft, lmfit=True): #astropy.
 
     # Return residuals
     if lmfit==True:
-        return residuals
+        return residuals**2.0
     elif lmfit==False:
         return residuals, cutout-conv_map
 
