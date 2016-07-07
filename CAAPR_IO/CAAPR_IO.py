@@ -192,6 +192,8 @@ def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
     elif os.path.isfile(band_dict['band_dir']):
         in_fitspath = os.path.join( band_dict['band_dir'] )
+    else:
+        pdb.set_trace()
 
     # Make sure appropriate cutout sub-directories exist in temp directory
     if not os.path.exists( os.path.join( temp_dir_path, 'Cutouts' ) ):
@@ -428,11 +430,9 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         img_naxis_pix = np.max([img_header['NAXIS1'],img_header['NAXIS1']])
         img_naxis_arcsec = float(img_naxis_pix) * float(img_pix_arcsec)
         img_rad_arcsec = img_naxis_arcsec / 2.0
-        if thumb_rad>img_rad_arcsec:
-            thumb_rad = img_rad_arcsec
 
         # Produce cutouts, and end loop
-        thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, thumb_rad,) )
+        thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad,) )
     thumb_pool.close()
     thumb_pool.join()
 
@@ -645,11 +645,9 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
         img_naxis_pix = np.max([img_header['NAXIS1'],img_header['NAXIS1']])
         img_naxis_arcsec = float(img_naxis_pix) * float(img_pix_arcsec)
         img_rad_arcsec = img_naxis_arcsec / 2.0
-        if thumb_rad>img_rad_arcsec:
-            thumb_rad = img_rad_arcsec
 
         # Produce cutouts, and end loop
-        thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, thumb_rad,) )
+        thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad,) )
     thumb_pool.close()
     thumb_pool.join()
 
@@ -733,10 +731,13 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
 
 
 # Define function for producing an appropriately-sized cutout in current band (with console output disabled), with an equinox header keyword to make APLpy *shut up*
-def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, thumb_rad):
+def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, img_rad_arcsec, thumb_rad):
     img_output = os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_dict['band_name']+'_Thumbnail.fits')
     try:
         sys.stdout = open(os.devnull, "w")
+        if img_rad_arcsec<=thumb_rad:
+            img_margin = thumb_rad - img_rad_arcsec
+            ChrisFuncs.FitsEmbed( img_input, img_margin, exten=0, outfile=img_input )
         ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, outfile=img_output )
         cutout_data, cutout_header = astropy.io.fits.getdata(img_output, header=True)
         del cutout_header['RADESYS']

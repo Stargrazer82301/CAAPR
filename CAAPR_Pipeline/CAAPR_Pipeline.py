@@ -36,30 +36,32 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
 
 
-    # Convert cutout request strings to booleans, as necessary
+    # Loop over bands
     for band in bands_dict.keys():
+
+
+
+        # Parse cutout request, converting string to booleans as necessary
         if bands_dict[band]['make_cutout']=='True':
             bands_dict[band]['make_cutout']=True
         if bands_dict[band]['make_cutout']=='False':
             bands_dict[band]['make_cutout']=False
-
-
 
         # Now check if cutouts are necessary; if so, produce them
         if bands_dict[band]['make_cutout']==True:
             raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
         if bands_dict[band]['make_cutout']>0:
             if 'band_dir_original' in bands_dict[band].keys():
-                bands_dict[band]['band_dir'] = bands_dict[band]['band_dir_original']
+                bands_dict[band]['band_dir'] = bands_dict[band]['band_dir_inviolate']
             band_cutout_dir = CAAPR_IO.Cutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
 
         # Otherwise, check if it is possible to trim padding of no-coverage from edge of map
         elif bands_dict[band]['make_cutout']==False:
             band_cutout_dir = CAAPR_IO.UnpaddingCutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
 
-        # Update current row of bands table to reflect the path of the freshly-made cutout
+        # Update band dictionary entry reflect the path of the freshly-made cutout, if necessary
+        bands_dict[band]['band_dir_inviolate'] = bands_dict[band]['band_dir']
         if band_cutout_dir!=None:
-            bands_dict[band]['band_dir_original'] = bands_dict[band]['band_dir']
             bands_dict[band]['band_dir'] = band_cutout_dir
 
 
@@ -181,13 +183,14 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
 
 
-    # Tidy up temporary files
+    # Tidy up temporary files and paths
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Total time taken for souce: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-source_start,4))+' seconds.'
     if kwargs_dict['thumbnails']==True: [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
     if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name'])):
         shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name']))
     if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic')):
         shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic'))
+    bands_dict[band]['band_dir'] = bands_dict[band]['band_dir_inviolate']
     gc.collect()
 
 

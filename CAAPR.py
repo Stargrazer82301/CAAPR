@@ -62,11 +62,11 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
                    'thumbnails':thumbnails,
                    'verbose':verbose}
 
-    # Read in source table and band table CSVs, and convert into dictionaries
+
+
+    # Read in sources table and bands table, and convert into dictionaries
     sources_dict = CAAPR_IO.SourcesDictFromCSV(sources_table_path)
     bands_dict = CAAPR_IO.BandsDictFromCSV(bands_table_path)
-
-
 
     # Prepare output directory
     if os.path.exists(output_dir_path):
