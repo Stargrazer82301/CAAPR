@@ -739,14 +739,17 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
 
 
     # If no PSF given, assume Airy disc; else extract PSF from provided file
-    if str(band_dict['beam_correction'])!='True':
+    if str(band_dict['beam_correction'])=='True':
         psf = astropy.convolution.kernels.AiryDisk2DKernel(pod['beam_pix']).array
     else:
 
         # Read in PSF, and establish pixel size
         psf_in, psf_header = astropy.io.fits.getdata(band_dict['beam_correction'], header=True)
         psf_wcs = astropy.wcs.WCS(psf_header)
-        psf_cdelt = psf_wcs.wcs.cdelt.max()
+        if psf_wcs.wcs.has_cd():
+            psf_cdelt = psf_wcs.wcs.cd.max()
+        else:
+            psf_cdelt = psf_wcs.wcs.cdelt.max()
         psf_cdelt_arcsec = abs( psf_cdelt * 3600.0 )
 
         # If PSF pixel size is different to map pixel size, rescale PSF accordingly
@@ -770,14 +773,13 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
 
 
     # Normalise PSF
-    psf -= np.nanmin(psf)
     psf /= np.nansum(psf)
 
     # Background-subtract cutout
     cutout = pod['cutout'] - pod['bg_avg']
 
-    # Produce mask for pixels we care about for fitting (ie, are inside photometric aperture)
-    mask = ChrisFuncs.Photom.EllipseMask(cutout, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
+    # Produce mask for pixels we care about for fitting (ie, are inside photometric aperture and background annulus)
+    mask = ChrisFuncs.Photom.EllipseMask(cutout, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j']) #*band_dict['annulus_outer']
 
     # Produce guess values
     initial_sersic_amplitide = cutout[ pod['centre_i'], pod['centre_j'] ]
@@ -819,13 +821,13 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
     params = lmfit.Parameters()
     params.add('sersic_amplitide', value=initial_sersic_amplitide, vary=True)
     params.add('sersic_r_eff', value=initial_sersic_r_eff, vary=True, min=0.0, max=pod['adj_semimaj_pix'])
-    params.add('sersic_n', value=initial_sersic_n, vary=True, min=0.1, max=10)
+    params.add('sersic_n', value=initial_sersic_n, vary=True)#, min=0.1, max=10)
     params.add('sersic_x_0', value=initial_sersic_x_0, vary=False)
     params.add('sersic_y_0', value=initial_sersic_y_0, vary=False)
-    params.add('sersic_ellip', value=initial_sersic_ellip, vary=False)
+    params.add('sersic_ellip', value=initial_sersic_ellip, vary=True)
     params.add('sersic_theta', value=initial_sersic_theta, vary=False)
 
-    # Solve with LMfit to find marameters of best-fit sersic profile
+    # Solve with LMfit to find parameters of best-fit sersic profile
     result = lmfit.minimize(Sersic_LMfit, params, args=(pod, cutout, psf, mask, use_fft), method='leastsq', ftol=1E-5, xtol=1E-5)
 
     # Extract best-fit results
@@ -863,6 +865,7 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
     # Background-subtract and measure unconvoled sersic source flux
     sersic_bg_clip = ChrisFuncs.SigmaClip(sersic_bg_calc[2], median=False, sigma_thresh=3.0)
     sersic_bg_avg = sersic_bg_clip[1] * float(band_dict['subpixel_factor'])**2.0
+    #sersic_bg_avg = np.nanmedian(sersic_bg_calc[2])
     sersic_ap_sum = sersic_ap_calc[0] - (sersic_ap_calc[1] * sersic_bg_avg)
 
     # Evaluate pixels in source aperture and background annulus in convolved sersic map
@@ -876,13 +879,13 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
     # Background-subtract and measure convolved sersic source flux
     conv_bg_clip = ChrisFuncs.SigmaClip(conv_bg_calc[2], median=False, sigma_thresh=3.0)
     conv_bg_avg = conv_bg_clip[1] * float(band_dict['subpixel_factor'])**2.0
+    #conv_bg_avg = np.nanmedian(conv_bg_calc[2])
     conv_ap_sum = conv_ap_calc[0] - (conv_ap_calc[1] * conv_bg_avg)
 
 
 
     # Find difference between flux measued on convoled and unconvoled sersic maps
-    ap_correction = sersic_ap_sum / conv_ap_sum
-
+    ap_correction = np.max([ 1.0, (sersic_ap_sum/conv_ap_sum) ])
 
 
     # Apply aperture correction to pod, and return
