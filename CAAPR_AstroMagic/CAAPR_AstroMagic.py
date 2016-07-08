@@ -85,18 +85,19 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
 
 
-    # If there is a pre-existing pickle jar of AstroMagic outputs, open it; otherwise, commence region and segmentation processing
-    if os.path.exists(pickle_path):
+    # If version of cutout alrady processed by AstroMagic is present, use it; else, commence regular processing
+    if os.path.exists( os.path.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') ):
         if pod['verbose']: print '['+pod['id']+'] AstroMagic accessing pre-processed data for this map.'
-        magic_pickle = pickle.load( open( pickle_path, 'rb' ) )
-        galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments = magic_pickle
+        am_output = astropy.io.fits.getdata( os.path.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') )
+        pod['cutout'] = am_output
+        pod['pre_reg'] = True
+        return pod
     else:
-
-
 
         # The path to the directory where all the output will be placed
         if os.path.exists(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'])):
             shutil.rmtree(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
+            os.mkdir(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
         else:
             os.mkdir(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
 
@@ -121,12 +122,12 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
         # If you don't want to do the 'find_other_sources' step, comment-out the line below
         finder.config.find_other_sources = False # default is True
-        """
+
         # Downsample map for faster run time
         if int(band_dict['downsample_factor'])>1:
             if pod['verbose']: print '['+pod['id']+'] AstroMagic will run on copy of map downsampled by factor of '+str(int(band_dict['downsample_factor']))+', to improve speed.'
             finder.config.downsample_factor = int( band_dict['downsample_factor'] )
-        """
+
         # Run the source finder
         if pod['verbose']: print '['+pod['id']+'] AstroMagic locating online catalogue sources in map.'
         special_region = None # Not important except for debugging
@@ -211,38 +212,28 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
 
 
+        # Create an SourceExtractor instance
+        if pod['verbose']: print '['+pod['id']+'] AstroMagic extracting background sources.'
+        extractor = SourceExtractor()
 
-
-        # Pickle region and segmentation files to be used for photometry stage of pipeline (if required)
-        if kwargs_dict['do_photom']==True:
-            if not os.path.exists(pickle_path):
-                magic_pickle = galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments
-                pickle.dump( magic_pickle, open( pickle_path, 'wb' ) )
-
-
-
-    # Create an SourceExtractor instance
-    if pod['verbose']: print '['+pod['id']+'] AstroMagic extracting background sources.'
-    extractor = SourceExtractor()
-
-    # Run the source extractor
-    extractor.run(image.frames.primary, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments)
+        # Run the source extractor
+        extractor.run(image.frames.primary, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments)
 
 
 
-    # Determine the path to the result
-    result_path = filesystem.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits' )
+        # Determine the path to the result
+        result_path = filesystem.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits' )
 
-    # Save the resulting image as a FITS file
-    image.frames.primary.save(result_path, header=image.original_header)
+        # Save the resulting image as a FITS file
+        image.frames.primary.save(result_path, header=image.original_header)
 
 
 
-    # Grab AstroMagic output and return in pod
-    am_output = astropy.io.fits.getdata( os.path.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') )
-    pod['cutout'] = am_output
-    pod['pre_reg'] = True
-    return pod
+        # Grab AstroMagic output and return in pod
+        am_output = astropy.io.fits.getdata( os.path.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') )
+        pod['cutout'] = am_output
+        pod['pre_reg'] = True
+        return pod
 
 
 
