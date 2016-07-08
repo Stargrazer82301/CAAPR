@@ -15,23 +15,44 @@ from __future__ import absolute_import, division, print_function
 # Import standard modules
 from collections import OrderedDict
 
+#from ...core.basics.indexed import IndexedOrderedDict
+
 # -----------------------------------------------------------------
 
-class Layers(dict):
-#class Layers(OrderedDict):
+class Layers(OrderedDict):
 
     """
-    This class is a wrapper around the dict class, with the additional benefit of being able to access its values
-    with the 'dot' notation. It is a quite genious way of dealing with a set of layers (image frames, masks or regions
-    in this case), with high user-friendliness and easy programming interface.
+    This class ...
     """
+
+    def __setitem__(self, key, value):
+
+        """
+        This function ...
+        :param key:
+        :param value:
+        :return:
+        """
+
+        if not isinstance(key, basestring): raise KeyError("Cannot use a key that is not a string")
+        if " " in key: raise KeyError("Cannot use a key that contains spaces")
+        super(Layers, self).__setitem__(key, value)
+        self.__dict__.update({key: value})
 
     # -----------------------------------------------------------------
 
-    # Use a trick to be able to access attributes of this class by using 'dot' notation ("object.attribute")
-    def __getattr__(self, attr): return self.get(attr, None)
-    __setattr__= dict.__setitem__   # Set an item of the dictionary
-    __delattr__= dict.__delitem__   # Delete an item from the dictionary
+    def __getitem__(self, key):
+
+        """
+        This function ...
+        :param key:
+        :return:
+        """
+
+        if isinstance(key, int):
+            if key >= len(self): raise IndexError("layer index out of range")
+            key = self.keys()[key]
+        return super(Layers, self).__getitem__(key)
 
     # -----------------------------------------------------------------
 

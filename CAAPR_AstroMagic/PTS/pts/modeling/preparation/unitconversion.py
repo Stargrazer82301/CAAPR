@@ -20,7 +20,7 @@ from astropy import units as u
 from astropy import constants
 
 # Import the relevant PTS classes and modules
-from ...core.basics.configurable import Configurable
+from ...core.basics.configurable import OldConfigurable
 from ...core.tools import tables
 from ...core.tools.logging import log
 
@@ -270,7 +270,7 @@ names = ["Band", "b", "Zero-flux magnitude", "m"]
 
 # -----------------------------------------------------------------
 
-class UnitConverter(Configurable):
+class UnitConverter(OldConfigurable):
     
     """
     This class...
@@ -480,7 +480,7 @@ class UnitConverter(Configurable):
         self.conversion_factor *= 1e-6
 
         # Conversion from MJy (per pixel2) to MJy / sr
-        self.conversion_factor *= self.pixel_factor(self.image.frames.primary.xy_average_pixelscale)
+        self.conversion_factor *= self.pixel_factor(self.image.frames.primary.average_pixelscale)
 
     # -----------------------------------------------------------------
 

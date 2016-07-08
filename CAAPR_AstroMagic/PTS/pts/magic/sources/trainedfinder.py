@@ -32,13 +32,13 @@ from ..tools import statistics, masks, plotting, general, interpolation
 from ..analysis import sources
 from ..train import Classifier
 from ..object.star import Star
-from ...core.basics.configurable import Configurable
+from ...core.basics.configurable import OldConfigurable
 from ...core.tools.logging import log
 from ..basics.geometry import Coordinate
 
 # -----------------------------------------------------------------
 
-class TrainedFinder(Configurable):
+class TrainedFinder(OldConfigurable):
 
     """
     This class ...
@@ -236,7 +236,7 @@ class TrainedFinder(Configurable):
             max_fwhm = max(fwhms)
         else:
             if self.star_finder.config.use_frame_fwhm and self.frame.fwhm is not None:
-                fwhm = self.frame.fwhm.to("arcsec").value / self.frame.xy_average_pixelscale.to("arcsec/pix").value
+                fwhm = self.frame.fwhm.to("arcsec").value / self.frame.average_pixelscale.to("arcsec/pix").value
             else: fwhm = self.star_finder.fwhm
             min_fwhm = fwhm * 0.5
             max_fwhm = fwhm * 1.5
@@ -367,7 +367,7 @@ class TrainedFinder(Configurable):
         #kernel = self.star_finder.kernel # doesn't work when there was no star extraction on the image, self.star_finder does not have attribute image thus cannot give image.fwhm
         if self.star_finder.config.use_frame_fwhm and self.frame.fwhm is not None:
 
-            fwhm = self.frame.fwhm.to("arcsec").value / self.frame.xy_average_pixelscale.to("arcsec/pix").value
+            fwhm = self.frame.fwhm.to("arcsec").value / self.frame.average_pixelscale.to("arcsec/pix").value
             sigma = fwhm * statistics.fwhm_to_sigma
             kernel = Gaussian2DKernel(sigma)
 

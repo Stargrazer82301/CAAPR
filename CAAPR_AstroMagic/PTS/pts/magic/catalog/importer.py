@@ -19,14 +19,14 @@ from config import Sequence
 # Import the relevant PTS classes and modules
 from ..basics.catalogcoverage import CatalogCoverage
 from ..tools import catalogs
-from ...core.basics.configurable import Configurable
+from ...core.basics.configurable import OldConfigurable
 from ...core.tools import inspection, tables
 from ...core.tools import filesystem as fs
 from ...core.tools.logging import log
 
 # -----------------------------------------------------------------
 
-class CatalogImporter(Configurable):
+class CatalogImporter(OldConfigurable):
 
     """
     This class ...
@@ -199,7 +199,7 @@ class CatalogImporter(Configurable):
         log.info("Importing galactic catalog from file " + path + " ...")
 
         # Load the catalog
-        self.galactic_catalog = tables.from_file(path)
+        self.galactic_catalog = tables.from_file(path, format="ascii.commented_header")
 
     # -----------------------------------------------------------------
 
@@ -217,7 +217,7 @@ class CatalogImporter(Configurable):
         log.info("Importing stellar catalog from file " + path + " ...")
 
         # Load the catalog
-        self.stellar_catalog = tables.from_file(path)
+        self.stellar_catalog = tables.from_file(path, format="ascii.commented_header")
 
     # -----------------------------------------------------------------
 
@@ -312,7 +312,7 @@ class CatalogImporter(Configurable):
         log.info("Writing galactic catalog to " + path + " ...")
 
         # Write the catalog to file
-        tables.write(self.galactic_catalog, path)
+        tables.write(self.galactic_catalog, path, format="ascii.commented_header")
 
     # -----------------------------------------------------------------
 
@@ -328,7 +328,7 @@ class CatalogImporter(Configurable):
         log.info("Writing stellar catalog to " + path + " ...")
 
         # Write the catalog to file
-        tables.write(self.stellar_catalog, path)
+        tables.write(self.stellar_catalog, path, format="ascii.commented_header")
 
     # -----------------------------------------------------------------
 

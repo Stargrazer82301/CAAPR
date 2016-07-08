@@ -12,6 +12,9 @@
 # Ensure Python 3 compatibility
 from __future__ import absolute_import, division, print_function
 
+# Import standard modules
+import math
+
 # Import the relevant PTS classes and modules
 from .galaxyfinder import GalaxyFinder
 from .starfinder import StarFinder
@@ -21,12 +24,12 @@ from ..catalog.builder import CatalogBuilder
 from ..catalog.synchronizer import CatalogSynchronizer
 from ..tools import wavelengths
 from ...core.tools import tables
-from ...core.basics.configurable import Configurable
+from ...core.basics.configurable import OldConfigurable
 from ...core.tools.logging import log
 
 # -----------------------------------------------------------------
 
-class SourceFinder(Configurable):
+class SourceFinder(OldConfigurable):
 
     """
     This class ...
@@ -65,6 +68,10 @@ class SourceFinder(Configurable):
 
         # The name of the principal galaxy
         self.galaxy_name = None
+
+        # For downsampling
+        self.pad_x = 0
+        self.pad_y = 0
 
     # -----------------------------------------------------------------
 
@@ -219,7 +226,15 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        if self.downsampled: return self.galaxy_finder.segments.upsampled(self.config.downsample_factor, integers=True) if self.galaxy_finder.segments is not None else None
+        if self.galaxy_finder.segments is None: return None
+        #if self.downsampled: return self.galaxy_finder.segments.rebinned(self.original_wcs)
+        if self.downsampled:
+
+            segments = self.galaxy_finder.segments
+            upsampled = segments.upsampled(self.config.downsample_factor, integers=True)
+            upsampled.unpad(self.pad_x, self.pad_y)
+            return upsampled
+
         else: return self.galaxy_finder.segments
 
     # -----------------------------------------------------------------
@@ -232,7 +247,15 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        if self.downsampled: return self.star_finder.segments.upsampled(self.config.downsample_factor, integers=True) if self.star_finder.segments is not None else None
+        if self.star_finder.segments is None: return None
+        #return self.star_finder.segments.rebinned(self.original_wcs)
+        if self.downsampled:
+
+            segments = self.star_finder.segments
+            upsampled = segments.upsampled(self.config.downsample_factor, integers=True)
+            upsampled.unpad(self.pad_x, self.pad_y)
+            return upsampled
+
         else: return self.star_finder.segments
 
     # -----------------------------------------------------------------
@@ -245,8 +268,16 @@ class SourceFinder(Configurable):
         :return:
         """
 
-        if self.downsampled: return self.trained_finder.segments.upsampled(self.config.downsample_factor, integers=True) if self.trained_finder.segments is not None else None
-        return self.trained_finder.segments
+        if self.trained_finder.segments is None: return None
+        # return self.trained_finder.segments.rebinned(self.original_wcs)
+        if self.downsampled:
+
+            segments = self.trained_finder.segments
+            upsampled = segments.upsampled(self.config.downsample_factor, integers=True)
+            upsampled.unpad(self.pad_x, self.pad_y)
+            return upsampled
+
+        else: return self.trained_finder.segments
 
     # -----------------------------------------------------------------
 
@@ -346,15 +377,47 @@ class SourceFinder(Configurable):
         # Inform the user
         log.info("Setting up the source finder ...")
 
+        # Make sure the downsample factor is a float (I don't know if this is necesary)
+        #self.config.downsample_factor = float(self.config.downsample_factor) if self.downsampled else None
+
+        # CHECK WHETHER THE DOWNSAMPLE FACTOR IS AN INTEGER
+
         # Downsample or just make a local reference to the image frame
         if self.downsampled:
 
+            int_factor = int(self.config.downsample_factor)
+            if not int_factor == self.config.downsample_factor: raise ValueError("The downsample factor must be an integer")
+            self.config.downsample_factor = int_factor
+
             # Debugging
             log.debug("Downsampling the original image with a factor of " + str(self.config.downsample_factor) + " ...")
-            self.frame = frame.downsampled(self.config.downsample_factor)
+
+            # Padding
+            div_x = frame.xsize / self.config.downsample_factor
+            div_y = frame.ysize / self.config.downsample_factor
+
+            # new xsize and ysize
+            new_xsize = int(math.ceil(div_x)) * self.config.downsample_factor
+            new_ysize = int(math.ceil(div_y)) * self.config.downsample_factor
+
+            # Number of pixels to be padded
+            self.pad_x = new_xsize - frame.xsize
+            self.pad_y = new_ysize - frame.ysize
+
+            # Debugging
+            log.debug("Number of pixels padded before downsampling: (" + str(self.pad_x) + ", " + str(self.pad_y) + ")")
+
+            # Pad pixels to make it a multiple of the downsampling factor
+            self.frame = frame.padded(nx=self.pad_x, ny=self.pad_y)
+            #self.frame = frame.downsampled(self.config.downsample_factor)
+            self.frame.downsample(self.config.downsample_factor)
             self.original_wcs = frame.wcs
+
             # Debugging
             log.debug("Shape of the downsampled image: " + str(self.frame.shape) + " (original shape: " + str(frame.shape) + ")")
+
+            # Adjust configs for downsampling
+            self.adjust_configs_for_downsampling()
 
         else: self.frame = frame
 
@@ -363,8 +426,12 @@ class SourceFinder(Configurable):
         self.stellar_catalog = stellar_catalog
 
         # Set the special and ignore mask
-        self.special_mask = Mask.from_region(special_region, self.frame.xsize, self.frame.ysize) if special_region is not None else None
-        self.ignore_mask = Mask.from_region(ignore_region, self.frame.xsize, self.frame.ysize) if ignore_region is not None else None
+        if special_region is not None:
+            special_region_pix = special_region.to_pixel(self.frame.wcs)
+            self.special_mask = Mask.from_region(special_region_pix, self.frame.xsize, self.frame.ysize)
+        if ignore_region is not None:
+            ignore_region_pix = ignore_region.to_pixel(self.frame.wcs)
+            self.ignore_mask = Mask.from_region(ignore_region_pix, self.frame.xsize, self.frame.ysize)
 
         # Set a reference to the mask of bad pixels
         self.bad_mask = bad_mask
@@ -383,6 +450,54 @@ class SourceFinder(Configurable):
         """
 
         return self.config.downsample_factor is not None and self.config.downsample != 1
+
+    # -----------------------------------------------------------------
+
+    def adjust_configs_for_downsampling(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+
+        # GALAXY FINDER
+
+        self.galaxy_finder.config.detection.initial_radius /= self.config.downsample_factor
+
+        self.galaxy_finder.config.detection.min_pixels = int(math.ceil(self.galaxy_finder.config.detection.min_pixels / self.config.downsample_factor))
+
+        self.galaxy_finder.config.detection.kernel.fwhm /= self.config.downsample_factor
+
+        self.galaxy_finder.config.region.default_radius /= self.config.downsample_factor
+
+        # STAR FINDER
+
+        self.star_finder.config.fetching.min_distance_from_galaxy.principal /= self.config.downsample_factor
+        self.star_finder.config.fetching.min_distance_from_galaxy.companion /= self.config.downsample_factor
+        self.star_finder.config.fetching.min_distance_from_galaxy.other /= self.config.downsample_factor
+
+        self.star_finder.config.detection.initial_radius /= self.config.downsample_factor
+
+        self.star_finder.config.detection.minimum_pixels = int(math.ceil(self.star_finder.config.detection.minimum_pixels / self.config.downsample_factor))
+
+        self.star_finder.config.detection.peak_offset_tolerance /= self.config.downsample_factor
+
+        self.star_finder.config.detection.convolution_fwhm /= self.config.downsample_factor
+
+        self.star_finder.config.fitting.minimum_pixels = int(math.ceil(self.star_finder.config.fitting.minimum_pixels / self.config.downsample_factor))
+
+        self.star_finder.config.fitting.max_model_offset /= self.config.downsample_factor
+
+        self.star_finder.config.saturation.min_pixels = int(math.ceil(self.star_finder.config.saturation.min_pixels / self.config.downsample_factor))
+
+        self.star_finder.config.saturation.kernel.fwhm /= self.config.downsample_factor
+
+        self.star_finder.config.saturation.apertures.max_offset /= self.config.downsample_factor
+
+        # TRAINED FINDER
+
+
 
     # -----------------------------------------------------------------
 

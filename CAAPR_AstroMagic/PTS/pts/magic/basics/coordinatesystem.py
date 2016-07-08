@@ -13,6 +13,8 @@
 from __future__ import absolute_import, division, print_function
 
 # Import standard modules
+import math
+import copy
 import numpy as np
 
 # Import astronomical modules
@@ -23,11 +25,10 @@ from astropy.io import fits
 from astropy.coordinates import Angle
 
 # Import the relevant PTS classes and modules
-from .vector import Extent
 from .geometry import Coordinate
 from .skygeometry import SkyCoordinate
 from ..tools import coordinates
-from ...core.tools.logging import log
+from .pixelscale import Pixelscale
 
 # -----------------------------------------------------------------
 
@@ -75,6 +76,31 @@ class CoordinateSystem(wcs.WCS):
 
     # -----------------------------------------------------------------
 
+    def copy(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # DEFAULT COPY FUNCTION OF WCS IS NOT A REAL DEEP COPY!! THIS HAS CAUSED ME BUGS THAT GAVE ME HEADACHES
+
+        return copy.deepcopy(self)
+
+    # -----------------------------------------------------------------
+
+    @property
+    def shape(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.ysize, self.xsize
+
+    # -----------------------------------------------------------------
+
     @property
     def xsize(self):
 
@@ -117,30 +143,19 @@ class CoordinateSystem(wcs.WCS):
         y_pixelscale = result[1] * Unit("deg/pix")
 
         # Return the pixel scale as an extent
-        return Extent(x_pixelscale, y_pixelscale)
+        return Pixelscale(x_pixelscale, y_pixelscale)
 
     # -----------------------------------------------------------------
 
     @property
-    def xy_average_pixelscale(self):
+    def average_pixelscale(self):
 
         """
         This function ...
         :return:
         """
 
-        pixelscale = self.pixelscale
-
-        x_pixelscale = abs(pixelscale.x.to("arcsec/pix"))
-        y_pixelscale = abs(pixelscale.y.to("arcsec/pix"))
-
-        if not np.isclose(x_pixelscale.value, y_pixelscale.value, rtol=0.001):
-            log.warning("Averaging the pixelscale over the x and y direction may not be a good approximation:")
-            log.warning("  * x pixelscale (absolute value) = " + str(x_pixelscale))
-            log.warning("  * y pixelscale (absolute value) = " + str(y_pixelscale))
-
-        # Return a single value for the pixelscale in arcseconds
-        return 0.5 * (x_pixelscale + y_pixelscale)
+        return self.pixelscale.average
 
     # -----------------------------------------------------------------
 
@@ -297,8 +312,13 @@ class CoordinateSystem(wcs.WCS):
         ref_pix = self.wcs.crpix
         ref_world = self.wcs.crval
 
+        center = SkyCoordinate(ra=ra_center, dec=dec_center, unit="deg", frame="fk5")
+
         # Get the orientation of the coordinate system
-        orientation = self.orientation
+        try: orientation = self.orientation
+        except ValueError:
+            largest_distance = max(ra_distance, dec_distance) * Unit("deg")
+            return center, largest_distance, largest_distance
 
         if "x" in orientation[0] and "y" in orientation[1]: # RA axis = x axis and DEC axis = y axis
 
@@ -322,8 +342,6 @@ class CoordinateSystem(wcs.WCS):
         if not np.isclose(dec_distance, size_dec_deg, rtol=0.05):
             #print("ERROR: the coordinate system and pixel scale do not match: dec_distance = " + str(dec_distance) + ", size_dec_deg = " + str(size_dec_deg))
             log.warning("The coordinate system and pixel scale do not match: dec_distance = " + str(dec_distance) + ", size_dec_deg = " + str(size_dec_deg))
-
-        center = SkyCoordinate(ra=ra_center, dec=dec_center, unit="deg", frame="fk5")
 
         # Create RA and DEC span as quantities
         ra_span = ra_distance * Unit("deg")
@@ -421,7 +439,30 @@ class CoordinateSystem(wcs.WCS):
         :return:
         """
 
-        # TODO: Should support any arbritrary orientation angle, not just 0, +90, +180, -90 ...
+        diag_a = self.pixel_scale_matrix[0,1]
+        diag_b = self.pixel_scale_matrix[1,0]
+
+        if not np.isclose(diag_a, diag_b): log.warning("The diagonal elements of the pixel scale matrix are not equal")
+
+        first = self.pixel_scale_matrix[0,0]
+
+        radians = np.arctan(diag_a / first)
+
+        degrees = radians / math.pi * 180.
+
+        return Angle(degrees, "deg")
+
+    # -----------------------------------------------------------------
+
+    @property
+    def standard_orientation_angle(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Angles of 0, +90, +180, -90 ...
 
         orientation = self.orientation
 
@@ -447,10 +488,11 @@ class CoordinateSystem(wcs.WCS):
         elif orientation == ("-y", "-x"): return Angle(-90., "deg")
         elif orientation == ("+x", "-y"): return Angle(180., "deg")
         elif orientation == ("+y", "+x"): return Angle(90, "deg")
-        else: raise ValueError("Unknown orientation angle")
+        else: raise ValueError("Not a standard orientation angle")
 
     # -----------------------------------------------------------------
 
+    @property
     def orientation_angle_flipped(self):
 
         """
@@ -470,7 +512,7 @@ class CoordinateSystem(wcs.WCS):
         elif orientation == ("-x", "-y"): return Angle(-90., "deg")
         elif orientation == ("+y", "-x"): return Angle(180., "deg")
         elif orientation == ("+x", "+y"): return Angle(90, "deg")
-        else: raise ValueError("Unknown orientation angle")
+        else: raise ValueError("Not a standard orientation angle")
 
     # -----------------------------------------------------------------
 

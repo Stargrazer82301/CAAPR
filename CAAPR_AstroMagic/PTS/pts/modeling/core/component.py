@@ -5,7 +5,7 @@
 # **       © Astronomical Observatory, Ghent University          **
 # *****************************************************************
 
-## \package pts.modeling.core.component Contains the ModelingComponent class
+## \package pts.modeling.core.component Contains the ModelingComponent class.
 
 # -----------------------------------------------------------------
 
@@ -13,17 +13,22 @@
 from __future__ import absolute_import, division, print_function
 
 # Import standard modules
+import numpy as np
 from abc import ABCMeta
 
+# Import astronomical modules
+from astropy.utils import lazyproperty
+
 # Import the relevant PTS classes and modules
-from ...core.basics.configurable import NewConfigurable
+from ...core.basics.configurable import Configurable
 from ...core.tools import inspection
 from ...core.tools import filesystem as fs
 from ..core.sed import ObservedSED
+from ...core.basics.filter import Filter
 
 # -----------------------------------------------------------------
 
-class ModelingComponent(NewConfigurable):
+class ModelingComponent(Configurable):
     
     """
     This class...
@@ -60,6 +65,7 @@ class ModelingComponent(NewConfigurable):
         self.visualisation_path = None
         self.plot_path = None
         self.log_path = None
+        self.show_path = None
 
         # PTS directories
         self.kernels_path = None
@@ -70,6 +76,10 @@ class ModelingComponent(NewConfigurable):
         # The path to the observed SEDs
         self.observed_sed_path = None
         self.observed_sed_dustpedia_path = None
+
+        # The path to the free parameter file and the fitting filters file
+        self.free_parameters_path = None
+        self.fitting_filters_path = None
 
     # -----------------------------------------------------------------
 
@@ -101,6 +111,7 @@ class ModelingComponent(NewConfigurable):
         self.visualisation_path = fs.join(self.config.path, "visualisation")
         self.plot_path = fs.join(self.config.path, "plot")
         self.log_path = fs.join(self.config.path, "log")
+        self.show_path = fs.join(self.config.path, "show")
 
         # Determine the path to the kernels user directory
         self.kernels_path = fs.join(inspection.pts_user_dir, "kernels")
@@ -111,7 +122,8 @@ class ModelingComponent(NewConfigurable):
             # Create the prep path if it does not exist yet
             fs.create_directories([self.prep_path, self.truncation_path, self.maps_path, self.phot_path,
                                    self.maps_path, self.components_path, self.fit_path, self.analysis_path,
-                                   self.reports_path, self.visualisation_path, self.plot_path, self.log_path])
+                                   self.reports_path, self.visualisation_path, self.plot_path, self.log_path,
+                                   self.show_path])
 
         # Exit with an error
         else: raise ValueError("The current working directory is not a radiative transfer modeling directory (the data directory is missing)")
@@ -122,9 +134,14 @@ class ModelingComponent(NewConfigurable):
         # Set the path to the DustPedia observed SED
         self.observed_sed_dustpedia_path = fs.join(self.data_path, "fluxes.dat")
 
+        # Set the path to the free parameter file and the fitting filters file
+        self.free_parameters_path = fs.join(self.fit_path, "free_parameters.txt")
+        self.fitting_filters_path = fs.join(self.fit_path, "fitting_filters.txt")
+
     # -----------------------------------------------------------------
 
-    def get_observed_sed(self):
+    @lazyproperty
+    def observed_sed(self):
 
         """
         This function ...
@@ -135,26 +152,62 @@ class ModelingComponent(NewConfigurable):
 
     # -----------------------------------------------------------------
 
-    def get_observed_filters(self):
+    @lazyproperty
+    def observed_filters(self):
 
         """
         This function ...
         :return:
         """
 
-        sed = self.get_observed_sed()
-        return sed.filters()
+        return self.observed_sed.filters()
 
     # -----------------------------------------------------------------
 
-    def get_observed_filter_names(self):
+    @lazyproperty
+    def observed_filter_names(self):
 
         """
         This function ...
         :return:
         """
 
-        filters = self.get_observed_filters()
-        return [str(fltr) for fltr in filters]
+        return [str(fltr) for fltr in self.observed_filters]
+
+    # -----------------------------------------------------------------
+
+    @lazyproperty
+    def fitting_filters(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return map(Filter.from_string, self.fitting_filter_names)
+
+    # -----------------------------------------------------------------
+
+    @lazyproperty
+    def fitting_filter_names(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return list(np.loadtxt(self.fitting_filters_path, dtype=str))
+
+    # -----------------------------------------------------------------
+
+    @lazyproperty
+    def free_parameter_labels(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return dict(np.genfromtxt(self.free_parameters_path, delimiter=" | ", dtype=str))
 
 # -----------------------------------------------------------------

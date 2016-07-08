@@ -16,7 +16,7 @@ from __future__ import absolute_import, division, print_function
 import argparse
 
 # Import the relevant PTS classes and modules
-from pts.magic.prepare.imagepreparation import ImagePreparer
+from pts.magic.prepare.preparer import ImagePreparer
 from pts.core.tools import logging, time, tables, parsing
 from pts.core.tools import filesystem as fs
 from pts.magic.core.image import Image
@@ -91,6 +91,9 @@ image = Image.from_file(image_path)
 
 # -----------------------------------------------------------------
 
+# Inform the user
+log.info("Loading regions ...")
+
 # Determine the path to the galaxy region
 galaxy_region_path = fs.join(arguments.input, "galaxies.reg")
 
@@ -101,7 +104,7 @@ galaxy_region = Region.from_file(galaxy_region_path)
 star_region_path = fs.join(arguments.input, "stars.reg")
 
 # Load the star region
-star_region = Region.from_file(star_region_path)
+star_region = Region.from_file(star_region_path) if fs.is_file(star_region_path) else None
 
 # Determine the path to the saturation region
 saturation_region_path = fs.join(arguments.input, "saturation.reg")
@@ -115,6 +118,9 @@ other_region_path = fs.join(arguments.input, "other_sources.reg")
 # Load the region of other sources
 other_region = Region.from_file(other_region_path) if fs.is_file(other_region_path) else None
 
+# Inform the user
+log.debug("Loading segmentation frames ...")
+
 # Load the image with segmentation maps
 segments_path = fs.join(arguments.input, "segments.fits")
 segments = Image.from_file(segments_path, no_filter=True)
@@ -126,6 +132,9 @@ other_segments = segments.frames.other_sources
 
 # Load the statistics file
 statistics_path = fs.join(arguments.input, "statistics.dat")
+
+# Inform the user
+log.debug("Loading the FWHM ...")
 
 # Get the FWHM from the statistics file
 fwhm = None
@@ -162,6 +171,9 @@ if arguments.visualise: visualisation_path = arguments.output
 else: visualisation_path = None
 
 # -----------------------------------------------------------------
+
+# Inform the user
+log.info("Looking up the necessary kernel file ...")
 
 # Get the filter to which to convolve to
 convolve_to_filter = Filter.from_string(arguments.convolve_to)

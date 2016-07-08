@@ -18,93 +18,317 @@ import numpy as np
 from scipy import ndimage
 
 # Import astronomical modules
+from reproject import reproject_exact, reproject_interp
 from astropy.io import fits
 from astropy.units import Unit
-from astropy.convolution import convolve_fft
+from astropy.convolution import convolve, convolve_fft
+from astropy.nddata import NDDataArray
 
 # Import the relevant PTS classes and modules
 from .box import Box
 from ..basics.vector import Position, Extent
 from ..basics.geometry import Rectangle
 from ..basics.skygeometry import SkyCoordinate
-from ..basics.coordinatesystem import CoordinateSystem
-from ..tools import coordinates, cropping, transformations, interpolation, headers, fitting
-from ...core.tools import filesystem as fs
+from ..tools import cropping
 from ...core.tools.logging import log
 from ..basics.mask import Mask
 
 # -----------------------------------------------------------------
 
-def get_frame_names(path):
-
-    """
-    This function ...
-    :param path:
-    :return:
-    """
-
-    # Load the header
-    header = fits.getheader(path)
-
-    # Get the number of planes
-    nplanes = headers.get_number_of_frames(header)
-
-    # Initialize a dictionary to contain the frame names and corresponding descriptions
-    frames = dict()
-
-    # Look at the properties of each plane
-    for i in range(nplanes):
-
-        # Get name and description of plane
-        name, description, plane_type = headers.get_frame_name_and_description(header, i, always_call_first_primary=False)
-        if plane_type == "frame": frames[name] = description
-
-    # Return the frames with their name and description
-    return frames
-
-# -----------------------------------------------------------------
-
-class Frame(np.ndarray):
+class Frame(NDDataArray):
 
     """
     This class ...
     """
 
-    # -----------------------------------------------------------------
-
-    def __new__(cls, data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None):
+    def __init__(self, data, *args, **kwargs):
 
         """
         This function ...
-        :param cls:
         :param data:
+        :param kwargs:
+        """
+
+        wcs = kwargs.pop("wcs", None)
+        unit = kwargs.pop("unit", None)
+        self.name = kwargs.pop("name", None)
+        self.description = kwargs.pop("description", None)
+        self.zero_point = kwargs.pop("zero_point", None)
+        self.filter = kwargs.pop("filter", None)
+        self.sky_subtracted = kwargs.pop("sky_subtracted", False)
+        self.fwhm = kwargs.pop("fwhm", None)
+        self._pixelscale = kwargs.pop("pixelscale", None)
+        self._wavelength = kwargs.pop("wavelength", None)
+
+        # Call the constructor of the base class
+        super(Frame, self).__init__(data, *args, **kwargs)
+
+        # Set the WCS and unit
+        self._wcs = wcs
+        self._unit = unit
+
+    # -----------------------------------------------------------------
+
+    @NDDataArray.wcs.setter
+    def wcs(self, wcs):
+
+        """
+        This function ...
         :param wcs:
-        :param name:
-        :param description:
-        :param unit:
-        :param zero_point:
-        :param filter:
-        :param sky_subtracted:
-        :param fwhm:
         :return:
         """
 
-        obj = np.asarray(data).view(cls)
-        obj.wcs = wcs
-        obj.description = description
-        obj.unit = unit
-        obj.name = name
-        obj.filter = filter
-        obj.sky_subtracted = sky_subtracted
-        obj.zero_point = zero_point
-        obj.fwhm = fwhm
+        self._wcs = wcs
 
-        return obj
+    # -----------------------------------------------------------------
+
+    def __getitem__(self, item):
+
+        """
+        This function ...
+        :param item:
+        :return:
+        """
+
+        return self._data[item]
+
+    # -----------------------------------------------------------------
+
+    def __setitem__(self, item, value):
+
+        """
+        This function ...
+        :param item:
+        :return:
+        """
+
+        self._data[item] = value
+
+    # -----------------------------------------------------------------
+
+    def __eq__(self, other):
+
+        """
+        This function ...
+        :param other:
+        :return:
+        """
+
+        return self._data.__eq__(other)
+
+    # -----------------------------------------------------------------
+
+    def __ne__(self, other):
+
+        """
+        This function ...
+        :param other:
+        :return:
+        """
+
+        return self._data.__ne__(other)
+
+    # -----------------------------------------------------------------
+
+    def __gt__(self, other):
+
+        """
+        This function ...
+        :param other:
+        :return:
+        """
+
+        return self._data.__gt__(other)
+
+    # -----------------------------------------------------------------
+
+    def __ge__(self, other):
+
+        """
+        This function ...
+        :param other:
+        :return:
+        """
+
+        return self._data.__ge__(other)
+
+    # -----------------------------------------------------------------
+
+    def __lt__(self, other):
+
+        """
+        This function ...
+        :param other:
+        :return:
+        """
+
+        return self._data.__lt__(other)
+
+    # -----------------------------------------------------------------
+
+    def __le__(self, other):
+
+        """
+        This function ...
+        :param other:
+        :return:
+        """
+
+        return self._data.__le__(other)
+
+    # -----------------------------------------------------------------
+
+    def __mul__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.copy().__imul__(value)
+
+    # -----------------------------------------------------------------
+
+    def __imul__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        self._data *= value
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __add__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.copy().__iadd__(value)
+
+    # -----------------------------------------------------------------
+
+    def __iadd__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        self._data += value
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __sub__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.copy().__isub__(value)
+
+    # -----------------------------------------------------------------
+
+    def __isub__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        self._data -= value
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __div__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.copy().__idiv__(value)
+
+    # -----------------------------------------------------------------
+
+    def __idiv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        self._data /= value
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __truediv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.__div__(value)
+
+    # -----------------------------------------------------------------
+
+    def __itruediv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.__idiv__(value)
+
+    # -----------------------------------------------------------------
+
+    def __pow__(self, power):
+
+        """
+        This function ...
+        :param power:
+        :return:
+        """
+
+        return self.copy().__ipow__(power)
+
+    # -----------------------------------------------------------------
+
+    def __ipow__(self, power):
+
+        """
+        This function ...
+        :param power:
+        :return:
+        """
+
+        self._data **= power
+        return self
 
     # -----------------------------------------------------------------
 
     @classmethod
-    def from_file(cls, path, index=None, name=None, description=None, plane=None, hdulist_index=0, no_filter=False):
+    def from_file(cls, path, index=None, name=None, description=None, plane=None, hdulist_index=None, no_filter=False, fwhm=None):
 
         """
         This function ...
@@ -113,130 +337,30 @@ class Frame(np.ndarray):
         :param name:
         :param description:
         :param plane:
-        :param hdulist_index:
+        :param hdulist_index: if None, is automatically decided based on where the imageHDU is.
         :param no_filter:
+        :param fwhm:
         :return:
         """
 
         # Show which image we are importing
         log.info("Reading in file " + path + " ...")
 
-        # Open the HDU list for the FITS file
-        hdulist = fits.open(path)
+        from . import io
 
-        # Get the primary HDU
-        hdu = hdulist[hdulist_index]
+        # PASS CLS TO ENSURE THIS CLASSMETHOD WORKS FOR ENHERITED CLASSES!!
+        return io.load_frame(cls, path, index, name, description, plane, hdulist_index, no_filter, fwhm)
 
-        # Get the image header
-        header = hdu.header
+    # -----------------------------------------------------------------
 
-        # Check whether multiple planes are present in the FITS image
-        nframes = headers.get_number_of_frames(header)
+    def copy(self):
 
-        # Remove references to a potential third axis
-        flat_header = headers.flattened(header)
+        """
+        This function ...
+        :return:
+        """
 
-        # Obtain the world coordinate system from the 'flattened' header
-        wcs = CoordinateSystem(flat_header)
-
-        # Load the frames
-        header_pixelscale = headers.get_pixelscale(header) # NOTE: SOMETIMES PLAIN WRONG IN THE HEADER !!
-        pixelscale = wcs.pixelscale
-
-        # Check whether pixelscale defined in the header is correct
-        if header_pixelscale is not None:
-
-            x_isclose = np.isclose(header_pixelscale.x.to("arcsec/pix").value, pixelscale.x.to("arcsec/pix").value)
-            y_isclose = np.isclose(header_pixelscale.y.to("arcsec/pix").value, pixelscale.y.to("arcsec/pix").value)
-
-            if not (x_isclose or y_isclose):
-
-                print("WARNING: the pixel scale defined in the header is WRONG:")
-                print("           - header pixelscale: (", header_pixelscale.x.to("arcsec/pix"), header_pixelscale.y.to("arcsec/pix"), ")")
-                print("           - actual pixelscale: (", pixelscale.x.to("arcsec/pix"), pixelscale.y.to("arcsec/pix"), ")")
-
-        if no_filter: fltr = None
-        else:
-
-            # Obtain the filter for this image
-            fltr = headers.get_filter(fs.name(path[:-5]), header)
-
-        # Obtain the units of this image
-        unit = headers.get_unit(header)
-
-        # Obtain the FWHM of this image
-        fwhm = headers.get_fwhm(header)
-
-        # Get the magnitude zero-point
-        zero_point = headers.get_zero_point(header)
-
-        # Check whether the image is sky-subtracted
-        sky_subtracted = headers.is_sky_subtracted(header)
-
-        if nframes > 1:
-
-            if plane is not None:
-
-                for i in range(nframes):
-
-                    # Get name and description of frame
-                    name, description, plane_type = headers.get_frame_name_and_description(header, i, always_call_first_primary=False)
-
-                    if plane == name and plane_type == "frame":
-                        index = i
-                        break
-
-                # If a break is not encountered, a matching plane name is not found
-                else: raise ValueError("Plane with name '" + plane + "' not found")
-
-            elif index is not None:
-
-                name, description, plane_type = headers.get_frame_name_and_description(header, index, always_call_first_primary=False)
-
-            else: # index and plane is None
-
-                for i in range(nframes):
-                    # Get name and description of frame
-                    name, description, plane_type = headers.get_frame_name_and_description(header, i, always_call_first_primary=False)
-                    if name == "primary": index = i
-                    break
-
-                if index is None: index = 0 # if index is still None, set it to zero (take the first plane)
-
-            # Get the name from the file path
-            if name is None: name = fs.name(path[:-5])
-
-            # Return the frame
-            # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-            return cls(hdu.data[index],
-                       wcs=wcs,
-                       name=name,
-                       description=description,
-                       unit=unit,
-                       zero_point=zero_point,
-                       filter=fltr,
-                       sky_subtracted=sky_subtracted,
-                       fwhm=fwhm)
-
-        else:
-
-            # Sometimes, the 2D frame is embedded in a 3D array with shape (1, xsize, ysize)
-            if len(hdu.data.shape) == 3: hdu.data = hdu.data[0]
-
-            # Get the name from the file path
-            if name is None: name = fs.name(path[:-5])
-
-            # Return the frame
-            # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-            return cls(hdu.data,
-                       wcs=wcs,
-                       name=name,
-                       description=description,
-                       unit=unit,
-                       zero_point=zero_point,
-                       filter=fltr,
-                       sky_subtracted=sky_subtracted,
-                       fwhm=fwhm)
+        return copy.deepcopy(self)
 
     # -----------------------------------------------------------------
 
@@ -260,7 +384,7 @@ class Frame(np.ndarray):
         :return:
         """
 
-        return np.all(self == 0)
+        return np.all(self._data == 0)
 
     # -----------------------------------------------------------------
 
@@ -272,7 +396,7 @@ class Frame(np.ndarray):
         :return:
         """
 
-        return not np.any(self == 0)
+        return not np.any(self._data == 0)
 
     # -----------------------------------------------------------------
 
@@ -284,19 +408,22 @@ class Frame(np.ndarray):
         :return:
         """
 
-        return self.wcs.pixelscale
+        # Return the pixelscale of the WCS is WCS is defined
+        if self.wcs is not None: return self.wcs.pixelscale
+        else: return self._pixelscale  # return the pixelscale
 
     # -----------------------------------------------------------------
 
     @property
-    def xy_average_pixelscale(self):
+    def average_pixelscale(self):
 
         """
         This function ...
         :return:
         """
 
-        return self.wcs.xy_average_pixelscale
+        if self.wcs is not None: return self.wcs.average_pixelscale
+        else: return self._pixelscale.average if self._pixelscale is not None else None
 
     # -----------------------------------------------------------------
 
@@ -310,7 +437,9 @@ class Frame(np.ndarray):
         """
 
         # Return a zero-filled copy of the frame
-        return np.zeros_like(frame)
+        new = frame.copy()
+        new._data = np.zeros_like(frame._data)
+        return new
 
     # -----------------------------------------------------------------
 
@@ -337,27 +466,7 @@ class Frame(np.ndarray):
         :return:
         """
 
-        np.nanmax(self) == np.nanmin(self)
-
-    # -----------------------------------------------------------------
-
-    def __array_finalize__(self, obj):
-
-        """
-        This function ...
-        :param obj:
-        :return:
-        """
-
-        if obj is None: return
-        self.wcs = getattr(obj, 'wcs', None)
-        self.name = getattr(obj, 'name', None)
-        self.description = getattr(obj, 'description', None)
-        self.unit = getattr(obj, 'unit', None)
-        self.zero_point = getattr(obj, 'zero_point', None)
-        self.filter = getattr(obj, 'filter', None)
-        self.sky_subtracted = getattr(obj, 'sky_subtracted', False)
-        self.fwhm = getattr(obj, 'fwhm', None)
+        np.nanmax(self._data) == np.nanmin(self._data)
 
     # -----------------------------------------------------------------
 
@@ -379,7 +488,7 @@ class Frame(np.ndarray):
         :return:
         """
 
-        return (self.fwhm / self.xy_average_pixelscale).to("pix").value if self.fwhm is not None else None
+        return (self.fwhm / self.average_pixelscale).to("pix").value if self.fwhm is not None else None
 
     # -----------------------------------------------------------------
 
@@ -427,8 +536,33 @@ class Frame(np.ndarray):
         """
 
         # Return the pivot wavelength of the frame's filter, if defined
-        if self.filter is None: return None
-        else: return self.filter.effectivewavelength() * Unit("micron")
+        if self.filter is not None: return self.filter.effectivewavelength() * Unit("micron")
+        else: return self._wavelength # return the wavelength (if defined, is None otherwise)
+
+    # -----------------------------------------------------------------
+
+    @wavelength.setter
+    def wavelength(self, value):
+
+        """
+        This function ...
+        :return:
+        """
+
+        self._wavelength = value
+
+    # -----------------------------------------------------------------
+
+    def cutout_around(self, position, radius):
+
+        """
+        This function ...
+        :param position:
+        :param radius:
+        :return:
+        """
+
+        return Box.cutout(self, position, radius)
 
     # -----------------------------------------------------------------
 
@@ -452,6 +586,17 @@ class Frame(np.ndarray):
 
     # -----------------------------------------------------------------
 
+    def sum(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return np.nansum(self._data)
+
+    # -----------------------------------------------------------------
+
     def normalize(self, to=1.0):
 
         """
@@ -471,59 +616,58 @@ class Frame(np.ndarray):
 
     # -----------------------------------------------------------------
 
-    def convolved(self, kernel, allow_huge=False):
+    def convolved(self, *args, **kwargs):
+
+        """
+        This function ...
+        :return:
+        """
+
+        new = self.copy()
+        new.convolve(*args, **kwargs)
+        return new
+
+    # -----------------------------------------------------------------
+
+    def convolve(self, kernel, allow_huge=False, fft=True):
 
         """
         This function ...
         :param kernel:
         :param allow_huge:
+        :param fft:
         :return:
         """
 
+        # Get the kernel FWHM
         kernel_fwhm = kernel.fwhm
 
         # Skip the calculation for a constant frame
         if self.is_constant():
-            copy = self.copy()
-            copy.fwhm = kernel_fwhm
-            return copy
 
+            new_frame = self.copy()
+            new_frame.fwhm = kernel_fwhm
+            return new_frame
+
+        # Check whether the kernel is prepared
+        if not kernel.prepared: log.warning("The convolution kernel is not prepared")
+
+        # Check where the NaNs are at
         nans_mask = np.isnan(self)
 
+        # Assert that the kernel is normalized
+        assert kernel.normalized
+
         # Do the convolution on this frame
-        data = convolve_fft(self, kernel, normalize_kernel=True, interpolate_nan=True, allow_huge=allow_huge)
+        if fft: new_data = convolve_fft(self._data, kernel._data, normalize_kernel=False, interpolate_nan=True, allow_huge=allow_huge)
+        else: new_data = convolve(self._data, kernel._data, normalize_kernel=False)
 
-        data[nans_mask] = float("nan")
+        # Put back NaNs
+        new_data[nans_mask] = float("nan")
 
-        # Return the convolved frame
-        # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-        return Frame(data,
-                     wcs=self.wcs,
-                     name=self.name,
-                     description=self.description,
-                     unit=self.unit,
-                     zero_point=self.zero_point,
-                     filter=self.filter,
-                     sky_subtracted=self.sky_subtracted,
-                     fwhm=kernel_fwhm)
-
-    # -----------------------------------------------------------------
-
-    def convolve(self, kernel, allow_huge=False):
-
-        """
-        This function ...
-        :param kernel:
-        :param allow_huge:
-        :return:
-        """
-
-        # Generate a convolved Frame
-        convolved = self.convolved(kernel, allow_huge)
-
-        # Replace the data and set the FWHM
-        self[:] = convolved
-        self.fwhm = convolved.fwhm
+        # Replace the data and FWHM
+        self._data = new_data
+        self.fwhm = kernel_fwhm
 
     # -----------------------------------------------------------------
 
@@ -535,42 +679,32 @@ class Frame(np.ndarray):
         :return:
         """
 
-        # TODO: use the 'Reproject' package here: http://reproject.readthedocs.org/en/stable/
-
-        # Do the rebinning
-        data = transformations.new_align_and_rebin(self, self.wcs, reference_wcs)
-
-        # Return the rebinned frame
-        # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-        return Frame(data,
-                     wcs=reference_wcs,
-                     name=self.name,
-                     description=self.description,
-                     unit=self.unit,
-                     zero_point=self.zero_point,
-                     filter=self.filter,
-                     sky_subtracted=self.sky_subtracted,
-                     fwhm=self.fwhm)
+        new = self.copy()
+        new.rebin(reference_wcs)
+        return new
 
     # -----------------------------------------------------------------
 
-    def rebin(self, reference_wcs):
+    def rebin(self, reference_wcs, exact=True, parallel=True):
 
         """
         This function ...
         :param reference_wcs:
+        :param exact:
+        :param parallel:
         :return:
         """
 
-        # Generate a rebinned Frame
-        rebinned = self.rebinned(reference_wcs)
+        # Calculate rebinned data and footprint of the original image
+        if exact: new_data, footprint = reproject_exact((self._data, self.wcs), reference_wcs, shape_out=reference_wcs.shape, parallel=parallel)
+        else: new_data, footprint = reproject_interp((self._data, self.wcs), reference_wcs, shape_out=reference_wcs.shape)
 
-        # Resize the current frame in-place
-        self.resize(rebinned.shape, refcheck=False)
+        # Replace the data and WCS
+        self._data = new_data
+        self._wcs = reference_wcs
 
-        # Replace the data by the rebinned data and set the WCS
-        self[:] = rebinned
-        self.wcs = rebinned.wcs
+        # Return the footprint
+        return footprint
 
     # -----------------------------------------------------------------
 
@@ -585,37 +719,9 @@ class Frame(np.ndarray):
         :return:
         """
 
-        # Crop the frame
-        data = cropping.crop_check(self, x_min, x_max, y_min, y_max)
-
-        # Change the WCS
-        new_wcs = self.wcs.copy()
-
-        # Change the center pixel position
-        new_wcs.wcs.crpix[0] -= x_min
-        new_wcs.wcs.crpix[1] -= y_min
-
-        # Change the number of pixels
-        new_wcs.naxis1 = x_max - x_min
-        new_wcs.naxis2 = y_max - y_min
-
-        new_wcs._naxis1 = new_wcs.naxis1
-        new_wcs._naxis2 = new_wcs.naxis2
-
-        # Check shape of data
-        assert data.shape[1] == (x_max - x_min) and data.shape[0] == (y_max - y_min)
-
-        # Return the cropped frame
-        # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-        return Frame(data,
-                     wcs=new_wcs,
-                     name=self.name,
-                     description=self.description,
-                     unit=self.unit,
-                     zero_point=self.zero_point,
-                     filter=self.filter,
-                     sky_subtracted=self.sky_subtracted,
-                     fwhm=self.fwhm)
+        new = self.copy()
+        new.crop(x_min, x_max, y_min, y_max)
+        return new
 
     # -----------------------------------------------------------------
 
@@ -630,15 +736,33 @@ class Frame(np.ndarray):
         :return:
         """
 
-        # Generate a cropped Frame
-        cropped = self.cropped(x_min, x_max, y_min, y_max)
+        # Crop the frame
+        new_data = cropping.crop_check(self._data, x_min, x_max, y_min, y_max)
 
-        # Resize the current frame in-place
-        self.resize(cropped.shape, refcheck=False)
+        if self.wcs is not None:
 
-        # Replace the data by the cropped data and set the WCS
-        self[:] = cropped
-        self.wcs = cropped.wcs
+            # Copy the current WCS
+            new_wcs = self.wcs.copy()
+
+            # Change the center pixel position
+            new_wcs.wcs.crpix[0] -= x_min
+            new_wcs.wcs.crpix[1] -= y_min
+
+            # Change the number of pixels
+            new_wcs.naxis1 = x_max - x_min
+            new_wcs.naxis2 = y_max - y_min
+
+            new_wcs._naxis1 = new_wcs.naxis1
+            new_wcs._naxis2 = new_wcs.naxis2
+
+        else: new_wcs = None
+
+        # Check shape of data
+        assert new_data.shape[1] == (x_max - x_min) and new_data.shape[0] == (y_max - y_min)
+
+        # Replace the data and WCS
+        self._data = new_data
+        self._wcs = new_wcs
 
     # -----------------------------------------------------------------
 
@@ -654,6 +778,90 @@ class Frame(np.ndarray):
 
     # -----------------------------------------------------------------
 
+    def padded(self, nx=0, ny=0):
+
+        """
+        This function ...
+        :param nx:
+        :param ny:
+        :return:
+        """
+
+        new = self.copy()
+        new.pad(nx, ny)
+        return new
+
+    # -----------------------------------------------------------------
+
+    def pad(self, nx=0, ny=0):
+
+        """
+        This function ...
+        :param nx:
+        :param ny:
+        :return:
+        """
+
+        if nx == 0 and ny == 0: return
+
+        new_data = np.pad(self._data, ((ny,0), (nx,0)), 'constant')
+
+        if self.wcs is not None:
+
+            new_wcs = copy.deepcopy(self.wcs)
+
+            new_wcs.wcs.crpix[0] += nx
+            new_wcs.wcs.crpix[1] += ny
+
+            # Change the number of pixels
+            new_wcs.naxis1 = new_data.shape[1]
+            new_wcs.naxis2 = new_data.shape[0]
+            new_wcs._naxis1 = new_wcs.naxis1
+            new_wcs._naxis2 = new_wcs.naxis2
+
+        else: new_wcs = None
+
+        # Set the new data and the new WCS
+        self._data = new_data
+        self._wcs = new_wcs
+
+    # -----------------------------------------------------------------
+
+    def unpad(self, nx=0, ny=0):
+
+        """
+        This function ...
+        :param nx:
+        :param ny:
+        :return:
+        """
+
+        if nx == 0 and ny == 0: return
+
+        # Slice
+        new_data = self._data[ny:, nx:]
+
+        if self.wcs is not None:
+
+            new_wcs = self.wcs.copy()
+
+            new_wcs.wcs.crpix[0] -= nx
+            new_wcs.wcs.crpix[1] -= ny
+
+            # Change the number of pixels
+            new_wcs.naxis1 = new_data.shape[1]
+            new_wcs.naxis2 = new_data.shape[0]
+            new_wcs._naxis1 = new_wcs.naxis1
+            new_wcs._naxis2 = new_wcs.naxis2
+
+        else: new_wcs = None
+
+        # Set the new data and the new WCS
+        self._data = new_data
+        self._wcs = new_wcs
+
+    # -----------------------------------------------------------------
+
     def downsampled(self, factor, order=3):
 
         """
@@ -661,50 +869,75 @@ class Frame(np.ndarray):
         :return:
         """
 
-        # Calculate the downsampled array
-        data = ndimage.interpolation.zoom(self, zoom=1.0/factor, order=order)
+        new = self.copy()
+        new.downsample(factor, order)
+        return new
 
-        new_xsize = data.shape[1]
-        new_ysize = data.shape[0]
+    # -----------------------------------------------------------------
+
+    def downsample(self, factor, order=3):
+
+        """
+        This function ...
+        :param factor:
+        :param order:
+        :return:
+        """
+
+        # Calculate the downsampled array
+        new_data = ndimage.interpolation.zoom(self._data, zoom=1.0/factor, order=order)
+
+        new_xsize = new_data.shape[1]
+        new_ysize = new_data.shape[0]
 
         relative_center = Position(self.center.x / self.xsize, self.center.y / self.ysize)
 
         new_center = Position(relative_center.x * new_xsize, relative_center.y * new_ysize)
 
-        # Make a copy of the current WCS
-        #new_wcs = self.wcs.copy() ## THIS IS NOT A REAL DEEP COPY!! THIS HAS CAUSED ME BUGS THAT GAVE ME HEADACHES
-        new_wcs = copy.deepcopy(self.wcs)
+        if self.wcs is not None:
 
-        # Change the center pixel position
-        new_wcs.wcs.crpix[0] = new_center.x
-        new_wcs.wcs.crpix[1] = new_center.y
+            # Make a copy of the current WCS
+            new_wcs = self.wcs.copy()
 
-        # Change the number of pixels
-        new_wcs.naxis1 = new_xsize
-        new_wcs.naxis2 = new_ysize
+            # Change the center pixel position
+            new_wcs.wcs.crpix[0] = new_center.x
+            new_wcs.wcs.crpix[1] = new_center.y
 
-        new_wcs._naxis1 = new_wcs.naxis1
-        new_wcs._naxis2 = new_wcs.naxis2
+            # Change the number of pixels
+            new_wcs.naxis1 = new_xsize
+            new_wcs.naxis2 = new_ysize
 
-        # Change the pixel scale
-        new_wcs.wcs.cdelt[0] *= float(self.xsize) / float(new_xsize)
-        new_wcs.wcs.cdelt[1] *= float(self.ysize) / float(new_ysize)
+            new_wcs._naxis1 = new_wcs.naxis1
+            new_wcs._naxis2 = new_wcs.naxis2
 
-        # Return the downsampled frame
-        # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-        return Frame(data,
-                     wcs=new_wcs,
-                     name=self.name,
-                     description=self.description,
-                     unit=self.unit,
-                     zero_point=self.zero_point,
-                     filter=self.filter,
-                     sky_subtracted=self.sky_subtracted,
-                     fwhm=self.fwhm)
+            # Change the pixel scale
+            new_wcs.wcs.cdelt[0] *= float(self.xsize) / float(new_xsize)
+            new_wcs.wcs.cdelt[1] *= float(self.ysize) / float(new_ysize)
+
+        else: new_wcs = None
+
+        # Set the new data and wcs
+        self._data = new_data
+        self._wcs = new_wcs
 
     # -----------------------------------------------------------------
 
     def upsampled(self, factor, integers=False):
+
+        """
+        This function ...
+        :param factor:
+        :param integers:
+        :return:
+        """
+
+        new = self.copy()
+        new.upsample(factor, integers)
+        return new
+
+    # -----------------------------------------------------------------
+
+    def upsample(self, factor, integers=False):
 
         """
         This function ...
@@ -718,16 +951,16 @@ class Frame(np.ndarray):
             # Check whether the upsampling factor is an integer or not
             if int(factor) == factor:
 
-                data = ndimage.zoom(self, factor, order=0)
+                new_data = ndimage.zoom(self._data, factor, order=0)
 
-                new_xsize = data.shape[1]
-                new_ysize = data.shape[0]
+                new_xsize = new_data.shape[1]
+                new_ysize = new_data.shape[0]
 
                 relative_center = Position(self.center.x / self.xsize, self.center.y / self.ysize)
 
                 new_center = Position(relative_center.x * new_xsize, relative_center.y * new_ysize)
 
-                new_wcs = self.wcs.copy()
+                new_wcs = copy.deepcopy(self.wcs)
                 # Change the center pixel position
                 new_wcs.wcs.crpix[0] = new_center.x
                 new_wcs.wcs.crpix[1] = new_center.y
@@ -735,7 +968,6 @@ class Frame(np.ndarray):
                 # Change the number of pixels
                 new_wcs.naxis1 = new_xsize
                 new_wcs.naxis2 = new_ysize
-
                 new_wcs._naxis1 = new_wcs.naxis1
                 new_wcs._naxis2 = new_wcs.naxis2
 
@@ -743,22 +975,21 @@ class Frame(np.ndarray):
                 new_wcs.wcs.cdelt[0] *= float(self.xsize) / float(new_xsize)
                 new_wcs.wcs.cdelt[1] *= float(self.ysize) / float(new_ysize)
 
-                return Frame(data, wcs=new_wcs, name=self.name, description=self.description, unit=self.unit, zero_point=self.zero_point, filter=self.filter, sky_subtracted=self.sky_subtracted, fwhm=self.fwhm)
+                #return Frame(data, wcs=new_wcs, name=self.name, description=self.description, unit=self.unit, zero_point=self.zero_point, filter=self.filter, sky_subtracted=self.sky_subtracted, fwhm=self.fwhm)
+
+                # Set the new data and wcs
+                self._data = new_data
+                self._wcs = new_wcs
 
             # Upsampling factor is not an integer
             else:
 
-                # Create a new Frame
-                #frame = Frame.zeros_like(self)
+                old = self.copy()
 
-                #print("self.shape", self.shape)
-
-                frame = self.downsampled(1./factor)
-
-                #print("frame.shape", frame.shape)
+                self.downsample(1./factor)
 
                 #print("Checking indices ...")
-                indices = np.unique(self)
+                indices = np.unique(old._data)
 
                 #print("indices:", indices)
 
@@ -769,21 +1000,28 @@ class Frame(np.ndarray):
 
                     index = int(index)
 
-                    where = Mask(self == index)
-
-                    # Rebin this mask
-                    #data = transformations.new_align_and_rebin(self.masks[mask_name].astype(float), original_wcs, reference_wcs)
+                    where = Mask(old._data == index)
 
                     # Calculate the downsampled array
                     data = ndimage.interpolation.zoom(where.astype(float), zoom=factor)
-
                     upsampled_where = data > 0.5
 
-                    frame[upsampled_where] = index
+                    self[upsampled_where] = index
 
-                return frame
+        # Just do inverse of downsample
+        else: self.downsample(factor)
 
-        else: return self.downsampled(1./factor)
+    # -----------------------------------------------------------------
+
+    def fill(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        self._data.fill(value)
 
     # -----------------------------------------------------------------
 
@@ -958,7 +1196,7 @@ class Frame(np.ndarray):
         """
 
         # Set all NaN pixels to the specified value
-        self[np.isnan(self)] = value
+        self._data[np.isnan(self._data)] = value
 
     # -----------------------------------------------------------------
 
@@ -971,106 +1209,7 @@ class Frame(np.ndarray):
         """
 
         # Set all inf pixels to the specified value
-        self[np.isinf(self)] = value
-
-    # -----------------------------------------------------------------
-
-    def fit_polynomial(self, order, mask=None):
-
-        """
-        This function ...
-        :param order:
-        :param mask:
-        :return:
-        """
-
-        # Do the fitting
-        polynomial = fitting.fit_polynomial(self, order, mask=mask)
-
-        # Evaluate the polynomial
-        data = fitting.evaluate_model(polynomial, 0, self.xsize, 0, self.ysize)
-
-        # Return a new Frame
-        # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-        return Frame(data,
-                     wcs=self.wcs,
-                     name=self.name,
-                     description=self.description,
-                     unit=self.unit,
-                     zero_point=self.zero_point,
-                     filter=self.filter,
-                     sky_subtracted=self.sky_subtracted,
-                     fwhm=self.fwhm)
-
-    # -----------------------------------------------------------------
-
-    def interpolated(self, mask, method):
-
-        """
-        This function ...
-        :param mask:
-        :param method:
-        :return:
-        """
-
-        # Fit a polynomial to the data
-        if method == "polynomial":
-            try:
-                return self.fit_polynomial(3, mask=mask)
-            except TypeError:
-                mask = mask.eroded(connectivity=2, iterations=1)
-                return self.fit_polynomial(3, mask=mask)
-
-        # Interpolate using the local mean method
-        elif method == "local_mean":
-
-            # Calculate the interpolated data
-            data = interpolation.in_paint(self, mask)
-
-            # Return a new Frame
-            # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-            return Frame(data,
-                         wcs=self.wcs,
-                         name=self.name,
-                         description=self.description,
-                         unit=self.unit,
-                         zero_point=self.zero_point,
-                         filter=self.filter,
-                         sky_subtracted=self.sky_subtracted,
-                         fwhm=self.fwhm)
-
-        # Interpolate using inverse distance weighing
-        elif method == "idw":
-
-            # Calculate the interpolated data
-            data = interpolation.in_paint(self, mask, method="idw")
-
-            # Return a new Frame
-            # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-            return Frame(data,
-                         wcs=self.wcs,
-                         name=self.name,
-                         description=self.description,
-                         unit=self.unit,
-                         zero_point=self.zero_point,
-                         filter=self.filter,
-                         sky_subtracted=self.sky_subtracted,
-                         fwhm=self.fwhm)
-
-        # Calculate the mean value of the data
-        elif method == "mean":
-
-            mean = np.ma.mean(np.ma.masked_array(self, mask=mask))
-            return self.fill(mean)
-
-        # Calculate the median value of the data
-        elif method == "median":
-
-            median = np.median(np.ma.masked_array(self, mask=mask).compressed())
-            return self.fill(median)
-
-        # Invalid option
-        else: raise ValueError("Unknown interpolation method")
+        self._data[np.isinf(self._data)] = value
 
     # -----------------------------------------------------------------
 
@@ -1082,7 +1221,7 @@ class Frame(np.ndarray):
         :return:
         """
 
-        data = self[box.y_min:box.y_max, box.x_min:box.x_max]
+        data = self._data[box.y_min:box.y_max, box.x_min:box.x_max]
 
         # Create the new box and return it
         return Box(data, box.x_min, box.x_max, box.y_min, box.y_max)
@@ -1109,10 +1248,8 @@ class Frame(np.ndarray):
         if origin is not None: header["ORIGIN"] = origin
         else: header["ORIGIN"] = "Frame class of PTS package"
 
-        # Create the HDU
-        hdu = fits.PrimaryHDU(self, header)
-
-        # Write the HDU to a FITS file
-        hdu.writeto(path, clobber=True)
+        # Write
+        from . import io
+        io.write_frame(self._data, header, path)
 
 # -----------------------------------------------------------------

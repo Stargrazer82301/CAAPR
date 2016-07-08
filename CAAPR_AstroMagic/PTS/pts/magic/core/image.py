@@ -26,11 +26,10 @@ from astropy.units import Unit
 from ..basics.layers import Layers
 from ..basics.region import Region
 from ..basics.mask import Mask
-from ..basics.coordinatesystem import CoordinateSystem
-from .frame import Frame
-from ..tools import headers, transformations
+from ..tools import transformations
 from ...core.tools import filesystem as fs
 from ...core.tools.logging import log
+from . import io
 
 # -----------------------------------------------------------------
 
@@ -98,22 +97,62 @@ class Image(object):
 
     # -----------------------------------------------------------------
 
-    def asarray(self, axis=3):
+    def copy(self):
 
         """
         This function ...
         :return:
         """
 
-        # Get a list that contains the frames
-        frame_list = self.frames.as_list()
+        return copy.deepcopy(self)
 
-        # Stack the frames into a 3D numpy array
-        if axis == 3: return np.dstack(frame_list)
-        elif axis == 2: return np.hstack(frame_list)
-        elif axis == 1: return np.vstack(frame_list)
-        elif axis == 0: return np.stack(frame_list)
-        else: raise ValueError("'axis' parameter should be integer 0-3")
+    # -----------------------------------------------------------------
+
+    @property
+    def primary(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return self.frames[0]
+
+    # -----------------------------------------------------------------
+
+    @property
+    def nframes(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return len(self.frames)
+
+    # -----------------------------------------------------------------
+
+    @property
+    def nmasks(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return len(self.masks)
+
+    # -----------------------------------------------------------------
+
+    @property
+    def nregions(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        return len(self.regions)
 
     # -----------------------------------------------------------------
 
@@ -126,7 +165,7 @@ class Image(object):
         """
 
         if "primary" not in self.frames: return None
-        return self.frames.primary.shape
+        return self.primary.shape
 
     # -----------------------------------------------------------------
 
@@ -139,7 +178,7 @@ class Image(object):
         """
 
         if "primary" not in self.frames: return None
-        return self.frames.primary.xsize
+        return self.primary.xsize
 
     # -----------------------------------------------------------------
 
@@ -152,7 +191,7 @@ class Image(object):
         """
 
         if "primary" not in self.frames: return None
-        return self.frames.primary.ysize
+        return self.primary.ysize
 
     # -----------------------------------------------------------------
 
@@ -167,7 +206,7 @@ class Image(object):
         if "primary" not in self.frames: return None
 
         # Return the filter of the primary frame
-        return self.frames.primary.filter
+        return self.primary.filter
 
     # -----------------------------------------------------------------
 
@@ -182,7 +221,7 @@ class Image(object):
         if "primary" not in self.frames: return None
 
         # Return the wavelength of the primary frame
-        return self.frames.primary.wavelength
+        return self.primary.wavelength
 
     # -----------------------------------------------------------------
 
@@ -197,7 +236,7 @@ class Image(object):
         if "primary" not in self.frames: return None
 
         # Return the unit of the primary frame
-        return self.frames.primary.unit
+        return self.primary.unit
 
     # -----------------------------------------------------------------
 
@@ -212,12 +251,12 @@ class Image(object):
         if "primary" not in self.frames: return None
 
         # Return the pixelscale of the primary frame
-        return self.frames.primary.pixelscale
+        return self.primary.pixelscale
 
     # -----------------------------------------------------------------
 
     @property
-    def xy_average_pixelscale(self):
+    def average_pixelscale(self):
 
         """
         This function ...
@@ -227,7 +266,7 @@ class Image(object):
         if "primary" not in self.frames: return None
 
         # Return the averaged pixelscale of the primary frame
-        return self.frames.primary.xy_average_pixelscale
+        return self.primary.average_pixelscale
 
     # -----------------------------------------------------------------
 
@@ -244,7 +283,7 @@ class Image(object):
         if "primary" not in self.frames: return None
 
         # Return the FWHM of the primary frame
-        return self.frames.primary.fwhm
+        return self.primary.fwhm
 
     # -----------------------------------------------------------------
 
@@ -260,7 +299,7 @@ class Image(object):
         fwhm = self.fwhm
 
         # Convert into pixels
-        return (fwhm / self.xy_average_pixelscale).to("pix").value
+        return (fwhm / self.average_pixelscale).to("pix").value
 
     # -----------------------------------------------------------------
 
@@ -275,7 +314,7 @@ class Image(object):
         if "primary" not in self.frames: return None
 
         # Return the wcs of the primary frame
-        return self.frames.primary.wcs
+        return self.primary.wcs
 
     # -----------------------------------------------------------------
 
@@ -290,7 +329,7 @@ class Image(object):
         if "primary" not in self.frames: return None
 
         # Return the coordinate range of the primary frame
-        return self.frames.primary.coordinate_range
+        return self.primary.coordinate_range
 
     # -----------------------------------------------------------------
 
@@ -305,7 +344,7 @@ class Image(object):
 
     # -----------------------------------------------------------------
 
-    def save(self, path=None, add_metadata=False, origin=None, add_masks=True):
+    def save(self, path=None, add_metadata=False, origin=None, add_masks=True, add_regions=False):
 
         """
         This function exports the image (frames and masks) as a datacube into FITS file.
@@ -330,11 +369,6 @@ class Image(object):
         # Get the names of the frames
         frame_names = self.frames.keys()
 
-        # Sort the frame names so that 'primary' is always first
-        if "primary" in frame_names:
-            frame_names.remove("primary")
-            frame_names.insert(0, "primary")
-
         # Export all frames to the specified file
         for frame_name in frame_names:
 
@@ -344,7 +378,7 @@ class Image(object):
             # Check if the coordinate system of this frame matches that of the other frames ?
 
             # Add this frame to the data cube, if its coordinates match those of the primary frame
-            datacube.append(self.frames[frame_name])
+            datacube.append(self.frames[frame_name]._data)
             
             # Add the name of the frame to the header
             header["PLANE" + str(plane_index)] = frame_name + " [frame]"
@@ -370,6 +404,13 @@ class Image(object):
                 # Increment the plane index
                 plane_index += 1
 
+        if add_regions:
+
+            # http://docs.astropy.org/en/stable/io/fits/
+
+            tbhdu = fits.BinTableHDU.from_columns([fits.Column(name='target', format='20A', array=a1), fits.Column(name='V_mag', format='E', array=a2)])
+
+
         # Add the meta information to the header
         if add_metadata:
             for key in self.metadata:
@@ -393,17 +434,11 @@ class Image(object):
         if origin is not None: header["ORIGIN"] = origin
         else: header["ORIGIN"] = "Image class of PTS package"
 
-        # Create the HDU from the data array and the header
-        hdu = fits.PrimaryHDU(np.array(datacube), header)
-
-        # Write the HDU to a FITS file
-        hdu.writeto(path, clobber=True)
+        # Write
+        io.write_datacube(datacube, header, path)
 
         # Update the path
         self.path = path
-
-        # Inform the user that the file has been created
-        log.debug("File " + path + " created")
 
     # -----------------------------------------------------------------
 
@@ -601,7 +636,7 @@ class Image(object):
 
         """
         This function ...
-        :param kernel:
+        :param kernel: of type ConvolutionKernel
         :param allow_huge:
         """
 
@@ -612,7 +647,7 @@ class Image(object):
             log.debug("Convolving the " + frame_name + " frame ...")
 
             # Convolve this frame
-            self.frames[frame_name] = self.frames[frame_name].convolved(kernel, allow_huge=allow_huge)
+            self.frames[frame_name].convolve(kernel, allow_huge=allow_huge)
 
     # -----------------------------------------------------------------
 
@@ -626,6 +661,8 @@ class Image(object):
         # Create a copy of the current wcs
         original_wcs = self.wcs.deepcopy()
 
+        footprint = None
+
         # Loop over all currently selected frames
         for frame_name in self.frames:
 
@@ -633,7 +670,7 @@ class Image(object):
             log.debug("Rebinning the " + frame_name + " frame ...")
 
             # Rebin this frame (the reference wcs is automatically set in the new frame)
-            self.frames[frame_name] = self.frames[frame_name].rebinned(reference_wcs)
+            footprint = self.frames[frame_name].rebin(reference_wcs)
 
         # Loop over the masks
         for mask_name in self.masks:
@@ -647,6 +684,13 @@ class Image(object):
             # Return the rebinned mask
             # data, name, description
             self.masks[mask_name] = Mask(data > 0.5, name=self.masks[mask_name].name, description=self.masks[mask_name].description)
+
+        if footprint is not None:
+
+            # Add mask for padded pixels after rebinning
+            # this mask now covers pixels added to the frame after rebinning plus more (radius 10 pixels)
+            padded = Mask(footprint < 0.9).disk_dilation(radius=10)
+            self.add_mask(padded, "padded")
 
     # -----------------------------------------------------------------
 
@@ -667,7 +711,7 @@ class Image(object):
             log.debug("Cropping the " + frame_name + " frame ...")
 
             # Crop this frame
-            self.frames[frame_name] = self.frames[frame_name].crop(x_min, x_max, y_min, y_max)
+            self.frames[frame_name].crop(x_min, x_max, y_min, y_max)
 
         # Loop over all masks
         for mask_name in self.masks:
@@ -821,42 +865,23 @@ class Image(object):
 
     # -----------------------------------------------------------------
 
-    def __mul__(self, factor):
+    def __mul__(self, value):
 
         """
         This function ...
-        :param factor:
+        :param value:
         :return:
         """
 
-        # Create a new image
-        image = Image(self.name)
-
-        # Set attributes
-        image.name = self.name
-        image.path = self.path
-        image.original_header = self.original_header
-        image.metadata = self.metadata
-
-        # Loop over the frames
-        for frame_name in self.frames: image.add_frame(self.frames[frame_name] * factor, frame_name)
-
-        # Loop over the masks
-        for mask_name in self.masks: image.add_mask(self.masks[mask_name] * factor, mask_name)
-
-        # Loop over the regions
-        for region_name in self.regions: image.add_region(copy.deepcopy(self.regions[region_name]), region_name)
-
-        # Return the new image
-        return image
+        return self.copy().__imul__(value)
 
     # -----------------------------------------------------------------
 
-    def __imul__(self, factor):
+    def __imul__(self, value):
 
         """
         This function ...
-        :param factor:
+        :param value:
         :return:
         """
 
@@ -864,13 +889,59 @@ class Image(object):
         for frame_name in self.frames:
 
             # Inform the user
-            log.debug("Multiplying the " + frame_name + " frame by a factor of " + str(factor))
+            log.debug("Multiplying the " + frame_name + " frame by a factor of " + str(value) + " ...")
 
             # Multiply the frame by the given factor
-            self.frames[frame_name] *= factor
+            self.frames[frame_name] *= value
 
         # Return a reference to this instance
         return self
+
+    # -----------------------------------------------------------------
+
+    def __div__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.copy().__idiv__(value)
+
+    # -----------------------------------------------------------------
+
+    def __idiv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        # Loop over all frames
+        for frame_name in self.frames:
+
+            # Inform the user
+            log.debug("Dividing the " + frame_name + " frame by a factor of " + str(value) + " ...")
+
+            # Divide the frame by the given factor
+            self.frames[frame_name] /= value
+
+        # Return a reference to this instance
+        return self
+
+    # -----------------------------------------------------------------
+
+    def __truediv__(self, value):
+
+        """
+        This function ...
+        :param value:
+        :return:
+        """
+
+        return self.__div__(value)
 
     # -----------------------------------------------------------------
 
@@ -883,28 +954,6 @@ class Image(object):
         """
 
         return self.__idiv__(factor)
-
-    # -----------------------------------------------------------------
-
-    def __idiv__(self, factor):
-
-        """
-        This function ...
-        :param factor:
-        :return:
-        """
-
-        # Loop over all currently selected frames
-        for frame_name in self.frames:
-
-            # Inform the user
-            log.debug("Dividing the " + frame_name + " frame by a factor of " + str(factor))
-
-            # Divide the frame by the given factor
-            self.frames[frame_name] /= factor
-
-        # Return a reference to this instance
-        return self
 
     # -----------------------------------------------------------------
 
@@ -950,11 +999,11 @@ class Image(object):
 
     # -----------------------------------------------------------------
 
-    def load_frames(self, filename, index=None, name=None, description=None, always_call_first_primary=True, rebin_to_wcs=False, hdulist_index=0, no_filter=False):
+    def load_frames(self, path, index=None, name=None, description=None, always_call_first_primary=True, rebin_to_wcs=False, hdulist_index=0, no_filter=False):
 
         """
         This function ...
-        :param filename:
+        :param path:
         :param index:
         :param name:
         :param description:
@@ -965,165 +1014,19 @@ class Image(object):
         """
 
         # Check if the file exists
-        if not fs.is_file(filename): raise IOError("File " + filename + " does not exist")
+        if not fs.is_file(path): raise IOError("File '" + path + "' does not exist")
 
         # Show which image we are importing
-        log.debug("Reading in file " + filename + " ...")
+        log.debug("Reading in file '" + path + "' ...")
 
-        # Open the HDU list for the FITS file
-        hdulist = fits.open(filename)
+        # Load frames
+        frames, masks, meta = io.load_frames(path, index, name, description, always_call_first_primary,
+                                             rebin_to_wcs, hdulist_index, no_filter)
 
-        # Get the primary HDU
-        hdu = hdulist[hdulist_index]
-
-        # Get the image header
-        self.original_header = hdu.header
-
-        # Get flattened form of the header
-        flattened_header = headers.flattened(self.original_header)
-
-        # Obtain the world coordinate system
-        wcs = CoordinateSystem(flattened_header)
-
-        # Set the filter
-        if no_filter: fltr = None
-        else:
-
-            # Obtain the filter for this image
-            fltr = headers.get_filter(self.name, self.original_header)
-
-            # Inform the user on the filter
-            if fltr is not None: log.debug("The filter for the '" + filename + "' image is " + str(fltr))
-            else: log.warning("Could not determine the filter for the image '" + filename + "'")
-
-        # Obtain the units of this image
-        unit = headers.get_unit(self.original_header)
-
-        # Obtain the FWHM of this image
-        fwhm = headers.get_fwhm(self.original_header)
-
-        # Get the magnitude zero-point
-        zero_point = headers.get_zero_point(self.original_header)
-
-        # Check whether the image is sky-subtracted
-        sky_subtracted = headers.is_sky_subtracted(self.original_header)
-
-        # Check whether multiple planes are present in the FITS image
-        nframes = headers.get_number_of_frames(self.original_header)
-        if nframes > 1:
-
-            # For each frame
-            for i in range(nframes):
-
-                # If only a frame with specific index needs to be imported, skip this frame if it does not correspond
-                if index is not None and i != index: continue
-
-                # Get name and description of frame
-                name, description, plane_type = headers.get_frame_name_and_description(self.original_header, i, always_call_first_primary)
-
-                # The sky-subtracted flag should only be set for the primary frame
-                subtracted = sky_subtracted if i == 0 else False
-
-                # Check the shape of this new frame
-                if self.shape is not None:
-
-                    if hdu.data[i].shape != self.shape:
-
-                        if rebin_to_wcs:
-
-                            # Inform the user
-                            log.warning("Rebinning the " + name + " frame (plane " + str(i) + ") of " + filename + " to match the shape of this image")
-
-                            # Check if the unit is a surface brightness unit
-                            if unit != Unit("MJy/sr"): raise ValueError("Cannot rebin since unit " + str(unit) + " is not recognized as a surface brightness unit")
-
-                            # Change the data and the WCS
-                            hdu.data[i] = transformations.align_and_rebin(hdu.data[i], flattened_header, self.wcs.to_header())
-                            wcs = self.wcs
-
-                        else: raise ValueError("The shape of the " + name + " frame (plane " + str(i) + ") of " + filename + " does not match the shape of this image")
-
-                # Add this frame to the frames dictionary
-                if plane_type == "frame":
-
-                    # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-                    frame = Frame(hdu.data[i],
-                                  wcs=wcs,
-                                  name=name,
-                                  description=description,
-                                  unit=unit,
-                                  zero_point=zero_point,
-                                  filter=fltr,
-                                  sky_subtracted=subtracted,
-                                  fwhm=fwhm)
-                    self.add_frame(frame, name)
-
-                elif plane_type == "mask":
-
-                    #data, name=None, description=None
-                    mask = Mask(hdu.data[i], name=name, description=description)
-                    self.add_mask(mask, name)
-
-                else: raise ValueError("Unrecognized type (must be frame or mask)")
-
-        else:
-
-            # Sometimes, the 2D frame is embedded in a 3D array with shape (1, xsize, ysize)
-            if len(hdu.data.shape) == 3: hdu.data = hdu.data[0]
-
-            if name is None: name = "primary"
-            if description is None: description = "the primary signal map"
-
-            dummy_name, dummy_description, plane_type = headers.get_frame_name_and_description(self.original_header, 0)
-
-            # Check the shape of this new frame
-            if self.shape is not None:
-
-                if hdu.data.shape != self.shape:
-
-                    if rebin_to_wcs:
-
-                        # Inform the user
-                        log.warning("Rebinning the " + name + " frame (plane 0) of " + filename + " to match the shape of this image")
-
-                        # Check if the unit is a surface brightness unit
-                        if unit != Unit("MJy/sr"): raise ValueError("Cannot rebin since unit " + str(unit) + " is not recognized as a surface brightness unit")
-
-                        # Change the data and the WCS
-                        hdu.data = transformations.align_and_rebin(hdu.data, flattened_header, self.wcs.to_header())
-                        wcs = self.wcs
-
-                    else: raise ValueError("The shape of the " + name + " frame (plane 0) of " + filename + " does not match the shape of this image")
-
-            if plane_type == "frame":
-
-                # data, wcs=None, name=None, description=None, unit=None, zero_point=None, filter=None, sky_subtracted=False, fwhm=None
-                frame = Frame(hdu.data,
-                              wcs=wcs,
-                              name=name,
-                              description=description,
-                              unit=unit,
-                              zero_point=zero_point,
-                              filter=fltr,
-                              sky_subtracted=sky_subtracted,
-                              fwhm=fwhm)
-                # Add the primary image frame
-                self.add_frame(frame, name)
-
-            elif plane_type == "mask":
-
-                #data, name=None, description=None
-                mask = Mask(hdu.data, name=name, description=description)
-                # Add the mask
-                self.add_mask(mask, name)
-
-            else: raise ValueError("Unrecognized type (must be frame or mask)")
-
-        # Add meta information
-        for key in self.original_header: self.metadata[key.lower()] = self.original_header[key]
-
-        # Close the FITS file
-        hdulist.close()
+        # Set frames, masks and meta information
+        for frame_name in frames: self.add_frame(frames[frame_name], frame_name)
+        for mask_name in masks: self.add_mask(masks[mask_name], mask_name)
+        for keyword in meta: self.metadata[keyword] = meta[keyword]
 
     # -----------------------------------------------------------------
 

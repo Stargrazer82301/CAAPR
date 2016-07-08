@@ -26,14 +26,14 @@ from ..basics.skygeometry import SkyCoordinate
 from ..core.frame import Frame
 from ..object.galaxy import Galaxy
 from ..basics.skygeometry import SkyEllipse
-from ...core.basics.configurable import Configurable
+from ...core.basics.configurable import OldConfigurable
 from ...core.tools import tables
 from ...core.tools import filesystem as fs
 from ...core.tools.logging import log
 
 # -----------------------------------------------------------------
 
-class GalaxyFinder(Configurable):
+class GalaxyFinder(OldConfigurable):
 
     """
     This class ...
@@ -412,8 +412,8 @@ class GalaxyFinder(Configurable):
         # Get the angle
         angle = self.principal.pa_for_wcs(self.frame.wcs)
 
-        x_radius = 0.5 * self.principal.major.to("arcsec").value / self.frame.xy_average_pixelscale.to("arcsec/pix").value
-        y_radius = 0.5 * self.principal.minor.to("arcsec").value / self.frame.xy_average_pixelscale.to("arcsec/pix").value
+        x_radius = 0.5 * self.principal.major.to("arcsec").value / self.frame.average_pixelscale.to("arcsec/pix").value
+        y_radius = 0.5 * self.principal.minor.to("arcsec").value / self.frame.average_pixelscale.to("arcsec/pix").value
         radius = Extent(x_radius, y_radius)
 
         # Create and return an ellipse
@@ -539,15 +539,15 @@ class GalaxyFinder(Configurable):
 
                 color = "green"
 
-                x_radius = 0.5 * galaxy.major.to("arcsec").value / self.frame.xy_average_pixelscale.to("arcsec/pix").value
+                x_radius = 0.5 * galaxy.major.to("arcsec").value / self.frame.average_pixelscale.to("arcsec/pix").value
                 y_radius = x_radius
 
             else:
 
                 color = "green"
 
-                x_radius = 0.5 * galaxy.major.to("arcsec").value / self.frame.xy_average_pixelscale.to("arcsec/pix").value
-                y_radius = 0.5 * galaxy.minor.to("arcsec").value / self.frame.xy_average_pixelscale.to("arcsec/pix").value
+                x_radius = 0.5 * galaxy.major.to("arcsec").value / self.frame.average_pixelscale.to("arcsec/pix").value
+                y_radius = 0.5 * galaxy.minor.to("arcsec").value / self.frame.average_pixelscale.to("arcsec/pix").value
 
             radius = Extent(x_radius, y_radius)
 

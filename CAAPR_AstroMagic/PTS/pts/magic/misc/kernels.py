@@ -13,8 +13,6 @@
 from __future__ import absolute_import, division, print_function
 
 # Import standard modules
-import gzip
-import shutil
 import urllib
 import requests
 from lxml import html
@@ -29,6 +27,7 @@ from ..core.frame import Frame
 from ...core.tools import inspection
 from ...core.tools import filesystem as fs
 from ...core.tools.logging import log
+from ...core.tools import archive
 
 # -----------------------------------------------------------------
 
@@ -47,7 +46,7 @@ def rebin_kernel(kernel, pixelscale):
     """
 
     # Calculate the zooming factor
-    factor = (pixelscale / kernel.xy_average_pixelscale).to("").value
+    factor = (pixelscale / kernel.average_pixelscale).to("").value
 
     # Rebin to the pixelscale
     data = ndimage.interpolation.zoom(kernel, zoom=1.0 / factor)
@@ -68,7 +67,7 @@ def rebin_kernel_for_image(kernel, image):
     :return:
     """
 
-    return rebin_kernel(kernel, image.xy_average_pixelscale)
+    return rebin_kernel(kernel, image.average_pixelscale)
 
 # -----------------------------------------------------------------
 
@@ -81,7 +80,7 @@ def rebin_kernel_for_frame(kernel, frame):
     :return:
     """
 
-    return rebin_kernel(kernel, frame.xy_average_pixelscale)
+    return rebin_kernel(kernel, frame.average_pixelscale)
 
 # -----------------------------------------------------------------
 
@@ -405,14 +404,12 @@ class AnianoKernels(object):
         urllib.urlretrieve(kernel_link, gz_path)
 
         # Inform the user
-        log.info("Unzipping kernel ...")
+        log.info("Decompressing kernel file ...")
 
-        # Unzip the kernel FITS file
-        with gzip.open(gz_path, 'rb') as f_in:
-            with open(fits_path, 'wb') as f_out:
-                shutil.copyfileobj(f_in, f_out)
+        # Decompress the kernel FITS file
+        archive.decompress_gz(gz_path, fits_path)
 
-        # Remove the fits.gz file
+        # Remove the fits .gz file
         fs.remove_file(gz_path)
 
     # -----------------------------------------------------------------
@@ -441,12 +438,10 @@ class AnianoKernels(object):
         urllib.urlretrieve(psf_link, gz_path)
 
         # Inform the user
-        log.info("Unzipping PSF file ...")
+        log.info("Decompressing PSF file ...")
 
-        # Unzip the FITS file
-        with gzip.open(gz_path, 'rb') as f_in:
-            with open(fits_path, 'wb') as f_out:
-                shutil.copyfileobj(f_in, f_out)
+        # Decompress the PSF FITS file
+        archive.decompress_gz(gz_path, fits_path)
 
         # Remove the fits.gz file
         fs.remove_file(gz_path)

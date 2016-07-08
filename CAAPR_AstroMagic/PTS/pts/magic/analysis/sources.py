@@ -447,6 +447,7 @@ def find_source_segmentation(frame, ellipse, config, track_record=None, expansio
     sigma = config.kernel.fwhm * statistics.fwhm_to_sigma
     kernel_size = int(round(4.0 * config.kernel.cutoff_level))
     kernel = Gaussian2DKernel(sigma, x_size=kernel_size, y_size=kernel_size)
+    kernel.normalize() # to suppress warning
 
     if special: log.debug("looking for center segment")
 
@@ -467,8 +468,9 @@ def find_source_segmentation(frame, ellipse, config, track_record=None, expansio
         # Subtract the background from the source
         try: # weird error coming out for example with M81 GALEX FUV image (saturation detection)
             source.estimate_background(config.background_est_method, sigma_clip=config.sigma_clip_background)
+        except:
             if special: log.debug("no source can be found (exception encountered while estimating background)")
-        except: return None
+            return None
 
         if special: log.debug("looking for center segment again")
 
@@ -673,6 +675,7 @@ def find_source_peaks(frame, ellipse, config, track_record=None, level=0, specia
         # Create a Gaussian convolution kernel and return it
         sigma = config.convolution_fwhm * statistics.fwhm_to_sigma
         kernel = Gaussian2DKernel(sigma)
+        kernel.normalize() # to suppress warning
 
     # Else, set the kernel to None
     else: kernel = None
