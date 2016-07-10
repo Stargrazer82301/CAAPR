@@ -84,7 +84,7 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
         if pod['verbose']: print '['+pod['id']+'] Parsing input data.'
         pod = CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
         if pod['within_bounds']==False:
-            return pod
+            return None
         CAAPR_IO.MemCheck(pod)
 
 
@@ -262,9 +262,8 @@ def ApertureSize(pod,band_dict):
     # Else if map contains NaNs, do it the robust (but very-very slow, very-very memory intensive) Astropy way
     else:
         if verbose: print '['+pod['id']+'] NaN pixels within coverage area; convolving using slower NaN-compatible method.'
-        CAAPR_IO.MemCheck(pod, thresh_factor=20.0)#CAAPR_IO.MemCheck(pod, thresh_fraction=0.5, thresh_factor=20.0)
+        CAAPR_IO.MemCheck(pod, thresh_factor=20.0)
         kernel = astropy.convolution.kernels.Gaussian2DKernel(kernel_fwhm)
-        #kernel = astropy.convolution.AiryDisk2DKernel(kernel_fwhm)
         pod['cutout'] = astropy.convolution.convolve_fft(pod['cutout'], kernel, interpolate_nan=False, normalize_kernel=True, ignore_edge_zeros=False, allow_huge=True)
         pod['cutout'][ np.where( np.isnan(cutout_unconv)==True ) ] = np.NaN
 
@@ -377,9 +376,12 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
     axial_ratio_list = []
     angle_list = []
     for aperture in aperture_output_list:
-        semimaj_arcsec_list.append( aperture['opt_semimaj_arcsec'] )
-        axial_ratio_list.append( aperture['opt_axial_ratio'] )
-        angle_list.append( aperture['opt_angle'] )
+        try:
+            semimaj_arcsec_list.append( aperture['opt_semimaj_arcsec'] )
+            axial_ratio_list.append( aperture['opt_axial_ratio'] )
+            angle_list.append( aperture['opt_angle'] )
+        except:
+            pdb.set_trace()
 
     # Find largest semi-major axis, and use to define size of enclosisity array (which will have pixels some fraction the size of the smallest semi-major axis)
     semimaj_max = np.nanmax(semimaj_arcsec_list) #semimaj_min = np.nanmin(semimaj_arcsec_list)

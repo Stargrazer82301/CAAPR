@@ -187,6 +187,10 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
 def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
     source_id = source_dict['name']+'_'+band_dict['band_name']
 
+    # Make sure that band directory isn't stuck on cutout directory from previous source
+    if 'band_dir_inviolate' in band_dict.keys():
+        band_dict['band_dir'] = band_dict['band_dir_inviolate']
+
     # Determine whether the user is specificing a directroy full of FITS files in this band (in which case use standardised filename format), or just a single FITS file
     if os.path.isdir(band_dict['band_dir']):
         in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )

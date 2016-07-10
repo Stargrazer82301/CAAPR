@@ -38,13 +38,12 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
     # Determine whether the user is specificing a directroy full of FITS files in this band (in which case use standardised filename format), or just a single FITS file
     try:
-        os.path.isdir(band_dict['band_dir'])
+        if os.path.isdir(band_dict['band_dir']):
+            in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
+        elif os.path.isfile(band_dict['band_dir']):
+            in_fitspath = os.path.join( band_dict['band_dir'] )
     except:
         pdb.set_trace()
-    if os.path.isdir(band_dict['band_dir']):
-        in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
-    elif os.path.isfile(band_dict['band_dir']):
-        in_fitspath = os.path.join( band_dict['band_dir'] )
 
 
     # Work out whether the file extension for FITS file in question is .fits or .fits.gz

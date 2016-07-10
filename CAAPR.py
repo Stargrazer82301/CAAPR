@@ -86,6 +86,11 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
         os.mkdir( os.path.join(temp_dir_path,'Processed_Maps') )
     os.mkdir(os.path.join(temp_dir_path, 'AstroMagic'))
 
+    # Make inviolate copy of original band directories, to insure against over-writing when temp cutout directories are handled later
+    for band in bands_dict.keys():
+        bands_dict[band]['band_dir_inviolate'] = bands_dict[band]['band_dir']
+
+
 
 
     # Record timestamp

@@ -47,12 +47,13 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         if bands_dict[band]['make_cutout']=='False':
             bands_dict[band]['make_cutout']=False
 
+        # Reset band directory to inviolate value, to purge any holdovers from previous source
+        bands_dict[band]['band_dir'] =  bands_dict[band]['band_dir_inviolate']
+
         # Now check if cutouts are necessary; if so, produce them
         if bands_dict[band]['make_cutout']==True:
             raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
         if bands_dict[band]['make_cutout']>0:
-            if 'band_dir_original' in bands_dict[band].keys():
-                bands_dict[band]['band_dir'] = bands_dict[band]['band_dir_inviolate']
             band_cutout_dir = CAAPR_IO.Cutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
 
         # Otherwise, check if it is possible to trim padding of no-coverage from edge of map
@@ -60,7 +61,6 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
             band_cutout_dir = CAAPR_IO.UnpaddingCutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
 
         # Update band dictionary entry reflect the path of the freshly-made cutout, if necessary
-        bands_dict[band]['band_dir_inviolate'] = bands_dict[band]['band_dir']
         if band_cutout_dir!=None:
             bands_dict[band]['band_dir'] = band_cutout_dir
 
@@ -224,6 +224,8 @@ def MapPrelim(pod, source_dict, band_dict, verbose=False):
     # Check if current source lies within bounds of map; if not, fai and return)
     if pod['centre_i']<0 or pod['centre_i']>(pod['cutout'].shape)[0] or pod['centre_j']<0 or pod['centre_j']>(pod['cutout'].shape)[1]:
         pod['within_bounds'] = False
+        if 'band_dir_inviolate' in band_dict.keys():
+            band_dict['band_dir'] = band_dict['band_dir_inviolate']
         if verbose: print '['+pod['id']+'] Target not within bounds of map.'
     else:
         pod['within_bounds'] = True
