@@ -78,7 +78,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         for band in bands_dict.keys():
             if bands_dict[band]['remove_stars']==True:
                 star_sub_check = True
-        if star_sub_check==True:
+        if (star_sub_check==True) and (str(source_dict['remove_stars_bands_exclude'])!='True'):
             if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic')):
                 shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
             os.mkdir(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
