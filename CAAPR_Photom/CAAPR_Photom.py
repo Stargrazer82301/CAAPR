@@ -820,10 +820,10 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
     params = lmfit.Parameters()
     params.add('sersic_amplitide', value=initial_sersic_amplitide, vary=True)
     params.add('sersic_r_eff', value=initial_sersic_r_eff, vary=True, min=0.0, max=pod['adj_semimaj_pix'])
-    params.add('sersic_n', value=initial_sersic_n, vary=True)#, min=0.1, max=10)
+    params.add('sersic_n', value=initial_sersic_n, vary=True, min=0.1, max=10)
     params.add('sersic_x_0', value=initial_sersic_x_0, vary=False)
     params.add('sersic_y_0', value=initial_sersic_y_0, vary=False)
-    params.add('sersic_ellip', value=initial_sersic_ellip, vary=True)
+    params.add('sersic_ellip', value=initial_sersic_ellip, vary=True, min=0.5*initial_sersic_ellip, max=0.5*(1.0-initial_sersic_ellip)+initial_sersic_ellip)
     params.add('sersic_theta', value=initial_sersic_theta, vary=False)
 
     # Solve with LMfit to find parameters of best-fit sersic profile
@@ -884,11 +884,12 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
 
 
     # Find difference between flux measued on convoled and unconvoled sersic maps
-    ap_correction = np.max([ 1.0, (sersic_ap_sum/conv_ap_sum) ])
+    ap_correction = np.nanmax([ 1.0, (sersic_ap_sum/conv_ap_sum) ])
 
 
     # Apply aperture correction to pod, and return
     if kwargs_dict['verbose']: print '['+pod['id']+'] Applying aperture correction factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_correction,5))+'.'
+    pdb.set_trace()
     pod['ap_sum'] *= ap_correction
     pod['ap_error'] *= ap_correction
     return pod #astropy.io.fits.writeto('/home/saruman/spx7cjc/DustPedia/Conv.fits', conv_map, header=pod['in_header'], clobber=True)
