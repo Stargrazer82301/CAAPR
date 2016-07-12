@@ -60,7 +60,6 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
     # The paths to the image and output (absolute or relative to the current working directory)
     output_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'])
-    pickle_path = os.path.join( output_path, source_dict['name']+'_'+band_dict['band_name']+'_Preprocessed.pj' )
     image_path = in_fitspath
 
 
