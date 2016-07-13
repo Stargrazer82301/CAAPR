@@ -5,6 +5,7 @@ sys.path.insert(0, '../')
 import gc
 import pdb
 import time
+import re
 import warnings
 import numbers
 import random
@@ -156,6 +157,8 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
             for band in bands_dict.keys():
                 photom_output_list.append( CAAPR_Photom.PipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
                 photom_list = [output for output in photom_output_list if output!=None]
+
+
 
         # Use band input table to establish order in which to put bands in results file, handling case of only one band
         photom_string = source_dict['name']
@@ -337,17 +340,90 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
 
 # Define function that predicts time until completion, and produces plot thereof
 def TimeEst(time_list, total, output_dir_path, source_dict, kwargs_dict):
+
+
+
+    # Add current timing to list of timings, and pass to time estimation function to get predicted completion time
     time_list.append(time.time())
     time_est = ChrisFuncs.TimeEst(time_list, total, plot=True)
     time_remaining = time_est[0]
+
+    # Write estimated completion time to text file
     time_file = open( os.path.join(output_dir_path,'Estimated_Completion_Time.txt'), 'w')
     time_file.write(time_remaining)
     time_file.close()
+
+    # Make plot showing timings so far, and predicted time remaining
     time_fig = time_est[1]
     time_fig.savefig( os.path.join(output_dir_path,'Estimated_Completion_Time.png'), dpi=150  )
     time_fig.clf()
     plt.close('all')
+
+    # If vorbose, report estimated time until completion to user
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] CAAPR estimated completion at: '+time_remaining+'.'
+
+
+
+
+
+# Define function to determine what particular band a given band name refers to
+def BandParse(band_name_target):
+
+
+
+    # Define dictionary containing lists of possible alternate names for each band
+    band_names_dict = {'GALEX_FUV':['GALEX_FUV','FUV','FUV-band','GALEX_f','f','f-band'],
+                       'GALEX_NUV':['GALEX_NUV','NUV','NUV-band','GALEX_n','n','n-band'],
+                       'SDSS_u':['SDSS_u','u','u-band','SDSS_u-band'],
+                       'SDSS_g':['SDSS_g','g','g-band','SDSS_g-band'],
+                       'SDSS_r':['SDSS_r','r','r-band','SDSS_r-band'],
+                       'SDSS_i':['SDSS_i','i','i-band','SDSS_i-band'],
+                       'SDSS_z':['SDSS_z','z','z-band','SDSS_z-band'],
+                       'CTIO_U':['CTIO_U','CTIO_U-band'],
+                       'CTIO_B':['CTIO_B','CTIO_B-band','B','B-band'],
+                       'CTIO_V':['CTIO_V','CTIO_V-band','V','V-band'],
+                       'CTIO_R':['CTIO_R','CTIO_R-band'],
+                       'CTIO_I':['CTIO_I','CTIO_I-band'],
+                       'DSS_B':['DSS_B','DSS1_B','DSSI_B','DSS2_B','DSSII_B','DSS_B-band','DSS1_B-band','DSSI_B-band','DSS2_B-band','DSSII_B-band','DSS_G','DSS1_G','DSSI_G','DSS2_G','DSSII_G','DSS_G-band','DSS1_G-band','DSSI_G-band','DSS2_G-band','DSSII_G-band'],
+                       'DSS_R':['DSS_R','DSS1_R','DSSI_R','DSS2_R','DSSII_R','DSS_R-band','DSS1_R-band','DSSI_R-band','DSS2_R-band','DSSII_R-band'],
+                       'DSS_I':['DSS_I','DSS1_I','DSSI_I','DSS2_I','DSSII_I','DSS_I-band','DSS1_I-band','DSSI_I-band','DSS2_I-band','DSSII_I-band'],
+                       '2MASS_J':['2MASS_J','J','J-band','2MASS_J-band'],
+                       '2MASS_H':['2MASS_H','H','H-band','2MASS_H-band'],
+                       '2MASS_Ks':['2MASS_Ks','Ks','Ks-band','2MASS_Ks-band','2MASS_K','2MASS_K-band'],
+                       'UKIRT_J':['UKIRT_J','UKIRT_J-band','UKIDSS_J','UKIDSS_J-band'],
+                       'UKIRT_H':['UKIRT_H','UKIRT_H-band','UKIDSS_H','UKIDSS_H-band'],
+                       'UKIRT_K':['UKIRT_K','UKIRT_K-band','K','K-band','UKIDSS_K','UKIDSS_K-band'],
+                       'Spitzer_3.6':['Spitzer_3.6','Spitzer_3.6um','Spitzer_3.6mu','Spitzer_IRAC_3.6','Spitzer_IRAC_3.6um','Spitzer_IRAC_3.6mu','Spitzer_IRAC1','Spitzer_I1','IRAC_3.6','IRAC_3.6um','IRAC_3.6mu','IRAC1','I1','Spitzer_IRAC1-band','IRAC1-band','I1-band','3.6','3.6um','3.6mu'],
+                       'Spitzer_4.5':['Spitzer_4.5','Spitzer_4.5um','Spitzer_4.5mu','Spitzer_IRAC_4.5','Spitzer_IRAC_4.5um','Spitzer_IRAC_4.5mu','Spitzer_IRAC2','Spitzer_I2','IRAC_4.5','IRAC_4.5um','IRAC_4.5mu','IRAC2','I2','Spitzer_IRAC2-band','IRAC2-band','I2-band','4.5','4.5um','4.5mu'],
+                       'Spitzer_5.8':['Spitzer_5.8','Spitzer_5.8um','Spitzer_5.8mu','Spitzer_IRAC_5.8','Spitzer_IRAC_5.8um','Spitzer_IRAC_5.8mu','Spitzer_IRAC3','Spitzer_I3','IRAC_5.8','IRAC_5.8um','IRAC_5.8mu','IRAC3','I3','Spitzer_IRAC3-band','IRAC3-band','I3-band','5.8','5.8um','5.8mu'],
+                       'Spitzer_8.0':['Spitzer_8.0','Spitzer_8.0um','Spitzer_8.0mu','Spitzer_IRAC_8.0','Spitzer_IRAC_8.0um','Spitzer_IRAC_8.0mu','Spitzer_IRAC4','Spitzer_I4','IRAC_8.0','IRAC_8.0um','IRAC_8.0mu','IRAC4','I4','Spitzer_IRAC4-band','IRAC4-band','I4-band','8.0','8.0um','8.0mu','Spitzer_8','Spitzer_8m','Spitzer_8mu','Spitzer_IRAC_8','Spitzer_IRAC_8um','Spitzer_IRAC_8mu','IRAC_8','IRAC_8um','IRAC_8mu','8','8um','8mu'],
+                       'WISE_3.4':['WISE_3.4','WISE_3.4um','WISE_3.4mu','WISE1','WISE1-band','W1','W1-band','WISE_W1','WISE_W1-band'],
+                       'WISE_4.6':['WISE_4.6','WISE_4.6um','WISE_4.6mu','WISE2','WISE2-band','W2','W2-band','WISE_W2','WISE_W2-band']}
+
+
+
+    # Loop over alternate band name dictionary entries
+    band_altnames_matches = []
+    for band_name_key in band_names_dict.keys():
+        for band_altname in band_names_dict[band_name_key]:
+
+            # Make band names all-lowercase and alphanumeric-only, for ease of comparison
+            band_name_target_comp = re.sub(r'\W+', '', band_name_target).replace('_','').lower()
+            band_altname_comp = re.sub(r'\W+', '', band_altname).replace('_','').lower()
+
+            # If target and alternate band names match, record
+            if band_name_target_comp==band_altname_comp:
+                band_altnames_matches.append(band_name_key)
+
+    # If no matches found, or more than one match found, report null output
+    if len(band_altnames_matches)==0:
+        return None
+    elif len(band_altnames_matches)>1:
+        return None
+
+    # Else if a good match is found, return it
+    elif len(band_altnames_matches)==1:
+        return band_altnames_matches[0]
 
 
 

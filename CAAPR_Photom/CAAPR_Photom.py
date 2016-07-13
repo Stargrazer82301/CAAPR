@@ -6,6 +6,8 @@ import gc
 import pdb
 import time
 import math
+import re
+import warnings
 import numpy as np
 import scipy.optimize
 import scipy.ndimage.measurements
@@ -17,6 +19,7 @@ import astropy.io.fits
 import astropy.wcs
 import astropy.convolution
 import astropy.modeling
+import astroquery.irsa_dust
 import skimage.restoration
 import lmfit
 import skimage
@@ -200,8 +203,12 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
             # Run pod through function that performs aperture correction
-            if str(band_dict['beam_correction'])!='False':
-                pod = ApCorrect(pod, source_dict, band_dict, kwargs_dict)
+            pod = ApCorrect(pod, source_dict, band_dict, kwargs_dict)
+
+
+
+            # Use IRSA dust extinction service to correction fluxes for extinction
+            pod = ExtCorrrct(pod, source_dict, band_dict, kwargs_dict)
 
 
 
@@ -725,7 +732,13 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
 
 # Define function that uses provided beam profile to aperture-correct photometry
 def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
-    if kwargs_dict['verbose']: print '['+pod['id']+'] Determining aperture correction factor due to PSF.'
+
+
+
+    # If aperture correction not required, immediately return unaltered pod
+    if str(band_dict['beam_correction'])=='False':
+        return pod
+    elif kwargs_dict['verbose']: print '['+pod['id']+'] Determining aperture correction factor due to PSF.'
 
 
 
@@ -889,7 +902,6 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
 
     # Apply aperture correction to pod, and return
     if kwargs_dict['verbose']: print '['+pod['id']+'] Applying aperture correction factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_correction,5))+'.'
-    pdb.set_trace()
     pod['ap_sum'] *= ap_correction
     pod['ap_error'] *= ap_correction
     return pod #astropy.io.fits.writeto('/home/saruman/spx7cjc/DustPedia/Conv.fits', conv_map, header=pod['in_header'], clobber=True)
@@ -940,21 +952,82 @@ def Sersic_LMfit(params, pod, cutout, psf, mask, use_fft, lmfit=True): #astropy.
 
 
 
+# Define function that performs extinction correction on photometry, via IRSA dust extinction service (which uses the Schlafly & Finkbeiner 2011 prescription)
+def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
 
-"""
- # Evaluate pixels in sky aperture; with consideration of sub-pixels if requested
-ap_calc = ChrisFuncs.Photom.EllipseSum(cutout, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)
-if float(band_dict['subpixel_factor'])==1.0:
-    ap_calc = ChrisFuncs.Photom.EllipseSum(cutout, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)
-elif float(band_dict['subpixel_factor'])>1.0:
-    ap_calc = ChrisFuncs.Photom.EllipseSumUpscale(cutout, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j, upscale=band_dict['subpixel_factor'])
 
-# Evaluate pixels in sky annulus; with consideration of sub-pixels if requested
-bg_inner_semimaj_pix = adj_semimaj_pix * band_dict['annulus_inner']
-bg_width = (adj_semimaj_pix * band_dict['annulus_outer']) - bg_inner_semimaj_pix
-bg_calc = ChrisFuncs.Photom.AnnulusSum(cutout, bg_inner_semimaj_pix, bg_width, 1.0, 0.0, random_i, random_j)
-if float(band_dict['subpixel_factor'])==1.0:
-    bg_calc = ChrisFuncs.Photom.AnnulusSum(cutout, bg_inner_semimaj_pix, bg_width, 1.0, 0.0, random_i, random_j)
-elif float(band_dict['subpixel_factor'])>1.0:
-    bg_calc = ChrisFuncs.Photom.AnnulusSumUpscale(cutout, bg_inner_semimaj_pix, bg_width, 1.0, 0.0, random_i, random_j, upscale=band_dict['subpixel_factor'])
-"""
+
+    # If extinction correction not required, immediately return pod unaltered
+    if kwargs_dict['extinction_corr']!=True:
+        return pod
+
+
+
+    # List bands for which IRSA provids corrections
+    excorr_possible = ['GALEX_FUV','GALEX_NUV','SDSS_u','SDSS_g','SDSS_r','SDSS_i','SDSS_z','CTIO_U','CTIO_B','CTIO_V','CTIO_R','CTIO_I','DSS_B','DSS_R','DSS_I','2MASS_J','2MASS_H','2MASS_Ks','UKIRT_J','UKIRT_H','UKIRT_K','Spitzer_3.6','Spitzer_4.5','Spitzer_5.8','Spitzer_8.0','WISE_3.4','WISE_4.6']
+
+    # Check if corrections are available for this band
+    photom_band_parsed = CAAPR_Pipeline.BandParse(band_dict['band_name'])
+    if photom_band_parsed==None:
+        if kwargs_dict['verbose']: print '['+pod['id']+'] Unable to parse band name; not conducting Galactic extinction correction for this band.'
+        return pod
+    if photom_band_parsed not in excorr_possible:
+        if kwargs_dict['verbose']: print '['+pod['id']+'] Galactic extinction correction not available for this band.'
+        return pod
+
+    # Else if extinction correction is possible, query IRSA dust extinction service
+    if kwargs_dict['verbose']: print '['+pod['id']+'] Retreiving extinction corrections from IRSA Galactic Dust Reddening and Extinction Service.'
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sys.stdout = open(os.devnull, "w")
+        irsa_query = astroquery.irsa_dust.IrsaDust.get_extinction_table( str(source_dict['ra'])+', '+str(source_dict['dec']) )
+        sys.stdout = sys.__stdout__
+
+
+
+    # Loop over entries in the IRSA table, looking for the current band
+    irsa_band_exists = False
+    for irsa_band_raw in irsa_query['Filter_name'].tolist():
+        irsa_band_parsed = CAAPR_Pipeline.BandParse(irsa_band_raw)
+        if irsa_band_parsed==None:
+            continue
+
+        # If band found in IRSA table, apply quoted Schlafly & Finkbeiner extinction correction
+        if irsa_band_parsed==photom_band_parsed:
+            irsa_band_index = np.where( irsa_query['Filter_name']==irsa_band_raw )[0][0]
+            irsa_band_excorr_mag = irsa_query['A_SandF'][irsa_band_index]
+            irsa_band_excorr = 10.0**( irsa_band_excorr_mag / 2.51 )
+            pod['ap_sum'] *= irsa_band_excorr
+            pod['ap_error'] *= irsa_band_excorr
+            irsa_band_exists = True
+            break
+
+
+
+    # If band is GALEX, determine appropriate extinction correction using reddening coefficients derived from Cardelli (1989) extinction law (cf Gil de Paz 2007, arXiv:1009.4705, arXiv:1108.2837)
+    if (irsa_band_exists==False) and (photom_band_parsed in ['GALEX_FUV','GALEX_NUV']):
+
+        # Get the A(V) / E(B-V) extinction-to-excess ratio in V-band
+        irsa_v_index = np.where( irsa_query['Filter_name']=='CTIO V' )[0][0]
+        irsa_av_ebv_ratio = irsa_query["A_over_E_B_V_SandF"][irsa_v_index]
+
+        # Get the A(V) attenuation in V-band
+        irsa_av = irsa_query["A_SandF"][irsa_v_index]
+
+        # Determine the factor
+        if photom_band_parsed=='GALEX_FUV':
+            reddening_coeff = 7.9
+        elif photom_band_parsed=='GALEX_NUV':
+            reddening_coeff = 8.0
+
+        # Calculate and apply the extincton correction
+        irsa_band_excorr_mag = reddening_coeff * ( irsa_av / irsa_av_ebv_ratio )
+        irsa_band_excorr = 10.0**( irsa_band_excorr_mag / 2.51 )
+        pod['ap_sum'] *= irsa_band_excorr
+        pod['ap_error'] *= irsa_band_excorr
+
+
+
+    # Report and return extinction-correced photometry
+    if kwargs_dict['verbose']: print '['+pod['id']+'] Applying Galactic extinction correction of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr_mag,4))+' mag (ie, factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr,4))+').'
+    return pod

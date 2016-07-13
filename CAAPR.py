@@ -37,6 +37,7 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
           polysub = True,
           starsub = True,
           do_photom = True,
+          extinction_corr = True,
           parallel = True,
           n_proc = mp.cpu_count()-2,
           thumbnails = True,
@@ -57,6 +58,7 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
                    'polysub':polysub,
                    'starsub':starsub,
                    'do_photom':do_photom,
+                   'extinction_corr':extinction_corr,
                    'parallel':parallel,
                    'n_proc':n_proc,
                    'thumbnails':thumbnails,
@@ -138,11 +140,11 @@ if __name__ == "__main__":
 
     # Run function
     testing = True
-    parallel = True
+    parallel = False
     starsub = True
     aperture_table_path = None#'CAAPR_Aperture_Table_Test.csv'
     if testing:
-        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=8, sources_table_path='CAAPR_Source_Table_Test.csv', polysub=True, starsub=starsub, fit_apertures=True, do_photom=True, aperture_table_path=aperture_table_path, parallel=parallel)
+        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=7, sources_table_path='CAAPR_Source_Table_Test.csv', polysub=True, starsub=starsub, fit_apertures=False, do_photom=True, aperture_table_path=aperture_table_path, parallel=parallel)
 
         # Jubilate
         print 'All done!'
