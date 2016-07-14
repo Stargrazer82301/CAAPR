@@ -258,13 +258,20 @@ def OverlargeStars(pod, sat_path, star_path, gal_path, image, source_dict, band_
 
 
     # Read in saturation region file, and loop over each entry, recording area and index
-    sat_regions = pyregion.open(sat_path)
-    sat_indices, sat_areas = [], []
-    for sat_region in sat_regions:
-        sat_indices.append( float(sat_region.attr[1]['text']) )
-        sat_areas.append( np.pi * float(sat_region.coord_list[2]) * float(sat_region.coord_list[3]) )
-    sat_array = np.array([sat_areas, sat_indices]).transpose()
-    sat_indices_out = sat_array[:,1].astype(int).tolist()
+    try:
+        sat_regions = pyregion.open(sat_path)
+        sat_indices, sat_areas = [], []
+        for sat_region in sat_regions:
+            sat_indices.append( float(sat_region.attr[1]['text']) )
+            sat_areas.append( np.pi * float(sat_region.coord_list[2]) * float(sat_region.coord_list[3]) )
+        sat_array = np.array([sat_areas, sat_indices]).transpose()
+        sat_indices_out = sat_array[:,1].astype(int).tolist()
+    except ValueError as error_message:
+        if error_message.message=='need more than 0 values to unpack':
+            sat_regions = []
+            sat_indices_out = []
+    except:
+        pdb.set_trace()
 
     # Open galaxy catalogue file, and determine the "primary" name of the one that has been deemed principal
     gal_cat = astropy.table.Table.read(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Galaxies.cat'), format='ascii')
@@ -348,8 +355,16 @@ def OverlargeStars(pod, sat_path, star_path, gal_path, image, source_dict, band_
         star_regions_out.append(star_region)
 
     # Save updated regions to file
-    sat_regions_out.write(sat_path.replace('.reg','_revised.reg'))
-    star_regions_out.write(star_path.replace('.reg','_revised.reg'))
+    if len(sat_regions_out)>0:
+        sat_regions_out.write(sat_path.replace('.reg','_revised.reg'))
+    else:
+        sat_regions_out = open(sat_path.replace('.reg','_revised.reg'), 'w')
+        sat_regions_out.close()
+    if len(star_regions_out)>0:
+        star_regions_out.write(star_path.replace('.reg','_revised.reg'))
+    else:
+        star_regions_out = open(star_path.replace('.reg','_revised.reg'), 'w')
+        star_regions_out.close()
 
     # Return name of principal galaxy
     if gal_principal=='NULL':
