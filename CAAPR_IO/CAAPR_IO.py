@@ -243,10 +243,14 @@ def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
 
     # Slice smaller map out of original map
     out_fits = in_fits.copy()
-    out_fits = out_fits[y_min_border:,:]
-    out_fits = out_fits[:,x_min_border:]
-    out_fits = out_fits[:-y_max_border,:]
-    out_fits = out_fits[:,:-x_max_border]
+    if y_min_border>0:
+        out_fits = out_fits[y_min_border:,:]
+    if x_min_border>0:
+        out_fits = out_fits[:,x_min_border:]
+    if y_max_border>0:
+        out_fits = out_fits[:-y_max_border,:]
+    if x_max_border>0:
+        out_fits = out_fits[:,:-x_max_border]
 
     # Update header WCS to reflect changes
     out_wcs = astropy.wcs.WCS(naxis=2)
