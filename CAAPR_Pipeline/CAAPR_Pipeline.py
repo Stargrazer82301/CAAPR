@@ -2,6 +2,7 @@
 import os
 import sys
 sys.path.insert(0, '../')
+sys.path.append( str( os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR.CAAPR_AstroMagic', 'PTS') ) )
 import gc
 import pdb
 import time
@@ -19,7 +20,6 @@ import matplotlib.pyplot as plt
 import astropy.io.fits
 import ChrisFuncs
 import CAAPR
-sys.path.append( str( os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR.CAAPR_AstroMagic', 'PTS') ) )
 
 
 
@@ -27,58 +27,33 @@ sys.path.append( str( os.path.join( os.path.split( os.path.dirname(os.path.abspa
 
 # The main pipeline; the cutout-production, aperture-fitting, and actual photometry parts of the CAAPR process are called in here, as sub-pipelines
 def PipelineMain(source_dict, bands_dict, kwargs_dict):
+
+
+
+    # Start timer, and check that the user has actually asked CAAPR to do something; if they haven't asked CAAPR to do anything at all, tell them that they're being a bit odd!
     source_start = time.time()
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Processing target '+source_dict['name']+'.'
-
-
-
-    # Loop over bands
-    for band in bands_dict.keys():
-
-
-
-        # Parse cutout request, converting string to booleans as necessary
-        if bands_dict[band]['make_cutout']=='True':
-            bands_dict[band]['make_cutout']=True
-        if bands_dict[band]['make_cutout']=='False':
-            bands_dict[band]['make_cutout']=False
-
-        # Reset band directory to inviolate value, to purge any holdovers from previous source
-        bands_dict[band]['band_dir'] =  bands_dict[band]['band_dir_inviolate']
-
-        # Now check if cutouts are necessary; if so, produce them
-        if bands_dict[band]['make_cutout']==True:
-            raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
-        if bands_dict[band]['make_cutout']>0:
-            band_cutout_dir = CAAPR.CAAPR_IO.Cutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
-
-        # Otherwise, check if it is possible to trim padding of no-coverage from edge of map
-        elif bands_dict[band]['make_cutout']==False:
-            band_cutout_dir = CAAPR.CAAPR_IO.UnpaddingCutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
-
-        # Update band dictionary entry reflect the path of the freshly-made cutout, if necessary
-        if band_cutout_dir!=None:
-            bands_dict[band]['band_dir'] = band_cutout_dir
-
-
-
-    # Report to user that they're being a little bit odd
     if kwargs_dict['fit_apertures']==False and kwargs_dict['do_photom']==False:
         print '['+source_dict['name']+'] So you don\'t want aperture fitting, nor do you want actual photometry to happen? Erm, okay.'
 
 
 
+    # Loop over bands for initial processing
+    for band in bands_dict.keys():
+
+        # Do basic initial handling of band parameters
+        bands_dict[band] = BandInitiate(bands_dict[band])
+
+        # Functiont hat checks if user has requested a cutout; and, if so, produces it
+        bands_dict[band] = CAAPR.CAAPR_IO.Cutout(source_dict, bands_dict[band], kwargs_dict)
+
+        # Function that check sif it is possible to trim padding of no-coverage from edge of map (if user hasn't specificed a particular cutout be made)
+        bands_dict[band] = CAAPR.CAAPR_IO.UnpaddingCutout(source_dict, bands_dict[band], kwargs_dict)
+
+
+
     # Check if star-subtraction is requested for any band; if so, commence catalogue pre-fetching
-    if kwargs_dict['starsub']==True:
-        star_sub_check = False
-        for band in bands_dict.keys():
-            if bands_dict[band]['remove_stars']==True:
-                star_sub_check = True
-        if (star_sub_check==True) and (str(source_dict['remove_stars_bands_exclude'])!='True'):
-            if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic')):
-                shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
-            os.mkdir(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
-            source_dict['pre_catalogue'] = CAAPR.CAAPR_AstroMagic.PreCatalogue(source_dict, bands_dict, kwargs_dict)
+    CAAPR.CAAPR_AstroMagic.PreCatalogue(source_dict, bands_dict, kwargs_dict)
 
 
 
@@ -110,19 +85,15 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         aperture_combined = CAAPR.CAAPR_Aperture.CombineAperture(aperture_list, source_dict, kwargs_dict)
 
         # Record aperture properties to file
-        aperture_string = str([ source_dict['name'], aperture_combined[0], aperture_combined[1], aperture_combined[2] ])#'name','semimaj_arcsec,axial_ratio,pos_angle\n'
-        aperture_string = aperture_string.replace('[','').replace(']','').replace(' ','').replace('\'','')+'\n'
-        aperture_table_file = open( kwargs_dict['aperture_table_path'], 'a')
-        aperture_table_file.write(aperture_string)
-        aperture_table_file.close()
+        CAAPR.CAAPR_IO.RecordAperture(aperture_combined, source_dict, kwargs_dict)
 
         # Create grid of thumbnail images
-        if kwargs_dict['thumbnails']==True:
-            CAAPR.CAAPR_IO.ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined)
+        CAAPR.CAAPR_IO.ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined)
 
-        # Report time taken to fit apertures, and tidy up
-        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Time taken performing aperture fitting: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-aperture_start,4))+' seconds.'
+        # Report time taken to fit apertures, and tidy up garbage
         gc.collect()
+        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Time taken performing aperture fitting: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-aperture_start,4))+' seconds.'
+
 
 
 
@@ -153,28 +124,11 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
                 photom_output_list.append( CAAPR.CAAPR_Photom.PipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
                 photom_list = [output for output in photom_output_list if output!=None]
 
-
-
-        # Use band input table to establish order in which to put bands in results file, handling case of only one band
-        photom_string = source_dict['name']
-        bands_table = np.genfromtxt(kwargs_dict['bands_table_path'], delimiter=',', names=True, dtype=None)
-        bands_list = bands_table['band_name']
-        if bands_list.shape==():
-            bands_list = [bands_list.tolist()]
-        for band_name in bands_list:
-            for photom_entry in photom_list:
-                if photom_entry['band_name']==band_name:
-                    photom_string += ','+str(photom_entry['ap_sum'])+','+str(photom_entry['ap_error'])
-        photom_string += '\n'
-
         # Record photometry results to file
-        photom_table_file = open( kwargs_dict['photom_table_path'], 'a')
-        photom_table_file.write(photom_string)
-        photom_table_file.close()
+        CAAPR.CAAPR_IO.RecordPhotom(photom_list, source_dict, kwargs_dict)
 
         # Create grid of thumbnail images
-        if kwargs_dict['thumbnails']==True:
-            CAAPR.CAAPR_IO.PhotomThumbGrid(source_dict, bands_dict, kwargs_dict)
+        CAAPR.CAAPR_IO.PhotomThumbGrid(source_dict, bands_dict, kwargs_dict)
 
         # Report time taken to do photometry, and tidy up
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Time taken performing actual photometry: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-photom_start,4))+' seconds.'
@@ -182,14 +136,37 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
 
     # Tidy up temporary files and paths
+    bands_dict = PathTidy(source_dict, bands_dict, kwargs_dict)
+
+    # Report time taken for source, and tidy up garbage
+    gc.collect()
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Total time taken for souce: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-source_start,4))+' seconds.'
     if kwargs_dict['thumbnails']==True: [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
-    if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name'])):
-        shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name']))
-    if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic')):
-        shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic'))
-    bands_dict[band]['band_dir'] = bands_dict[band]['band_dir_inviolate']
-    gc.collect()
+
+
+
+
+
+# Define function that does basic initial handling of band parameters
+def BandInitiate(band_dict):
+
+
+
+    # Make sure band has content
+    if band_dict==None:
+        return band_dict
+
+    # Parse band cutout request, converting string to boolean if necessary
+    if band_dict['make_cutout']=='True':
+        band_dict['make_cutout']=True
+    if band_dict['make_cutout']=='False':
+        band_dict['make_cutout']=False
+
+    # Reset band directory to inviolate value, to purge any holdovers from previous source
+    band_dict['band_dir'] = band_dict['band_dir_inviolate']
+
+    # Return band dict
+    return band_dict
 
 
 
@@ -330,6 +307,21 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
     return pod
 
 
+
+
+# Define function that tidies up folders and paths after completed processing a source
+def PathTidy(source_dict, bands_dict, kwargs_dict):
+
+    if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name'])):
+        shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name']))
+    if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic')):
+        shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic'))
+
+    # Set band directories to standard, not whatever temporary cutout directories may have been used for this source
+    for band in bands_dict.keys():
+        if bands_dict[band]==None:
+            continue
+        bands_dict[band]['band_dir'] = bands_dict[band]['band_dir_inviolate']
 
 
 

@@ -16,11 +16,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import multiprocessing as mp
-
-# Import ChrisFuncs and CAAPR submodules
 import ChrisFuncs
 import CAAPR_IO
 import CAAPR_Pipeline
+import CAAPR_Aperture
+import CAAPR_Photom
+import CAAPR_AstroMagic
 
 
 
@@ -71,48 +72,28 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
     bands_dict = CAAPR_IO.BandsDictFromCSV(bands_table_path)
 
     # Prepare output directory
-    if os.path.exists(output_dir_path):
-        print '[CAAPR] Warning: Output directory already exists; some files may be overridden'
-    else:
-        os.mkdir(output_dir_path)
-    if fit_apertures and thumbnails and not os.path.exists( os.path.join(output_dir_path,'Aperture_Fitting_Thumbnails') ):
-        os.mkdir( os.path.join(output_dir_path,'Aperture_Fitting_Thumbnails') )
-    if do_photom and thumbnails and not os.path.exists( os.path.join(output_dir_path,'Photometry_Thumbnails') ):
-        os.mkdir( os.path.join(output_dir_path,'Photometry_Thumbnails') )
+    CAAPR_IO.OutputDirPrepare(kwargs_dict)
 
     # Prepare temp directory, deleting any pre-existing directory at the specified location
-    if os.path.exists(temp_dir_path):
-        shutil.rmtree(temp_dir_path)
-    os.mkdir(temp_dir_path)
-    if thumbnails==True:
-        os.mkdir( os.path.join(temp_dir_path,'Processed_Maps') )
-    os.mkdir(os.path.join(temp_dir_path, 'AstroMagic'))
+    CAAPR_IO.TempDirPrepare(kwargs_dict)
+
+
 
     # Make inviolate copy of original band directories, to insure against over-writing when temp cutout directories are handled later
     for band in bands_dict.keys():
         bands_dict[band]['band_dir_inviolate'] = bands_dict[band]['band_dir']
 
-
-
-
     # Record timestamp
-    timestamp = str(time.time()).replace('.','-')
-    kwargs_dict['timestamp'] = timestamp
+    kwargs_dict['timestamp'] = str(time.time()).replace('.','-')
+
+
 
     # If no aperture table file provided, and aperture-fitting is requested, create and prepare CSV file to store aperture dimensions for each source
-    if aperture_table_path==None and fit_apertures==True:
-        aperture_table_path = os.path.join(output_dir_path,'CAAPR_Aperture_Table_'+timestamp+'.csv')
-        kwargs_dict['aperture_table_path'] = aperture_table_path
-        aperture_table_header = 'name,semimaj_arcsec,axial_ratio,pos_angle\n'
-        aperture_table_file = open( aperture_table_path, 'a')
-        aperture_table_file.write(aperture_table_header)
-        aperture_table_file.close()
+    kwargs_dict = CAAPR_IO.ApertureTablePrepare(kwargs_dict)
 
     # If no photometry table path provided, and photometry is requested, create and prepare CSV file to store photometry output for each source
-    if photom_table_path==None and do_photom==True:
-        photom_table_path = os.path.join(kwargs_dict['output_dir_path'],'CAAPR_Photom_Table_'+kwargs_dict['timestamp']+'.csv')
-        kwargs_dict['photom_table_path'] = photom_table_path
-        CAAPR_IO.PhotomTablePrepare(bands_dict, kwargs_dict)
+    kwargs_dict = CAAPR_IO.PhotomTablePrepare(kwargs_dict)
+
 
 
 
@@ -140,7 +121,7 @@ if __name__ == "__main__":
 
     # Run function
     testing = True
-    parallel = False
+    parallel = True
     starsub = True
     aperture_table_path = None#'CAAPR_Aperture_Table_Test.csv'
     if testing:

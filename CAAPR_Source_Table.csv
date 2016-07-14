@@ -1,4 +1,4 @@
-name,ra,dec,fitting_bands_exclude,remove_stars_bands_exclude,fitting_min_semimaj_arcsec
+name,ra,dec,fitting_bands_exclude,starsub_bands_exclude,fitting_min_semimaj_arcsec
 ESO097-013,213.2913,-65.339,,,261.2891114
 ESO116-012,48.2697,-57.35714,,,108.9234021
 ESO149-001,356.9529,-57.07261,,,101.6532401

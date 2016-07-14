@@ -26,6 +26,8 @@ plt.ioff()
 # Dunction that uses band table CSV file to create a dictionary of band values
 def SourcesDictFromCSV(sources_table_path):
 
+
+
     # Initially read in CSV file as a numpy structured array, and prepare output dictionary
     sources_table = np.genfromtxt(sources_table_path, names=True, delimiter=',', dtype=None, comments='#')
     sources_dict = {}
@@ -55,6 +57,8 @@ def SourcesDictFromCSV(sources_table_path):
 # Function that uses band table CSV file to create a dictionary of band values
 def BandsDictFromCSV(bands_table_path):
 
+
+
     # Initially read in CSV file as a numpy structured array, and prepare output dictionary
     bands_table = np.genfromtxt(bands_table_path, names=True, delimiter=',', dtype=None, comments='#')
     bands_dict = {}
@@ -81,8 +85,88 @@ def BandsDictFromCSV(bands_table_path):
 
 
 
+# Function that prepares output directory
+def OutputDirPrepare(kwargs_dict):
+
+
+
+    # If needed, create output directory (warning user if there is an existing directory there, which hence may have its contents overwritten)
+    if os.path.exists( kwargs_dict['output_dir_path'] ):
+        print '[CAAPR] Warning: Output directory already exists; some files may be overridden'
+    else:
+        os.mkdir( kwargs_dict['output_dir_path'] )
+
+    # If aperture fitting requested, make corresponding output sub-directory
+    if kwargs_dict['fit_apertures'] and kwargs_dict['thumbnails'] and not os.path.exists( os.path.join( kwargs_dict['output_dir_path'], 'Aperture_Fitting_Thumbnails' ) ):
+        os.mkdir( os.path.join(kwargs_dict['output_dir_path'],'Aperture_Fitting_Thumbnails') )
+
+    # If actual photometry requested, make corresponding output sub-directory
+    if kwargs_dict['do_photom'] and kwargs_dict['thumbnails'] and not os.path.exists( os.path.join( kwargs_dict['output_dir_path'], 'Photometry_Thumbnails' ) ):
+        os.mkdir( os.path.join( kwargs_dict['output_dir_path'],'Photometry_Thumbnails' ) )
+
+
+
+
+# Function that prepares temporary directory
+def TempDirPrepare(kwargs_dict):
+
+
+
+    # Create temporary directory; if temporary directory already exists, delete it and make a new one
+    if os.path.exists( kwargs_dict['temp_dir_path'] ):
+        shutil.rmtree( kwargs_dict['temp_dir_path'] )
+    os.mkdir( kwargs_dict['temp_dir_path'] )
+
+    # If star-subtraction requested, make temporary sub-directory to hold AstroMagic products
+    if kwargs_dict['starsub']==True:
+        os.mkdir( os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic' ) )
+
+    # If thumbnails requested, make temporary sub-directory for thumbnail cutouts
+    if kwargs_dict['thumbnails']==True:
+        os.mkdir( os.path.join( kwargs_dict['temp_dir_path'],'Processed_Maps' ) )
+
+
+
+
+
+# Function that prepares output file for apertures
+def ApertureTablePrepare(kwargs_dict):
+
+
+
+    # Check whether a new aperture file is required; if not, immediately return kwargs dict unchanged
+    if kwargs_dict['fit_apertures']!=True:
+        return kwargs_dict
+
+    # If no aperture table path is specified construct defualt; otherwis, use path supplied by user
+    if kwargs_dict['aperture_table_path']==None:
+        kwargs_dict['aperture_table_path'] = os.path.join( kwargs_dict['output_dir_path'], 'CAAPR_Aperture_Table_'+kwargs_dict['timestamp']+'.csv' )
+
+    # Create output file, and write standard header
+    aperture_table_header = 'name,semimaj_arcsec,axial_ratio,pos_angle\n'
+    aperture_table_file = open( kwargs_dict['aperture_table_path'], 'a')
+    aperture_table_file.write(aperture_table_header)
+    aperture_table_file.close()
+
+    # Return (potentially-updated) kwargs dict
+    return kwargs_dict
+
+
+
+
+
 # Function that prepares output file for photometry
-def PhotomTablePrepare(bands_dict, kwargs_dict):
+def PhotomTablePrepare(kwargs_dict):
+
+
+
+    # Check that photometry output table is required; if not, immediately return kwargs dict unchanged
+    if kwargs_dict['do_photom']!=True:
+        return kwargs_dict
+
+    # If no photometry table path is specified construct defualt; otherwis, use path supplied by user
+    if kwargs_dict['photom_table_path']==None:
+        kwargs_dict['photom_table_path'] = os.path.join( kwargs_dict['output_dir_path'], 'CAAPR_Photom_Table_'+kwargs_dict['timestamp']+'.csv' )
 
     # Use band input table to establish order in which to put bands in header
     bands_table = np.genfromtxt(kwargs_dict['bands_table_path'], delimiter=',', names=True, dtype=None)
@@ -96,17 +180,31 @@ def PhotomTablePrepare(bands_dict, kwargs_dict):
         photom_table_header += ','+band+','+band+'_ERR'
     photom_table_header += '\n'
 
+    # Create output file, and write output header to it
     photom_table_file = open(kwargs_dict['photom_table_path'], 'a')
     photom_table_file.write(photom_table_header)
     photom_table_file.close()
+
+    # Return (potentially-updated) kwargs dict
+    return kwargs_dict
 
 
 
 
 
 # Function that produces a cutout of a given source in a given band
-def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
+def Cutout(source_dict, band_dict, kwargs_dict):
     source_id = source_dict['name']+'_'+band_dict['band_name']
+
+
+
+    # Check whether cutout has been requested; if not, return band path unchanged
+    if band_dict['make_cutout']==True:
+        raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
+    if not band_dict['make_cutout']>0:
+        return band_dict
+
+
 
     # Determine whether the user is specificing a directroy full of FITS files in this band (in which case use standardised filename format), or just a single FITS file
     if os.path.isdir(band_dict['band_dir']):
@@ -115,10 +213,10 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         in_fitspath = os.path.join( band_dict['band_dir'] )
 
     # Make sure appropriate cutout sub-directories exist in temp directory
-    if not os.path.exists( os.path.join( temp_dir_path, 'Cutouts' ) ):
-        os.mkdir( os.path.join( temp_dir_path, 'Cutouts' ) )
-    if not os.path.exists( os.path.join( temp_dir_path, 'Cutouts', source_dict['name'] ) ):
-        os.mkdir( os.path.join( temp_dir_path, 'Cutouts', source_dict['name'] ) )
+    if not os.path.exists( os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts' ) ):
+        os.mkdir( os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts' ) )
+    if not os.path.exists( os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'] ) ):
+        os.mkdir( os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'] ) )
 
     # Work out whether the file extension is .fits or .fits.gz
     if os.path.exists(in_fitspath+'.fits'):
@@ -129,7 +227,7 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         in_fitspath = None
         print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
         print '['+source_id+'] Assuming no data in this band for current source.'
-        return in_fitspath
+        return band_dict
 
         # If error maps are being used, construct this path also
         if band_dict['use_error_map']==True:
@@ -156,18 +254,18 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
             montage_installed = False
 
         # Construct output path (likewise for error map, if necessary)
-        out_fitspath = os.path.join( temp_dir_path, 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
+        out_fitspath = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
         if band_dict['use_error_map']==True:
-            out_fitspath_error = os.path.join( temp_dir_path, 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
+            out_fitspath_error = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
 
         # If Montage is installed, use it to produce cutout using mSubimage function
         if montage_installed:
-            montage_wrapper.commands.mHdr(str(source_dict['ra'])+' '+str(source_dict['dec']), 1.0, os.path.join(temp_dir_path,'hdr.txt'), pix_size=in_cdelt_arcsec)
+            montage_wrapper.commands.mHdr(str(source_dict['ra'])+' '+str(source_dict['dec']), 1.0, os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), pix_size=in_cdelt_arcsec)
             #montage_wrapper.commands.mSubimage(in_fitspath, out_fitspath, source_dict['ra'], source_dict['dec'], float(band_dict['make_cutout'])/3600.0, hdu=0)
-            montage_wrapper.wrappers.reproject(in_fitspath, out_fitspath, header=os.path.join(temp_dir_path,'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
+            montage_wrapper.wrappers.reproject(in_fitspath, out_fitspath, header=os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
             if band_dict['use_error_map']==True:
                 #montage_wrapper.commands.mSubimage(in_fitspath_error, out_fitspath_error, source_dict['ra'], source_dict['dec'], float(band_dict['make_cutout'])/3600.0, hdu=0)
-                montage_wrapper.wrappers.reproject(in_fitspath_error, out_fitspath_error, header=os.path.join(temp_dir_path,'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
+                montage_wrapper.wrappers.reproject(in_fitspath_error, out_fitspath_error, header=os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
 
         # If montage isn't installed, use the ChrisFuncs cutout function instead
         elif not montage_installed:
@@ -177,15 +275,24 @@ def Cutout(source_dict, band_dict, output_dir_path, temp_dir_path):
 
         # Return the directory of the newly-created cutout
         out_fitsdir = os.path.split(out_fitspath)[0]
-        return out_fitsdir
+        band_dict['band_dir'] = out_fitsdir
+        return band_dict
 
 
 
 
 
 # Function that determines if there is unncessary 'padding' around the coverage region of a map, that can be removed
-def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
+def UnpaddingCutout(source_dict, band_dict, kwargs_dict):
     source_id = source_dict['name']+'_'+band_dict['band_name']
+
+
+
+    # Only proceed with unpadding if the user hasn't requested a particular cutout; if they have, return band dict unchanged
+    if band_dict['make_cutout']!=False:
+        return band_dict
+
+
 
     # Make sure that band directory isn't stuck on cutout directory from previous source
     if 'band_dir_inviolate' in band_dict.keys():
@@ -200,10 +307,10 @@ def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         pdb.set_trace()
 
     # Make sure appropriate cutout sub-directories exist in temp directory
-    if not os.path.exists( os.path.join( temp_dir_path, 'Cutouts' ) ):
-        os.mkdir( os.path.join( temp_dir_path, 'Cutouts' ) )
-    if not os.path.exists( os.path.join( temp_dir_path, 'Cutouts', source_dict['name'] ) ):
-        os.mkdir( os.path.join( temp_dir_path, 'Cutouts', source_dict['name'] ) )
+    if not os.path.exists( os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts' ) ):
+        os.mkdir( os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts' ) )
+    if not os.path.exists( os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'] ) ):
+        os.mkdir( os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'] ) )
 
     # Work out whether the file extension is .fits or .fits.gz
     if os.path.exists(in_fitspath+'.fits'):
@@ -214,7 +321,7 @@ def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         in_fitspath = None
         print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
         print '['+source_id+'] Assuming no data in this band for current source.'
-        return in_fitspath
+        return band_dict
 
     # If error maps are being used, construct this path also
     if band_dict['use_error_map']==True:
@@ -239,7 +346,7 @@ def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
 
     # Decide if it's worth removing the padding; if not, just return False output
     if ((x_min_border+x_max_border)<(0.1*in_fits.shape[1])) and ((y_min_border+y_max_border)<(0.1*in_fits.shape[0])):
-        return None
+        return band_dict
 
     # Slice smaller map out of original map
     out_fits = in_fits.copy()
@@ -261,7 +368,7 @@ def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
     out_header = out_wcs.to_header()
 
     # Save cutout to file
-    out_fitspath = os.path.join( temp_dir_path, 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
+    out_fitspath = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
     out_cutout_hdu = astropy.io.fits.PrimaryHDU(data=out_fits, header=out_header)
     out_cutout_hdulist = astropy.io.fits.HDUList([out_cutout_hdu])
     out_cutout_hdulist.writeto(out_fitspath, clobber=True)
@@ -280,14 +387,61 @@ def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
         out_fits_error = out_fits_error[:,:-x_max_border]
 
         # Save cutout to file
-        out_fitspath_error = os.path.join( temp_dir_path, 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
+        out_fitspath_error = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
         out_cutout_hdu_error = astropy.io.fits.PrimaryHDU(data=out_fits_error, header=out_header)
         out_cutout_hdulist_error = astropy.io.fits.HDUList([out_cutout_hdu_error])
         out_cutout_hdulist_error.writeto(out_fitspath_error, clobber=True)
 
     # Return the directory of the newly-created cutout
     out_fitsdir = os.path.split(out_fitspath)[0]
-    return out_fitsdir
+    band_dict['band_dir'] = out_fitsdir
+    return band_dict
+
+
+
+
+
+# Define function that writes final aperture for given soruce to aperture output file
+def RecordAperture(aperture_combined, source_dict, kwargs_dict):
+
+
+
+    # Consturct string of line to be written
+    aperture_string = str([ source_dict['name'], aperture_combined[0], aperture_combined[1], aperture_combined[2] ])#'name','semimaj_arcsec,axial_ratio,pos_angle\n'
+    aperture_string = aperture_string.replace('[','').replace(']','').replace(' ','').replace('\'','')+'\n'
+
+    # Write line to file
+    aperture_table_file = open( kwargs_dict['aperture_table_path'], 'a')
+    aperture_table_file.write(aperture_string)
+    aperture_table_file.close()
+
+
+
+
+
+# Define function that writes final aperture for given soruce to aperture output file
+def RecordPhotom(photom_list, source_dict, kwargs_dict):
+
+
+
+    # Use band input table to establish order in which to put bands in results file, handling case of only one band
+    photom_string = source_dict['name']
+    bands_table = np.genfromtxt(kwargs_dict['bands_table_path'], delimiter=',', names=True, dtype=None)
+    bands_list = bands_table['band_name']
+
+    # Consturct string of line to be written
+    if bands_list.shape==():
+        bands_list = [bands_list.tolist()]
+    for band_name in bands_list:
+        for photom_entry in photom_list:
+            if photom_entry['band_name']==band_name:
+                photom_string += ','+str(photom_entry['ap_sum'])+','+str(photom_entry['ap_error'])
+    photom_string += '\n'
+
+    # Write line to file
+    photom_table_file = open( kwargs_dict['photom_table_path'], 'a')
+    photom_table_file.write(photom_string)
+    photom_table_file.close()
 
 
 
@@ -295,6 +449,8 @@ def UnpaddingCutout(source_dict, band_dict, output_dir_path, temp_dir_path):
 
 # Define function that checks whether a decent amount of RAM is free before allowing things to progress
 def MemCheck(pod, thresh_fraction=0.75, thresh_factor=20.0, swap_thresh_fraction=0.5, return_status=False):
+
+
 
     # Start infinite loop
     wait_initial = True
@@ -351,9 +507,17 @@ def MemCheck(pod, thresh_fraction=0.75, thresh_factor=20.0, swap_thresh_fraction
 
 # Define function that makes a grid of aperture thumbnails for a given source's output
 def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined):
+
+
+
+    # Check that thumbnails are requested; if so, set up warnings and proceeed
+    if kwargs_dict['thumbnails']!=True:
+        return
     import warnings
     warnings.filterwarnings('ignore')
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Producing image grid of aperture thumbnails.'
+
+
 
     # Define sub-function to find all possible factors for given value
     def Factors(value):
@@ -546,9 +710,18 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
 
 # Define function that makes a grid of photometry thumbnails for a given source's output
 def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
+
+
+
+    # Check that thumbnails are requested; if so, set up warnings and proceeed
+    if kwargs_dict['thumbnails']!=True:
+        return
     import warnings
     warnings.filterwarnings('ignore')
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Producing image grid of photometry thumbnails.'
+
+
+
 
     # Define sub-function to find all possible factors for given value
     def Factors(value):
@@ -740,17 +913,29 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
 
 # Define function for producing an appropriately-sized cutout in current band (with console output disabled), with an equinox header keyword to make APLpy *shut up*
 def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, img_rad_arcsec, thumb_rad):
+
+
+
+    # Construct output path
     img_output = os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_dict['band_name']+'_Thumbnail.fits')
+
+    # Supress needlessly verbose output from astropy
     try:
         sys.stdout = open(os.devnull, "w")
+
+        # If map is smaller than requested map region, embed it in a larger array
         if img_rad_arcsec<=thumb_rad:
             img_margin = thumb_rad - img_rad_arcsec
             ChrisFuncs.FitsEmbed( img_input, img_margin, exten=0, outfile=img_input )
+
+        # Produce cutout, and neated header as necessary (to quell noisy APLpy verbosity later on)
         ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, outfile=img_output )
         cutout_data, cutout_header = astropy.io.fits.getdata(img_output, header=True)
         del cutout_header['RADESYS']
         cutout_header['EQUINOX'] = 2000.0
         cutout_header['EPOCH'] = 2000.00
+
+        # Write thumbnail cutout to file, and end output supression
         astropy.io.fits.writeto(img_output, cutout_data, header=cutout_header, clobber=True)
         sys.stdout = sys.__stdout__
     except:
@@ -758,24 +943,3 @@ def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, img_rad_arcsec, 
         pdb.set_trace()
 
 
-
-
-
-"""
-# Open FITS file in question (it is assumed that only the zeroth extension is of any interest)
-in_fitsdata = astropy.io.fits.open(in_fitspath)
-in_image = in_fitsdata[0].data
-in_header = in_fitsdata[0].header
-in_fitsdata.close()
-in_wcs = astropy.wcs.WCS(in_header)
-pix_size = in_wcs.wcs.cdelt
-
-# If error maps are being used, open this file also
-if band_dict['use_error_map']==True:
-    in_fitsdata_error = astropy.io.fits.open(in_fitspath_error)
-    in_image_error = in_fitsdata_error[0].data
-    in_header_error = in_fitsdata_error[0].header
-    in_fitsdata_error.close()
-    in_wcs_error = astropy.wcs.WCS(in_header_error)
-    pix_size_error = in_wcs_error.wcs.cdelt
-"""

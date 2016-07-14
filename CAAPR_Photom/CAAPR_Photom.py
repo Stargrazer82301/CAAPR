@@ -974,7 +974,7 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
         return pod
 
     # Else if extinction correction is possible, query IRSA dust extinction service
-    if kwargs_dict['verbose']: print '['+pod['id']+'] Retreiving extinction corrections from IRSA Galactic Dust Reddening and Extinction Service.'
+    if kwargs_dict['verbose']: print '['+pod['id']+'] Retreiving extinction corrections from IRSA Galactic Dust Reddening & Extinction Service.'
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sys.stdout = open(os.devnull, "w")

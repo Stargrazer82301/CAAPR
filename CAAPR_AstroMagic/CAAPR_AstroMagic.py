@@ -39,10 +39,10 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
         return pod
     if band_dict['remove_stars']!=True:
         return pod
-    if band_dict['band_name'] in str(source_dict['remove_stars_bands_exclude']).split(';'):
+    if band_dict['band_name'] in str(source_dict['starsub_bands_exclude']).split(';'):
         print '['+pod['id']+'] User explicitly excluded current band from star subtraction for this source.'
         return pod
-    if str(source_dict['remove_stars_bands_exclude'])=='True':
+    if str(source_dict['starsub_bands_exclude'])=='True':
         print '['+pod['id']+'] User explicitly requested no star subtraction for this source.'
         return pod
     if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
@@ -426,9 +426,34 @@ def ExcessGalaxies(gal_region_path, gal_principal):
 
 
 
+
 # Define function that acquires online catalogues for astromagic processing
 def PreCatalogue(source_dict, bands_dict, kwargs_dict):
+
+
+
+    # If absoltuely no star subtractionis required for this source, immediately return
+    if kwargs_dict['starsub']==False:
+        return
+    if str(source_dict['starsub_bands_exclude'])=='True':
+        return
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic retrieving list of foreground stars in map from online catalogues.'
+
+    # If star subtraction is possibly required, check band-by-band
+    if kwargs_dict['starsub']==True:
+        star_sub_check = False
+        for band in bands_dict.keys():
+            if bands_dict[band]==None:
+                continue
+            if bands_dict[band]['remove_stars']==True:
+                star_sub_check = True
+        if star_sub_check==False:
+            return
+
+    # If all checks passed, and star subtraction is required, make sure that AstroMagic temp directory is clear
+    if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic')):
+        shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
+    os.mkdir(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
 
 
 
