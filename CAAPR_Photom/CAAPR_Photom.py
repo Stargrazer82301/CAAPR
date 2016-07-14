@@ -24,9 +24,7 @@ import skimage.restoration
 import lmfit
 import skimage
 import ChrisFuncs
-import CAAPR_Pipeline
-import CAAPR_IO
-import CAAPR_AstroMagic
+import CAAPR
 plt.ioff()
 
 
@@ -93,7 +91,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
                'in_fitspath_size':in_fitspath_size,
                'id':source_id,
                'verbose':kwargs_dict['verbose']}
-        CAAPR_IO.MemCheck(pod)
+        CAAPR.CAAPR_IO.MemCheck(pod)
 
 
 
@@ -119,7 +117,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
         # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
-        pod = CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
+        pod = CAAPR.CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
         if pod['within_bounds']==False:
             output_dict = {'band_name':band_dict['band_name'],
                        'ap_sum':np.NaN,
@@ -143,13 +141,13 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
         # If star-removal is required, run pod through AstroMagic
-        pod = CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+        pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
 
 
 
         # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter, with source aperture masked
         if kwargs_dict['polysub']==True:
-            pod = CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'])
+            pod = CAAPR.CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'])
 
 
 
@@ -167,7 +165,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
             # Attempt to determine aperture noise the preferred way, using full-size randomly-placed apertures
             if kwargs_dict['verbose']: print '['+source_id+'] Estimating aperture noise using full-size randomly-placed sky apertures.'
-            CAAPR_IO.MemCheck(pod)
+            CAAPR.CAAPR_IO.MemCheck(pod)
             ap_noise_dict = ApNoise(pod['cutout'].copy(), source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], downsample=int(band_dict['downsample_factor']))
             if ap_noise_dict['fail']==False:
                 if kwargs_dict['verbose']: print '['+source_id+'] Aperture noise successfully estimated using full-size randomly-placed sky apertures.'
@@ -179,7 +177,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
             else:
                 sky_success_counter = ap_noise_dict['sky_success_counter']
                 if kwargs_dict['verbose']: print '['+source_id+'] Unable to estiamte aperture noise using full-size randomly-placed sky apertures (only '+str(int(sky_success_counter))+' could be placed); switching to aperture extrapolation.'
-                CAAPR_IO.MemCheck(pod)
+                CAAPR.CAAPR_IO.MemCheck(pod)
                 ap_noise_dict = ApNoiseExtrap(pod['cutout'].copy(), source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
                 pod['ap_noise'] = ap_noise_dict['ap_noise']
 
@@ -967,7 +965,7 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
     excorr_possible = ['GALEX_FUV','GALEX_NUV','SDSS_u','SDSS_g','SDSS_r','SDSS_i','SDSS_z','CTIO_U','CTIO_B','CTIO_V','CTIO_R','CTIO_I','DSS_B','DSS_R','DSS_I','2MASS_J','2MASS_H','2MASS_Ks','UKIRT_J','UKIRT_H','UKIRT_K','Spitzer_3.6','Spitzer_4.5','Spitzer_5.8','Spitzer_8.0','WISE_3.4','WISE_4.6']
 
     # Check if corrections are available for this band
-    photom_band_parsed = CAAPR_Pipeline.BandParse(band_dict['band_name'])
+    photom_band_parsed = CAAPR.CAAPR_Pipeline.BandParse(band_dict['band_name'])
     if photom_band_parsed==None:
         if kwargs_dict['verbose']: print '['+pod['id']+'] Unable to parse band name; not conducting Galactic extinction correction for this band.'
         return pod
@@ -988,7 +986,7 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
     # Loop over entries in the IRSA table, looking for the current band
     irsa_band_exists = False
     for irsa_band_raw in irsa_query['Filter_name'].tolist():
-        irsa_band_parsed = CAAPR_Pipeline.BandParse(irsa_band_raw)
+        irsa_band_parsed = CAAPR.CAAPR_Pipeline.BandParse(irsa_band_raw)
         if irsa_band_parsed==None:
             continue
 

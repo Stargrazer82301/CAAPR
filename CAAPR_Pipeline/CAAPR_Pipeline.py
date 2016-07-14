@@ -17,14 +17,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import astropy.io.fits
-import congrid
 import ChrisFuncs
-import CAAPR_IO
-import CAAPR_Aperture
-import CAAPR_Photom
-import CAAPR_AstroMagic
-sys.path.append( str( os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR_AstroMagic', 'PTS') ) )
-from pts.magic.catalog.importer import CatalogImporter
+import CAAPR
+sys.path.append( str( os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR.CAAPR_AstroMagic', 'PTS') ) )
 
 
 
@@ -55,11 +50,11 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         if bands_dict[band]['make_cutout']==True:
             raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
         if bands_dict[band]['make_cutout']>0:
-            band_cutout_dir = CAAPR_IO.Cutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
+            band_cutout_dir = CAAPR.CAAPR_IO.Cutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
 
         # Otherwise, check if it is possible to trim padding of no-coverage from edge of map
         elif bands_dict[band]['make_cutout']==False:
-            band_cutout_dir = CAAPR_IO.UnpaddingCutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
+            band_cutout_dir = CAAPR.CAAPR_IO.UnpaddingCutout(source_dict, bands_dict[band], kwargs_dict['output_dir_path'], kwargs_dict['temp_dir_path'])
 
         # Update band dictionary entry reflect the path of the freshly-made cutout, if necessary
         if band_cutout_dir!=None:
@@ -83,7 +78,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
             if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic')):
                 shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
             os.mkdir(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
-            source_dict['pre_catalogue'] = CAAPR_AstroMagic.PreCatalogue(source_dict, bands_dict, kwargs_dict)
+            source_dict['pre_catalogue'] = CAAPR.CAAPR_AstroMagic.PreCatalogue(source_dict, bands_dict, kwargs_dict)
 
 
 
@@ -98,7 +93,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
             random.shuffle(bands_dict_keys)
             pool = mp.Pool(processes=kwargs_dict['n_proc'])
             for band in bands_dict_keys:
-                aperture_output_list.append( pool.apply_async( CAAPR_Aperture.PipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
+                aperture_output_list.append( pool.apply_async( CAAPR.CAAPR_Aperture.PipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
             pool.join()
             del(pool)
@@ -108,11 +103,11 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         # If parallelisation is disabled, process sources one-at-a-time
         elif kwargs_dict['parallel']==False:
             for band in bands_dict.keys():
-                aperture_output_list.append( CAAPR_Aperture.PipelineAperture(source_dict, bands_dict[band], kwargs_dict) )
+                aperture_output_list.append( CAAPR.CAAPR_Aperture.PipelineAperture(source_dict, bands_dict[band], kwargs_dict) )
                 aperture_list = [output for output in aperture_output_list if output!=None]
 
         # Combine all fitted apertures to produce amalgam aperture
-        aperture_combined = CAAPR_Aperture.CombineAperture(aperture_list, source_dict, kwargs_dict)
+        aperture_combined = CAAPR.CAAPR_Aperture.CombineAperture(aperture_list, source_dict, kwargs_dict)
 
         # Record aperture properties to file
         aperture_string = str([ source_dict['name'], aperture_combined[0], aperture_combined[1], aperture_combined[2] ])#'name','semimaj_arcsec,axial_ratio,pos_angle\n'
@@ -123,7 +118,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
         # Create grid of thumbnail images
         if kwargs_dict['thumbnails']==True:
-            CAAPR_IO.ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined)
+            CAAPR.CAAPR_IO.ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined)
 
         # Report time taken to fit apertures, and tidy up
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Time taken performing aperture fitting: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-aperture_start,4))+' seconds.'
@@ -146,7 +141,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
             random.shuffle(bands_dict_keys)
             pool = mp.Pool(processes=kwargs_dict['n_proc'])
             for band in bands_dict_keys:
-                photom_output_list.append( pool.apply_async( CAAPR_Photom.PipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict) ) )
+                photom_output_list.append( pool.apply_async( CAAPR.CAAPR_Photom.PipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
             pool.join()
             photom_list = [output.get() for output in photom_output_list if output.successful()==True]
@@ -155,7 +150,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         # If parallelisation is disabled, process sources one-at-a-time
         elif kwargs_dict['parallel']==False:
             for band in bands_dict.keys():
-                photom_output_list.append( CAAPR_Photom.PipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
+                photom_output_list.append( CAAPR.CAAPR_Photom.PipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
                 photom_list = [output for output in photom_output_list if output!=None]
 
 
@@ -179,7 +174,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
         # Create grid of thumbnail images
         if kwargs_dict['thumbnails']==True:
-            CAAPR_IO.PhotomThumbGrid(source_dict, bands_dict, kwargs_dict)
+            CAAPR.CAAPR_IO.PhotomThumbGrid(source_dict, bands_dict, kwargs_dict)
 
         # Report time taken to do photometry, and tidy up
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Time taken performing actual photometry: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-photom_start,4))+' seconds.'

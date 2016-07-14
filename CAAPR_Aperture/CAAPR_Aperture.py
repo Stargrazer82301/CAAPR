@@ -14,9 +14,7 @@ import astropy.io.fits
 import astropy.wcs
 import astropy.convolution
 import ChrisFuncs
-import CAAPR_Pipeline
-import CAAPR_IO
-import CAAPR_AstroMagic
+import CAAPR
 
 
 
@@ -82,15 +80,15 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
         # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
         if pod['verbose']: print '['+pod['id']+'] Parsing input data.'
-        pod = CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
+        pod = CAAPR.CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
         if pod['within_bounds']==False:
             return None
-        CAAPR_IO.MemCheck(pod)
+        CAAPR.CAAPR_IO.MemCheck(pod)
 
 
 
         # If star-removal is required, run pod through AstroMagic
-        pod = CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+        pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
 
 
 
@@ -101,7 +99,7 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
         # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter
         if kwargs_dict['polysub']==True:
-            pod = CAAPR_Pipeline.PolySub(pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'])
+            pod = CAAPR.CAAPR_Pipeline.PolySub(pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'])
 
 
 
@@ -262,7 +260,7 @@ def ApertureSize(pod,band_dict):
     # Else if map contains NaNs, do it the robust (but very-very slow, very-very memory intensive) Astropy way
     else:
         if verbose: print '['+pod['id']+'] NaN pixels within coverage area; convolving using slower NaN-compatible method.'
-        CAAPR_IO.MemCheck(pod, thresh_factor=20.0)
+        CAAPR.CAAPR_IO.MemCheck(pod, thresh_factor=20.0)
         kernel = astropy.convolution.kernels.Gaussian2DKernel(kernel_fwhm)
         pod['cutout'] = astropy.convolution.convolve_fft(pod['cutout'], kernel, interpolate_nan=False, normalize_kernel=True, ignore_edge_zeros=False, allow_huge=True)
         pod['cutout'][ np.where( np.isnan(cutout_unconv)==True ) ] = np.NaN
