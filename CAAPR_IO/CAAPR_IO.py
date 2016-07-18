@@ -420,7 +420,24 @@ def RecordAperture(aperture_combined, source_dict, kwargs_dict):
 
 
 # Define function that writes final aperture for given soruce to aperture output file
-def RecordPhotom(photom_list, source_dict, kwargs_dict):
+def RecordPhotom(photom_list, source_dict, bands_dict, kwargs_dict):
+
+
+
+    # Find any bands not listed in the photom results, and add them as null measurements
+    for band in bands_dict.keys():
+        band_photom = False
+        for photom_entry in photom_list:
+            if band == photom_entry['band_name']:
+                band_photom = True
+                break
+        if band_photom==True:
+            continue
+        elif band_photom==False:
+            photom_null = {'band_name':band,
+                            'ap_sum':np.NaN,
+                            'ap_error':np.NaN}
+            photom_list.append(photom_null)
 
 
 
