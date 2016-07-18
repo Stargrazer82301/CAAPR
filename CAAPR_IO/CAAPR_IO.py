@@ -199,9 +199,9 @@ def Cutout(source_dict, band_dict, kwargs_dict):
 
 
     # Check whether cutout has been requested; if not, return band path unchanged
-    if band_dict['make_cutout']==True:
+    if str(band_dict['make_cutout'])==True:
         raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
-    if not band_dict['make_cutout']>0:
+    if not float(band_dict['make_cutout'])>0:
         return band_dict
 
 
@@ -229,54 +229,52 @@ def Cutout(source_dict, band_dict, kwargs_dict):
         print '['+source_id+'] Assuming no data in this band for current source.'
         return band_dict
 
-        # If error maps are being used, construct this path also
+    # If error maps are being used, construct this path also
+    if band_dict['use_error_map']==True:
+        in_fitspath_error = in_fitspath.replace('.fits','_Error.fits')
+        if os.path.exists(in_fitspath_error):
+            pass
+        elif os.path.exists(in_fitspath_error+'.gz'):
+            in_fitspath_error = in_fitspath_error+'.gz'
+        else:
+            raise ValueError('No appropriately-named error file found in target directroy (please ensure that error filesnames are in \"[NAME]_[BAND]_Error.fits\" format.')
+
+    # Determine pixel size
+    in_header = astropy.io.fits.getheader(in_fitspath)
+    in_wcs = astropy.wcs.WCS(in_header)
+    in_cdelt = in_wcs.wcs.cdelt.max()
+    in_cdelt_arcsec = in_cdelt * 3600.0
+
+    # Check if Montage is installed
+    try:
+        import montage_wrapper
+        montage_installed = True
+    except:
+        print '['+source_id+'] Montage and/or the Python Montage wrapper module could not be imported. A cruder cutout method will be used, which could cause projection effects for large maps etc. If this matters to you, install Montage and the Python Montage wrapper module!'
+        montage_installed = False
+
+    # Construct output path (likewise for error map, if necessary)
+    out_fitspath = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
+    if band_dict['use_error_map']==True:
+        out_fitspath_error = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
+
+    # If Montage is installed, use it to produce cutout
+    if montage_installed:
+        montage_wrapper.commands.mHdr(str(source_dict['ra'])+' '+str(source_dict['dec']), band_dict['make_cutout']/3600.0, os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), pix_size=in_cdelt_arcsec)
+        montage_wrapper.wrappers.reproject(in_fitspath, out_fitspath, header=os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
         if band_dict['use_error_map']==True:
-            in_fitspath_error = in_fitspath.replace('.fits','_Error.fits')
-            if os.path.exists(in_fitspath_error):
-                pass
-            elif os.path.exists(in_fitspath_error+'.gz'):
-                in_fitspath_error = in_fitspath_error+'.gz'
-            else:
-                raise ValueError('No appropriately-named error file found in target directroy (please ensure that error filesnames are in \"[NAME]_[BAND]_Error.fits\" format.')
+            montage_wrapper.wrappers.reproject(in_fitspath_error, out_fitspath_error, header=os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
 
-        # Determine pixel size
-        in_header = astropy.io.fits.getheader(in_fitspath)
-        in_wcs = astropy.wcs.WCS(in_header)
-        in_cdelt = in_wcs.wcs.cdelt.max()
-        in_cdelt_arcsec = in_cdelt * 3600.0
-
-        # Check if Montage is installed
-        try:
-            import montage_wrapper
-            montage_installed = True
-        except:
-            print '['+source_id+'] Montage and/or the Python Montage wrapper module could not be imported. A cruder cutout method will be used, which could cause projection effects for large maps etc. If this matters to you, install Montage and the Python Montage wrapper module!'
-            montage_installed = False
-
-        # Construct output path (likewise for error map, if necessary)
-        out_fitspath = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
+    # If montage isn't installed, use the ChrisFuncs cutout function instead
+    elif not montage_installed:
+        ChrisFuncs.FitsCutout(in_fitspath, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath)
         if band_dict['use_error_map']==True:
-            out_fitspath_error = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
+            ChrisFuncs.FitsCutout(in_fitspath_error, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath_error)
 
-        # If Montage is installed, use it to produce cutout using mSubimage function
-        if montage_installed:
-            montage_wrapper.commands.mHdr(str(source_dict['ra'])+' '+str(source_dict['dec']), 1.0, os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), pix_size=in_cdelt_arcsec)
-            #montage_wrapper.commands.mSubimage(in_fitspath, out_fitspath, source_dict['ra'], source_dict['dec'], float(band_dict['make_cutout'])/3600.0, hdu=0)
-            montage_wrapper.wrappers.reproject(in_fitspath, out_fitspath, header=os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
-            if band_dict['use_error_map']==True:
-                #montage_wrapper.commands.mSubimage(in_fitspath_error, out_fitspath_error, source_dict['ra'], source_dict['dec'], float(band_dict['make_cutout'])/3600.0, hdu=0)
-                montage_wrapper.wrappers.reproject(in_fitspath_error, out_fitspath_error, header=os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
-
-        # If montage isn't installed, use the ChrisFuncs cutout function instead
-        elif not montage_installed:
-            ChrisFuncs.FitsCutout(in_fitspath, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath)
-            if band_dict['use_error_map']==True:
-                ChrisFuncs.FitsCutout(in_fitspath_error, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath_error)
-
-        # Return the directory of the newly-created cutout
-        out_fitsdir = os.path.split(out_fitspath)[0]
-        band_dict['band_dir'] = out_fitsdir
-        return band_dict
+    # Return the directory of the newly-created cutout
+    out_fitsdir = os.path.split(out_fitspath)[0]
+    band_dict['band_dir'] = out_fitsdir
+    return band_dict
 
 
 
