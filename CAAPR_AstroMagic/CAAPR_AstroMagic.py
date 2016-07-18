@@ -457,55 +457,82 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
 
 
 
-    # Loop over each band, determining map sizes
-    diam_max = 0.0
-    for band in bands_dict.keys():
-        band_dict = bands_dict[band]
+    # Run rest of catalogue-prefetching in a try statement, to catch a pernicious error
+    try_counter = 0
+    try_success = False
+    while try_counter<10:
+        if try_success==True:
+            break
+        try:
 
-        # Check that this band requires star subtraction
-        if band_dict['remove_stars']!=True:
-            continue
 
-        # Determine fits path
-        if os.path.isdir(band_dict['band_dir']):
-            in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
-        elif os.path.isfile(band_dict['band_dir']):
-            in_fitspath = os.path.join( band_dict['band_dir'] )
 
-        # Work out whether the file extension for FITS file in question is .fits or .fits.gz
-        file_found = False
-        if os.path.exists(in_fitspath+'.fits'):
-            in_fitspath = in_fitspath+'.fits'
-            file_found = True
-        elif os.path.exists(in_fitspath+'.fits.gz'):
-            in_fitspath = in_fitspath+'.fits.gz'
-            file_found = True
-        if file_found==False:
-            continue
+            # Loop over each band, determining map sizes
+            diam_max = 0.0
+            for band in bands_dict.keys():
+                band_dict = bands_dict[band]
 
-        # Work out map size
-        band_header = astropy.io.fits.getheader(in_fitspath)
-        band_wcs = astropy.wcs.WCS(band_header)
-        band_cdelt = band_wcs.wcs.cdelt.max()
-        diam = np.max([ band_cdelt*float(band_header['NAXIS1']), band_cdelt*float(band_header['NAXIS2']) ])
-        if diam>diam_max:
-            file_max = in_fitspath
-            diam_max = diam
-            #file_max_cdelt = band_cdelt
+                # Check that this band requires star subtraction
+                if band_dict['remove_stars']!=True:
+                    continue
 
-    # Get AstroMagic catalogue object reference fits
-    logging.setup_log(level="ERROR")
-    importer = ImageImporter()
-    importer.run(file_max)
-    image = importer.image
+                # Determine fits path
+                if os.path.isdir(band_dict['band_dir']):
+                    in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
+                elif os.path.isfile(band_dict['band_dir']):
+                    in_fitspath = os.path.join( band_dict['band_dir'] )
 
-    # Run catalogue importer on dummy fits, and save results
-    catalog_importer = CatalogImporter()
-    catalog_importer.config.writing.galactic_catalog_path = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat')
-    catalog_importer.config.writing.stellar_catalog_path = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat')
-    catalog_importer.run(image.frames.primary)
-    catalog_importer.write_galactic_catalog()
-    catalog_importer.write_stellar_catalog()
+                # Work out whether the file extension for FITS file in question is .fits or .fits.gz
+                file_found = False
+                if os.path.exists(in_fitspath+'.fits'):
+                    in_fitspath = in_fitspath+'.fits'
+                    file_found = True
+                elif os.path.exists(in_fitspath+'.fits.gz'):
+                    in_fitspath = in_fitspath+'.fits.gz'
+                    file_found = True
+                if file_found==False:
+                    continue
+
+                # Work out map size
+                band_header = astropy.io.fits.getheader(in_fitspath)
+                band_wcs = astropy.wcs.WCS(band_header)
+                band_cdelt = band_wcs.wcs.cdelt.max()
+                diam = np.max([ band_cdelt*float(band_header['NAXIS1']), band_cdelt*float(band_header['NAXIS2']) ])
+                if diam>diam_max:
+                    file_max = in_fitspath
+                    diam_max = diam
+                    #file_max_cdelt = band_cdelt
+
+            # Get AstroMagic catalogue object reference fits
+            logging.setup_log(level="ERROR")
+            importer = ImageImporter()
+            importer.run(file_max)
+            image = importer.image
+
+            # Run catalogue importer on dummy fits, and save results
+            catalog_importer = CatalogImporter()
+            catalog_importer.config.writing.galactic_catalog_path = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat')
+            catalog_importer.config.writing.stellar_catalog_path = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat')
+            catalog_importer.run(image.frames.primary)
+            catalog_importer.write_galactic_catalog()
+            catalog_importer.write_stellar_catalog()
+
+            # Record success and break
+            try_success = True
+            break
+
+
+
+        # Handle error
+        except RuntimeError as e:
+            if 'rebin' in e.message:
+                if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
+                try_counter += 1
+            else:
+                pdb.set_trace()
+    if try_counter>=10:
+        pdb.set_trace()
+
 
 
 
