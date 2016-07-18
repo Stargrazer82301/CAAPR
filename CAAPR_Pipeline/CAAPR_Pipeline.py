@@ -125,7 +125,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
                 photom_list = [output for output in photom_output_list if output!=None]
 
         # Record photometry results to file
-        CAAPR.CAAPR_IO.RecordPhotom(photom_list, source_dict, kwargs_dict)
+        CAAPR.CAAPR_IO.RecordPhotom(photom_list, source_dict, bands_dict, kwargs_dict)
 
         # Create grid of thumbnail images
         CAAPR.CAAPR_IO.PhotomThumbGrid(source_dict, bands_dict, kwargs_dict)
@@ -159,8 +159,13 @@ def BandInitiate(band_dict):
     # Parse band cutout request, converting string to boolean if necessary
     if band_dict['make_cutout']=='True':
         band_dict['make_cutout']=True
-    if band_dict['make_cutout']=='False':
+    elif band_dict['make_cutout']=='False':
         band_dict['make_cutout']=False
+    else:
+        try:
+            band_dict['make_cutout'] = float(band_dict['make_cutout'])
+        except:
+            raise ValueError('Cutout request not understood; should either be False, or width of cutout in arcseconds.')
 
     # Reset band directory to inviolate value, to purge any holdovers from previous source
     band_dict['band_dir'] = band_dict['band_dir_inviolate']
