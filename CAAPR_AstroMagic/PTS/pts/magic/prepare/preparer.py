@@ -19,7 +19,7 @@ import numpy as np
 from astropy.units import Unit
 
 # Import the relevant PTS classes and modules
-from ..core.frame import Frame
+from ..core.frame import sum_frames_quadratically
 from ..basics.coordinatesystem import CoordinateSystem
 from ..basics.mask import Mask
 from ..sources.extractor import SourceExtractor
@@ -27,14 +27,14 @@ from ..sky.skysubtractor import SkySubtractor
 from ...core.basics.configurable import OldConfigurable
 from ...core.tools.logging import log
 from ...modeling.preparation import unitconversion
-from ...core.tools import special
 from ...core.basics.animation import Animation
 from ...core.tools import filesystem as fs
 from ...core.tools import time
-from ..tools import plotting
 from ..animation.imageblink import ImageBlinkAnimation
 from ..animation.sourceextraction import SourceExtractionAnimation
 from ..core.kernel import ConvolutionKernel
+from ..core.remote import RemoteImage
+from ..core.frame import Frame
 
 # -----------------------------------------------------------------
 
@@ -410,8 +410,10 @@ class ImagePreparer(OldConfigurable):
             # Inform the user
             log.info("Convolution will be performed remotely on host '" + self.config.convolution.remote + "' ...")
 
-            # Perform the remote convolution
-            special.remote_convolution(self.image, kernel, self.config.convolution.remote)
+            # Create remote image, convolve and make local again
+            remote_image = RemoteImage.from_local(self.image, self.config.convolution.remote)
+            remote_image.convolve(kernel, allow_huge=True)
+            self.image = remote_image.to_local()
 
         # The convolution is performed locally. # Convolve the image (the primary and errors frame)
         else: self.image.convolve(kernel, allow_huge=True)
@@ -483,11 +485,6 @@ class ImagePreparer(OldConfigurable):
 
         # Convert the principal ellipse in sky coordinates into pixel coordinates
         principal_shape = self.principal_shape_sky.to_pixel(self.image.wcs)
-
-        from ..basics.region import Region
-        test_reg = Region()
-        test_reg.append(principal_shape)
-        test_reg.save("testreg.reg")
 
         # Convert the saturation region in sky coordinates into pixel coordinates
         if self.saturation_region_sky is not None:
@@ -629,6 +626,9 @@ class ImagePreparer(OldConfigurable):
             # Check that there are no infinities or nans in the result
             assert not np.any(np.isinf(calibration_frame)) and not np.any(np.isnan(calibration_frame))
 
+            # Make frame from numpy array
+            calibration_frame = Frame(calibration_frame)
+
             # -----------------------------------------------------------------
 
         # The calibration uncertainty is expressed in a percentage (from the flux values)
@@ -660,22 +660,22 @@ class ImagePreparer(OldConfigurable):
         log.info("Calculating the uncertainties ...")
 
         # Create a list to contain (the squares of) all the individual error contributions so that we can sum these arrays element-wise later
-        squared_error_maps = []
+        error_maps = []
 
         # Add the Poisson errors
-        if "poisson_errors" in self.image.frames: squared_error_maps.append(self.image.frames.poisson_errors**2)
+        if "poisson_errors" in self.image.frames: error_maps.append(self.image.frames.poisson_errors)
 
         # Add the sky errors
-        squared_error_maps.append(self.sky_subtractor.noise_frame**2)
+        error_maps.append(self.sky_subtractor.noise_frame)
 
         # Add the calibration errors
-        squared_error_maps.append(self.image.frames.calibration_errors**2)
+        error_maps.append(self.image.frames.calibration_errors)
 
         # Add additional error frames indicated by the user
-        for error_frame_name in self.config.error_frame_names: squared_error_maps.append(self.image.frames[error_frame_name]**2)
+        for error_frame_name in self.config.error_frame_names: error_maps.append(self.image.frames[error_frame_name])
 
         # Calculate the final error map
-        errors = Frame(np.sqrt(np.sum(squared_error_maps, axis=0)))
+        errors = sum_frames_quadratically(*error_maps)
 
         # Add the combined errors frame
         self.image.add_frame(errors, "errors")

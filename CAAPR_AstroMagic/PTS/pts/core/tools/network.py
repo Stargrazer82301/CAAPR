@@ -37,6 +37,7 @@ def download_file(url, path):
 
     # Debugging
     log.debug("Downloading '" + filename + "' to '" + path + "' ...")
+    log.debug("URL: " + url)
 
     # Download
     urllib.urlretrieve(url, filepath)
@@ -57,20 +58,26 @@ def download_files(urls, path):
 
     paths = []
 
+    count = len(urls)
+
     # Loop over the urls
+    index = 0
     for url in urls:
 
         filename = fs.name(url)
         filepath = fs.join(path, filename)
 
         # Debugging
-        log.debug("Downloading '" + filename + "' to '" + path + "' ...")
+        log.debug("Downloading '" + filename + "' to '" + path + "' ... (" + str(index+1) + " of " + str(count) + ")")
+        log.debug("URL: " + url)
 
         # Download
         urllib.urlretrieve(url, filepath)
 
         # If succesful, add the file path to the list
         paths.append(filepath)
+
+        index += 1
 
     # Return paths
     return paths

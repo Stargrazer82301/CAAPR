@@ -15,25 +15,26 @@ from __future__ import absolute_import, division, print_function
 # Import the relevant PTS classes and modules
 from pts.core.tools import logging, time
 from pts.core.tools import filesystem as fs
-from pts.core.tools import inspection
+from pts.core.tools import introspection
 from pts.magic.misc.dustpedia import DustPediaDatabase, get_account
-from pts.core.basics.configuration import Configuration
+from pts.core.basics.configuration import ConfigurationDefinition, ConfigurationReader
 
 # -----------------------------------------------------------------
 
 # Create the configuration
-config = Configuration()
+definition = ConfigurationDefinition()
 
-# Read the configuration settings from the provided command-line arguments
-config.read()
+# Get configuration
+reader = ConfigurationReader("plot_galaxies")
+config = reader.read(definition)
 
 # -----------------------------------------------------------------
 
 # Determine the log file path
-logfile_path = fs.join(fs.cwd(), time.unique_name("log") + ".txt") if config.arguments.report else None
+logfile_path = fs.join(fs.cwd(), time.unique_name("log") + ".txt") if config.report else None
 
 # Determine the log level
-level = "DEBUG" if config.arguments.debug else "INFO"
+level = "DEBUG" if config.debug else "INFO"
 
 # Initialize the logger
 log = logging.setup_log(level=level, path=logfile_path)
@@ -42,7 +43,7 @@ log.start("Starting plot_galaxies ...")
 # -----------------------------------------------------------------
 
 # Local table path
-local_table_path = fs.join(inspection.pts_dat_dir("modeling"), "s4g", "s4g_p4_table8.dat")
+local_table_path = fs.join(introspection.pts_dat_dir("modeling"), "s4g", "s4g_p4_table8.dat")
 
 # -----------------------------------------------------------------
 

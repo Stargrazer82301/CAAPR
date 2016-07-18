@@ -13,7 +13,7 @@
 from __future__ import absolute_import, division, print_function
 
 # Import standard modules
-import bz2
+import shutil
 import tempfile
 import numpy as np
 
@@ -22,12 +22,12 @@ import montage_wrapper as montage
 from astropy.table import Table
 from astropy.utils import lazyproperty
 from astropy.units import Unit
-from astropy.io.fits import Header
-from astroquery.sdss import SDSS
+from astropy.io.fits import Header, getheader
+#from astroquery.sdss import SDSS
 
 # Import the relevant PTS classes and modules
 from ...core.tools.logging import log
-from ...core.tools import inspection
+from ...core.tools import introspection
 from ...core.tools import filesystem as fs
 from ...core.tools import tables
 from ...magic.tools import plotting
@@ -36,10 +36,14 @@ from ...core.tools import time
 from ...magic.core.image import Image
 from .galex_montage_functions import mosaic_galex
 from ...core.tools import archive
+from ...magic.core.frame import Frame, sum_frames
+from ...magic.basics.coordinatesystem import CoordinateSystem
+from ...magic.basics.mask import Mask
+from ...core.basics.remote import Remote, connected_remotes
 
 # -----------------------------------------------------------------
 
-dustpedia_dat_path = fs.join(inspection.pts_dat_dir("dustpedia"))
+dustpedia_dat_path = fs.join(introspection.pts_dat_dir("dustpedia"))
 
 # -----------------------------------------------------------------
 
@@ -182,6 +186,16 @@ dustpedia_final_pixelsizes = {"GALEX": 3.2 * Unit("arcsec"), "SDSS": 0.45 * Unit
 # output projection mExec will have used. Jjust give the ra, dec, and width to mHdr to produce a header, and then
 # use this header as input to mProjExec to regrid all the individual image to the final projection.
 
+
+## GALEX exposure, background , etc.
+
+# That's nice and straightforwad! You can use the same URLs as for the standard maps, but just replace
+# '-int.fits' with '-rr.fits' for the relative response maps, or '-exp.fits' for exposure maps, etc.
+
+# If you can look at the various files available for each tilenum by looking at this page for each tile:
+
+# 'http://galex.stsci.edu/GR6/?page=downloadlist&tilenum='+str(tilenum)+'&type=coaddI&product=Imaging%20Only'
+
 # -----------------------------------------------------------------
 
 class DustPediaDataProcessing(object):
@@ -261,17 +275,19 @@ class DustPediaDataProcessing(object):
 
     # -----------------------------------------------------------------
 
-    def download_galex_observations_for_galaxy(self, galaxy_name, path):
+    def download_galex_observations_for_galaxy(self, galaxy_name, images_path, response_path, background_path):
 
         """
         This function ...
         :param galaxy_name:
-        :param path:
+        :param images_path:
+        :param response_path:
+        :param background_path:
         :return:
         """
 
         # Inform the user
-        log.info("Downloading the GALEX observations for " + galaxy_name + " to '" + path + "' ...")
+        log.info("Downloading the GALEX observations for " + galaxy_name + " to '" + images_path + "' ...")
 
         # Get the urls
         urls = self.get_galex_observation_urls_for_galaxy(galaxy_name)
@@ -280,13 +296,43 @@ class DustPediaDataProcessing(object):
         log.debug("Number of observations that will be downloaded: " + str(len(urls)))
 
         # Download the files
-        paths = network.download_files(urls, path)
+        paths = network.download_files(urls, images_path)
 
         # Debugging
         log.debug("Decompressing the files ...")
 
         # Decompress the files and remove the originals
         archive.decompress_files(paths, remove=True)
+
+        # Inform the user
+        log.info("Downloading the GALEX response maps for " + galaxy_name + " to '" + response_path + "' ...")
+
+        # Determine the URLS for the response maps
+        response_urls = [url.replace("-int.fits.gz", "-rr.fits.gz") for url in urls]
+
+        # Download the response maps
+        response_paths = network.download_files(response_urls, response_path)
+
+        # Debugging
+        log.debug("Decompressing the response files ...")
+
+        # Decompress
+        archive.decompress_files(response_paths, remove=True)
+
+        # Inform the user
+        log.info("Downloading the GALEX background maps for " + galaxy_name + " to '" + background_path + "' ...")
+
+        # Determine the URLs for the background maps
+        background_urls = [url.replace("-int.fits.gz", "-skybg.fits.gz") for url in urls]
+
+        # Download the background maps
+        background_paths = network.download_files(background_urls, background_path)
+
+        # Debugging
+        log.debug("Decompressing the background files ...")
+
+        # Decompress
+        archive.decompress_files(background_paths, remove=True)
 
     # -----------------------------------------------------------------
 
@@ -342,7 +388,7 @@ class DustPediaDataProcessing(object):
 
     # -----------------------------------------------------------------
 
-    def make_galex_mosaic(self, galaxy_name, output_path):
+    def make_galex_mosaic_and_poisson_frame(self, galaxy_name, output_path):
 
         """
         This function ...
@@ -352,45 +398,124 @@ class DustPediaDataProcessing(object):
         """
 
         # Inform the user
-        log.info("Making mosaic for " + galaxy_name + " for GALEX ...")
+        log.info("Making GALEX mosaic for " + galaxy_name + " and map of relative poisson errors ...")
+
+        # Determine the path to the temporary directory for downloading the images
+        working_path = fs.join(fs.home(), time.unique_name("GALEX_" + galaxy_name))
+
+        # Create the working directory
+        fs.create_directory(working_path)
+
+        # DOWNLOAD PATH
+        download_path = fs.join(working_path, "download")
+        # Create download directory
+        fs.create_directory(download_path)
+
+        # RESPONSE AND BACKGROUND PATH
+        response_path = fs.join(working_path, "response")
+        background_path = fs.join(working_path, "background")
+
+        # RAW PATH
+        raw_path = fs.join(working_path, "raw")
+        # Create raw directory
+        fs.create_directory(raw_path)
+
+        # TEMP PATH
+        temp_path = fs.join(working_path, "temp")
+        # Create temp directory
+        fs.create_directory(temp_path)
+
+
+        # 1 and 2 RAW directories
+        raw_fuv_path = fs.join(raw_path, "FUV")
+        raw_nuv_path = fs.join(raw_path, "NUV")
+        fs.create_directories(raw_fuv_path, raw_nuv_path)
+
+        # download/images, download/response and download/background
+        download_images_path = fs.join(download_path, "images")
+        download_response_path = fs.join(download_path, "reponse")
+        download_background_path = fs.join(download_path, "background")
+        fs.create_directories(download_images_path, download_response_path, download_background_path)
+
+
+        # Download the GALEX observations to the temporary directory  # they are decompressed here also
+        self.download_galex_observations_for_galaxy(galaxy_name, download_images_path, download_response_path, download_background_path)
+
+
+        # FUV and NUV response directories
+        response_fuv_path = fs.join(response_path, "FUV")
+        response_nuv_path = fs.join(response_path, "NUV")
+        fs.create_directories(response_fuv_path, response_nuv_path)
+
+        # FUV and NUV background directories
+        background_fuv_path = fs.join(background_path, "FUV")
+        background_nuv_path = fs.join(background_path, "NUV")
+        fs.create_directories(background_fuv_path, background_nuv_path)
+
+        ####
+
+        # Split downloaded images into FUV and NUV
+        self.split_galex_observations(download_path, raw_fuv_path, raw_nuv_path)
+
+        # Split response maps into FUV and NUV
+        self.split_galex_observations(download_response_path, response_fuv_path, response_nuv_path)
+
+        # Split background maps into FUV and NUV
+        self.split_galex_observations(download_background_path, background_fuv_path, background_nuv_path)
+
+        ###
+
+        # AFTER SPLIT, THIS CAN BE DONE:
+
+        #fs.remove_directory(download_images_path)
+        #fs.remove_directory(download_response_path)
+        #fs.remove_directory(download_background_path)
+        #fs.remove_directory(download_path)
+
+        ###
 
         # Get coordinate range for target image
         ra, dec, width = self.get_cutout_range_for_galaxy(galaxy_name)
 
-        # --
+        ## Generate the meta and then overlap file
+        ##meta_path, overlap_path = self.generate_meta_and_overlap_file(temp_path, ra, dec, width)
 
-        # Determine the path to the temporary directory for downloading the images
-        temp_path = fs.join(fs.home(), time.unique_name("GALEX_" + galaxy_name))
+        ##meta_path = fs.join(temp_path, "meta.dat")
+        ## Get the image table of which images cover a given part of the sky
+        ##montage.commands.mImgtbl(temp_path, meta_path, corners=True)
 
-        # Create the temporary directory
-        fs.create_directory(temp_path)
-
-        # --
-
-        # Download the GALEX observations to the temporary directory # they are decompressed here also
-        self.download_galex_observations_for_galaxy(galaxy_name, temp_path)
-
-        # --
-
-        return
-
-        # Generate the meta and then overlap file
-        meta_path, overlap_path = self.generate_meta_and_overlap_file(path, ra, dec, width)
+        raw_band_paths = {"FUV": raw_fuv_path, "NUV": raw_nuv_path}
 
         # State band information
         bands_dict = {'FUV': {'band_short': 'fd', 'band_long': 'FUV'},
                       'NUV': {'band_short': 'nd', 'band_long': 'NUV'}}
 
+        metadata_paths = {"FUV": fs.join(working_path, "FUV_Image_metadata_table.dat"),
+                          "NUV": fs.join(working_path, "NUV_Image_metadata_table.dat")}
+
+        # If not yet done, produce Montage image table of raw tiles
+        for band in bands_dict.keys():
+
+            print('Creating ' + band + ' image metadata table')
+            metadata_path = metadata_paths[band]
+            montage.commands.mImgtbl(raw_band_paths[band], metadata_path, corners=True)
+
         # Check if any GALEX tiles have coverage of source in question; if not, continue
         bands_in_dict = {}
         for band in bands_dict.keys():
 
-            montage.commands_extra.mCoverageCheck(meta_path, root_dir + 'Temporary_Files/' + name + '_' + band + '_Overlap_Check.dat', mode='point', ra=ra, dec=dec)
-            if sum(1 for line in open(root_dir + 'Temporary_Files/' + name + '_' + band + '_Overlap_Check.dat')) <= 3:
-                print('No GALEX ' + band + ' coverage for ' + name)
+            # OVERLAP TABLE IS HERE TEMPORARY
+            overlap_path = fs.join(temp_path, "overlap_" + band + ".dat")
+
+            # Create overlap file
+            montage.commands_extra.mCoverageCheck(metadata_paths[band], overlap_path, mode='point', ra=ra, dec=dec)
+
+            # Check if there is any coverage for this galaxy and band
+            if sum(1 for line in open(overlap_path)) <= 3: print('No GALEX ' + band + ' coverage for ' + galaxy_name)
             else: bands_in_dict[band] = bands_dict[band]
 
-            #os.remove(root_dir + 'Temporary_Files/' + name + '_' + band + '_Overlap_Check.dat')
+            # Remove overlap file
+            fs.remove_file(overlap_path)
 
         # Check if coverage in any band
         if len(bands_in_dict) == 0: raise RuntimeError("No coverage in any GALEX band!")
@@ -398,7 +523,171 @@ class DustPediaDataProcessing(object):
         # Loop over bands, conducting SWarping function
         for band in bands_in_dict.keys():
 
-            mosaic_galex(galaxy_name, ra, dec, width, bands_dict[band], root_dir)  # pool.apply_async( GALEX_Montage, args=(name, ra, dec, d25, width, bands_dict[band], root_dir+'Temporary_Files/', in_dir, out_dir,) )
+            # Mosaicing
+            mosaic_galex(galaxy_name, ra, dec, width, bands_dict[band], working_path, temp_path, metadata_paths[band], output_path)  # pool.apply_async( GALEX_Montage, args=(name, ra, dec, d25, width, bands_dict[band], root_dir+'Temporary_Files/', in_dir, out_dir,) )
+
+    # -----------------------------------------------------------------
+
+    def split_galex_observations(self, original_path, path_fuv, path_nuv):
+
+        """
+        This function ...
+        :param original_path:
+        :param path_fuv:
+        :param path_nuv:
+        :return:
+        """
+
+        # Loop over the files in the path
+        for path, name in fs.files_in_path(original_path, extension="fits", returns=["path", "name"]):
+
+            # Get header
+            header = getheader(path)
+
+            # Check band
+            band = header["BAND"]
+
+            if band == 1: shutil.copy(path, path_fuv)
+            elif band == 2: shutil.copy(path, path_nuv)
+            else: raise RuntimeError("Invalid band: " + str(band))
+
+    # -----------------------------------------------------------------
+
+    def make_sdss_mosaic_and_poisson_frame(self, galaxy_name, band, output_path):
+
+        """
+        This function ...
+        :param galaxy_name:
+        :param band:
+        :param output_path:
+        :return:
+        """
+
+        # Inform the user
+        log.info("Making SDSS mosaic and map of relative poisson errors ...")
+
+        # Make rebinned frames in counts (and footprints)
+        self.make_sdss_rebinned_frames_in_counts(galaxy_name, band, output_path)
+
+        # Initialize a list to contain the frames to be summed
+        ab_frames = []
+        b_frames = []
+
+        # Loop over the files in the output directory
+        for path, name in fs.files_in_path(output_path, extension="fits", returns=["path", "name"]):
+
+            # Open the image
+            image = Image.from_file(path)
+
+            # Get the a and b frame
+            a = image.frames.primary
+            b = image.frames.footprint
+
+            # Add product of primary and footprint and footprint to the appropriate list
+            ab = a * b
+            ab_frames.append(ab)
+            b_frames.append(b)
+
+        # Take the sums
+        ab_sum = sum_frames(ab_frames)
+        b_sum = sum_frames(b_frames)
+
+        # Calculate the relative poisson errors
+        rel_poisson_frame = ab_sum**(-0.5)
+
+        # Calculate the mosaic frame
+        mosaic_frame = ab_sum / b_sum
+
+        # Make image
+        image = Image()
+
+        # Add frames
+        image.add_frame(mosaic_frame, "primary")
+        image.add_frame(rel_poisson_frame, "rel_poisson")
+
+        # Save the image
+        path = fs.join(output_path, "result.fits")
+        image.save(path)
+
+    # -----------------------------------------------------------------
+
+    def make_sdss_rebinned_frames_in_counts(self, galaxy_name, band, output_path):
+
+        """
+        This function ...
+        :param galaxy_name:
+        :param band:
+        :param output_path:
+        :return:
+        """
+
+        # Inform the user
+        log.info("Making SDSS rebinned frames in counts for " + galaxy_name + " for SDSS " + band + " band ...")
+
+        # Determine the path to the temporary directory for downloading the images
+        temp_path = fs.join(fs.home(), time.unique_name("SDSS_primary_fields_" + galaxy_name + "_" + band))
+
+        # Create the temporary directory
+        fs.create_directory(temp_path)
+
+        # Download the FITS files to be used for mosaicing
+        self.download_sdss_primary_fields_for_galaxy_for_mosaic(galaxy_name, band, temp_path)
+
+        # Get the target header
+        header = self.get_header_for_galaxy(galaxy_name, "SDSS")
+
+        # To coordinate system
+        rebin_wcs = CoordinateSystem(header)
+
+        # Loop over the images, convert to count and rebin
+        for path, name in fs.files_in_path(temp_path, extension="fits", returns=["path", "name"]):
+
+            # Debugging
+            log.debug("Loading the " + name + " frame ...")
+
+            # Load the frame
+            frame = Frame.from_file(path, add_meta=True)
+
+            # Print unit
+            log.debug("Unit:" + str(frame.unit))
+
+            # Get the 'NMGY' parameter
+            nanomaggy_per_count = frame.meta["nmgy"]
+
+            # Debugging
+            log.debug("Converting unit to count ...")
+
+            # Convert the frame to count
+            frame /= nanomaggy_per_count
+            frame.unit = Unit("count")
+
+            # Debugging
+            log.debug("Rebinning to the target coordinate system ...")
+
+            # Rebin the frame
+            footprint = frame.rebin(rebin_wcs, exact=False)
+
+            # Debugging
+            log.debug("Adding the rebinned field and footprint to the same image ...")
+
+            # Create image, add image frame and footprint
+            image = Image()
+            image.add_frame(frame, "primary")
+            image.add_frame(footprint, "footprint")
+            # padded = Mask(footprint < 0.9).disk_dilation(radius=10)
+            # image.add_mask(padded, "padded")
+
+            # Determine new path
+            new_path = fs.join(output_path, name + ".fits")
+
+            # Debugging
+            log.debug("Saving the image to " + new_path + " ...")
+
+            # Save
+            image.save(new_path)
+
+        # Remove the temporary directory
+        fs.remove_directory(temp_path)
 
     # -----------------------------------------------------------------
 

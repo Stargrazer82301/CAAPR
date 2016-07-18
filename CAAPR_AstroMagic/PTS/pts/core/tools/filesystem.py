@@ -89,6 +89,20 @@ def join(*args):
 
 # -----------------------------------------------------------------
 
+def file_or_directory(path):
+
+    """
+    This function ...
+    :param path:
+    :return:
+    """
+
+    if is_file(path): return "file"
+    elif is_directory(path): return "directory"
+    else: return None
+
+# -----------------------------------------------------------------
+
 def is_file(path):
 
     """
@@ -225,16 +239,16 @@ def create_directory_in(base_path, name):
 
 # -----------------------------------------------------------------
 
-def create_directories(paths, recursive=False):
+def create_directories(*paths, **kwargs):
     
     """
     This function ...
     :param paths:
-    :param recursive:
+    :param kwargs:
     """
     
     # Loop over the different paths in the list
-    for path in paths: create_directory(path, recursive)
+    for path in paths: create_directory(path, kwargs.pop("recursive", False))
 
 # -----------------------------------------------------------------
 
@@ -561,6 +575,28 @@ def directories_in_path(path=None, recursive=False, ignore_hidden=True, contains
 
     # Return the list of directory paths
     return directory_paths
+
+# -----------------------------------------------------------------
+
+def rename_file(directory, original_name, new_name):
+
+    """
+    This function ...
+    :param directory:
+    :param original_name:
+    :param new_name:
+    :return:
+    """
+
+    # Check whether the original file exists
+    original_path = join(directory, original_name)
+    if not is_file(original_path): raise ValueError("File '" + original_path + "' does not exist")
+
+    # Determine new file path
+    new_path = join(directory, new_name)
+
+    # Rename the file
+    os.rename(original_path, new_path)
 
 # -----------------------------------------------------------------
 

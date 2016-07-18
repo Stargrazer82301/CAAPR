@@ -18,15 +18,16 @@ import numpy as np
 # Import the relevant PTS classes and modules
 from .component import FittingComponent
 from ...core.tools import filesystem as fs
-from ...core.tools import inspection
+from ...core.tools import introspection
 from ...core.simulation.skifile import LabeledSkiFile
 from ...core.tools.logging import log
 from ...core.tools import parsing
+from .generations import GenerationsTable
 
 # -----------------------------------------------------------------
 
-template_ski_path = fs.join(inspection.pts_dat_dir("modeling"), "ski", "labeled_template.ski")
-labels_description_path = fs.join(inspection.pts_dat_dir("modeling"), "ski", "labels_description.dat")
+template_ski_path = fs.join(introspection.pts_dat_dir("modeling"), "ski", "labeled_template.ski")
+labels_description_path = fs.join(introspection.pts_dat_dir("modeling"), "ski", "labels_description.dat")
 
 # -----------------------------------------------------------------
 
@@ -98,7 +99,7 @@ class FittingConfigurer(FittingComponent):
         """
 
         # Call the setup function of the base class
-        super(FittingComponent, self).setup()
+        super(FittingConfigurer, self).setup()
 
     # -----------------------------------------------------------------
 
@@ -223,6 +224,9 @@ class FittingConfigurer(FittingComponent):
         # Write the ski file template
         self.write_ski()
 
+        # Write generations table
+        self.write_generations_table()
+
     # -----------------------------------------------------------------
 
     def write_parameters(self):
@@ -266,6 +270,21 @@ class FittingConfigurer(FittingComponent):
 
         # Save the ski file template
         self.ski.saveto(self.template_ski_path)
+
+    # -----------------------------------------------------------------
+
+    def write_generations_table(self):
+
+        """
+        This function ...
+        :return:
+        """
+
+        # Initialize the generations table
+        generations_table = GenerationsTable.initialize(self.parameters)
+
+        # Save the generations table
+        generations_table.saveto(self.generations_table_path)
 
 # -----------------------------------------------------------------
 

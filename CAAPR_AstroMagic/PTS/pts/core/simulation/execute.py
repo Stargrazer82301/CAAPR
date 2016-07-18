@@ -18,7 +18,7 @@ import subprocess
 
 # Import the relevant PTS classes and modules
 from .arguments import SkirtArguments
-from ..tools import inspection
+from ..tools import introspection
 from ..tools import filesystem as fs
 from ..tools.logging import log
 
@@ -49,7 +49,7 @@ class SkirtExec:
 
         if self._path == "skirt":
 
-            if inspection.skirt_is_present(): self._path = inspection.skirt_path
+            if introspection.skirt_is_present(): self._path = introspection.skirt_path
             else: raise EnvironmentError("SKIRT is not installed or not in the PATH environment variable")
 
         # Indicate no simulations are running yet
@@ -132,7 +132,7 @@ class SkirtExec:
     def run(self, arguments, wait=True, silent=False):
 
         # Check whether MPI is present on this system if multiple processe are requested
-        if arguments.parallel.processes > 1 and not inspection.has_mpi():
+        if arguments.parallel.processes > 1 and not introspection.has_mpi():
             log.warning("No mpirun executable: skipping simulations")
             return []
 
@@ -205,7 +205,7 @@ class SkirtExec:
         run_dir = os.path.join(root_dir, "run")
         repo_dir = os.path.join(root_dir, "git")
         release_dir = os.path.join(root_dir, "release")
-        fs.create_directories([run_dir, repo_dir, release_dir])
+        fs.create_directories(run_dir, repo_dir, release_dir)
 
         #  Clone the SKIRT repository
         if private: subprocess.call("git clone git@github.ugent.be:SKIRT/SKIRT.git git", cwd=root_dir)
@@ -217,14 +217,5 @@ class SkirtExec:
 
         # Put SKIRT in the PATH environment variable
         # ...
-
-    ## This function updates the SKIRT executable
-    def update(self):
-
-        # Call the appropriate git command at the SKIRT repository directory
-        subprocess.call(["git", "pull", "origin", "master"], cwd=self.repo_directory)
-
-        # Recompile SKIRT
-        subprocess.call("./makeSKIRT.sh", cwd=self.repo_directory, shell=True)
 
 # -----------------------------------------------------------------

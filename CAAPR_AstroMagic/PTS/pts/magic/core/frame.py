@@ -15,7 +15,9 @@ from __future__ import absolute_import, division, print_function
 # Import standard modules
 import copy
 import numpy as np
+import urllib
 from scipy import ndimage
+import tempfile
 
 # Import astronomical modules
 from reproject import reproject_exact, reproject_interp
@@ -32,6 +34,8 @@ from ..basics.skygeometry import SkyCoordinate
 from ..tools import cropping
 from ...core.tools.logging import log
 from ..basics.mask import Mask
+from ...core.tools import filesystem as fs
+from ...core.tools import archive
 
 # -----------------------------------------------------------------
 
@@ -79,6 +83,19 @@ class Frame(NDDataArray):
         """
 
         self._wcs = wcs
+
+    # -----------------------------------------------------------------
+
+    @NDDataArray.unit.setter
+    def unit(self, unit):
+
+        """
+        This function ...
+        :param unit:
+        :return:
+        """
+
+        self._unit = unit
 
     # -----------------------------------------------------------------
 
@@ -328,7 +345,57 @@ class Frame(NDDataArray):
     # -----------------------------------------------------------------
 
     @classmethod
-    def from_file(cls, path, index=None, name=None, description=None, plane=None, hdulist_index=None, no_filter=False, fwhm=None):
+    def from_url(cls, url, index=None, name=None, description=None, plane=None, hdulist_index=None, no_filter=False,
+                  fwhm=None, add_meta=True):
+
+        """
+        This function ...
+        :param url:
+        :param index:
+        :param name:
+        :param description:
+        :param plane:
+        :param hdulist_index:
+        :param no_filter:
+        :param fwhm:
+        :param add_meta:
+        :return:
+        """
+
+        # Inform the user
+        log.info("Downloading file " + url + " ...")
+
+        # Local path
+        temp_path = tempfile.gettempdir()
+        filename = fs.name(url)
+        local_path = fs.join(temp_path, filename)
+
+        # Download
+        urllib.urlretrieve(url, local_path)
+
+        if local_path.endswith(".fits"): fits_path = local_path
+        else:
+
+            # Inform the user
+            log.info("Decompressing kernel file ...")
+
+            # Fits path
+            fits_path = fs.join(temp_path, fs.strip_extension(filename))
+
+            # Decompress the kernel FITS file
+            archive.decompress_file(local_path, fits_path)
+
+            # Remove the compressed file
+            fs.remove_file(local_path)
+
+        # Open the FITS file
+        return cls.from_file(fits_path, index, name, description, plane, hdulist_index, no_filter, fwhm, add_meta)
+
+    # -----------------------------------------------------------------
+
+    @classmethod
+    def from_file(cls, path, index=None, name=None, description=None, plane=None, hdulist_index=None, no_filter=False,
+                  fwhm=None, add_meta=True):
 
         """
         This function ...
@@ -340,6 +407,7 @@ class Frame(NDDataArray):
         :param hdulist_index: if None, is automatically decided based on where the imageHDU is.
         :param no_filter:
         :param fwhm:
+        :param add_meta:
         :return:
         """
 
@@ -349,7 +417,7 @@ class Frame(NDDataArray):
         from . import io
 
         # PASS CLS TO ENSURE THIS CLASSMETHOD WORKS FOR ENHERITED CLASSES!!
-        return io.load_frame(cls, path, index, name, description, plane, hdulist_index, no_filter, fwhm)
+        return io.load_frame(cls, path, index, name, description, plane, hdulist_index, no_filter, fwhm, add_meta=add_meta)
 
     # -----------------------------------------------------------------
 
@@ -644,19 +712,20 @@ class Frame(NDDataArray):
 
         # Skip the calculation for a constant frame
         if self.is_constant():
-
-            new_frame = self.copy()
-            new_frame.fwhm = kernel_fwhm
-            return new_frame
+            self.fwhm = kernel_fwhm
+            return
 
         # Check whether the kernel is prepared
-        if not kernel.prepared: log.warning("The convolution kernel is not prepared")
+        if not kernel.prepared:
+            log.warning("The convolution kernel is not prepared, creating a prepared copy ...")
+            kernel = kernel.copy()
+            kernel.prepare(self.pixelscale)
 
         # Check where the NaNs are at
-        nans_mask = np.isnan(self)
+        nans_mask = np.isnan(self._data)
 
         # Assert that the kernel is normalized
-        assert kernel.normalized
+        if not kernel.normalized: raise RuntimeError("The kernel is not properly normalized: sum is " + repr(kernel.sum()) + " , difference from unity is " + repr(kernel.sum() - 1.0))
 
         # Do the convolution on this frame
         if fft: new_data = convolve_fft(self._data, kernel._data, normalize_kernel=False, interpolate_nan=True, allow_huge=allow_huge)
@@ -704,7 +773,7 @@ class Frame(NDDataArray):
         self._wcs = reference_wcs
 
         # Return the footprint
-        return footprint
+        return Frame(footprint)
 
     # -----------------------------------------------------------------
 
@@ -1228,13 +1297,14 @@ class Frame(NDDataArray):
 
     # -----------------------------------------------------------------
 
-    def save(self, path, header=None, origin=None):
+    def save(self, path, header=None, origin=None, extra_header_info=None):
 
         """
         This function ...
         :param path:
         :param header:
         :param origin:
+        :param extra_header_info:
         """
 
         if header is None: header = self.header
@@ -1248,8 +1318,38 @@ class Frame(NDDataArray):
         if origin is not None: header["ORIGIN"] = origin
         else: header["ORIGIN"] = "Frame class of PTS package"
 
+        # Add extra info
+        if extra_header_info is not None:
+            for key in extra_header_info: header[key] = extra_header_info[key]
+
         # Write
         from . import io
         io.write_frame(self._data, header, path)
+
+# -----------------------------------------------------------------
+
+def sum_frames(*args):
+
+    """
+    This function ...
+    :param args:
+    :return:
+    """
+
+    arrays = [np.array(arg) for arg in args]
+    return Frame(np.sum(arrays, axis=0))
+
+# -----------------------------------------------------------------
+
+def sum_frames_quadratically(*args):
+
+    """
+    This function ...
+    :param args:
+    :return:
+    """
+
+    arrays = [np.array(arg)**2 for arg in args]
+    return Frame(np.sqrt(np.sum(arrays, axis=0)))
 
 # -----------------------------------------------------------------

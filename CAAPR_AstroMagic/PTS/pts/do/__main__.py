@@ -31,64 +31,11 @@
 # Import standard modules
 import sys
 import importlib
-from operator import itemgetter
 
 # Import the relevant PTS modules
-from pts.core.tools import inspection
+from pts.core.tools import introspection
 from pts.core.tools import filesystem as fs
 from pts.core.tools import time
-
-# -----------------------------------------------------------------
-
-def show_all_available(scripts, tables=None):
-
-    print("No match found. Available commands:")
-
-    # Combine scripts and tables
-    for subproject in tables:
-        table = tables[subproject]
-        for i in range(len(table["Command"])):
-            scripts.append((subproject, table["Command"][i] + ".py", table["Description"][i]))
-
-    # Sort on the 'do' subfolder name
-    scripts = sorted(scripts, key=itemgetter(0))
-
-    current_dir = None
-    for script in scripts:
-
-        description = "  " + script[2] if len(script) == 3 else ""
-
-        if current_dir == script[0]:
-            print(" " * len(current_dir) + "/" + script[1][:-3] + description)
-        else:
-            print(script[0] + "/" + script[1][:-3] + description)
-            current_dir = script[0]
-
-# -----------------------------------------------------------------
-
-def show_possible_matches(matches, table_matches=None, tables=None):
-
-    print("The command you provided is ambiguous. Possible matches:")
-
-    # Combine script and table matches
-    for subproject, index in table_matches:
-        command = tables[subproject]["Command"][index]
-        description = tables[subproject]["Description"][index]
-        matches.append((subproject, command + ".py", description))
-
-    # Sort on the 'do' subfolder name
-    matches = sorted(matches, key=itemgetter(0))
-
-    current_dir = None
-    for script in matches:
-
-        description = "  " + script[2] if len(script) == 3 else ""
-
-        if current_dir == script[0]:
-            print(" " * len(current_dir) + "/" + script[1][:-3] + description)
-        else:
-            print(script[0] + "/" + script[1][:-3] + description)
-            current_dir = script[0]
 
 # -----------------------------------------------------------------
 
@@ -96,13 +43,20 @@ def show_possible_matches(matches, table_matches=None, tables=None):
 script_name = sys.argv[1] if len(sys.argv) > 1 else None
 
 # Find matches in existing do scripts
-scripts = inspection.get_scripts()
-tables = inspection.get_arguments_tables()
-matches = inspection.find_matches_scripts(script_name, scripts)
-table_matches = inspection.find_matches_tables(script_name, tables)
+scripts = introspection.get_scripts()
+tables = introspection.get_arguments_tables()
+
+if script_name is None:
+
+    print("Welcome to PTS")
+    introspection.show_all_available(scripts, tables)
+    exit()
+
+matches = introspection.find_matches_scripts(script_name, scripts)
+table_matches = introspection.find_matches_tables(script_name, tables)
 
 # No match
-if len(matches) + len(table_matches) == 0: show_all_available(scripts, tables)
+if len(matches) + len(table_matches) == 0: introspection.show_all_available(scripts, tables)
 
 # If there is a unique match in an existing script, return it
 elif len(matches) == 1 and len(table_matches) == 0:
@@ -110,7 +64,7 @@ elif len(matches) == 1 and len(table_matches) == 0:
     match = matches[0]
 
     # Execute the matching script, after adjusting the command line arguments so that it appears that the script was executed directly
-    target = fs.join(inspection.pts_do_dir, match[0], match[1])
+    target = fs.join(introspection.pts_do_dir, match[0], match[1])
     sys.argv[0] = target
     del sys.argv[1]
     print "Executing: " + match[0] + "/" + match[1] + " " + " ".join(sys.argv[1:])
@@ -121,22 +75,25 @@ elif len(table_matches) == 1 and len(matches) == 0:
 
     subproject, index = table_matches[0]
     command_name = tables[subproject]["Command"][index]
+    description = tables[subproject]["Description"][index]
     class_path_relative = tables[subproject]["Path"][index]
     class_path = "pts." + subproject + "." + class_path_relative
     module_path, class_name = class_path.rsplit('.', 1)
 
-    subproject_path = inspection.pts_subproject_dir(subproject)
+    subproject_path = introspection.pts_subproject_dir(subproject)
 
-    sys.argv[0] = fs.join(inspection.pts_root_dir, module_path.replace(".", "/") + ".py") # this is actually not necessary (and not really correct, it's not like we are calling the module where the class is..)
+    sys.argv[0] = fs.join(introspection.pts_root_dir, module_path.replace(".", "/") + ".py") # this is actually not necessary (and not really correct, it's not like we are calling the module where the class is..)
     del sys.argv[1] # but this is important
 
     module = importlib.import_module(module_path)
 
     cls = getattr(module, class_name)
 
+    # Import things
     from pts.core.tools import logging
+    from pts.core.basics.configuration import ConfigurationReader
 
-    # Import the configuration
+    ## GET THE CONFIGURATION DEFINITION
 
     configuration_name = tables[subproject]["Configuration"][index]
     if configuration_name == "--": configuration_name = command_name
@@ -144,20 +101,29 @@ elif len(table_matches) == 1 and len(matches) == 0:
 
     configuration_module = importlib.import_module(configuration_module_path)
 
-    config = getattr(configuration_module, "config")
+    definition = getattr(configuration_module, "definition")
 
-    # Read the configuration settings from the command-line arguments
-    config.read()
+    ## CREATE THE CONFIGURATION
+
+    # Create the ConfigurationReader
+    reader = ConfigurationReader(command_name, description, log_path="log")
+
+    # Create the configuration from the definition and from reading the command line arguments
+    config = reader.read(definition)
+
+    ## SETUP LOGGER
 
     # Determine the log file path
-    logfile_path = fs.join(config.fixed["log_path"], time.unique_name("log") + ".txt") if config.arguments.report else None
+    logfile_path = fs.join(config.log_path, time.unique_name("log") + ".txt") if config.report else None
 
     # Determine the log level
-    level = "DEBUG" if config.arguments.debug else "INFO"
+    level = "DEBUG" if config.debug else "INFO"
 
     # Initialize the logger
     log = logging.setup_log(level=level, path=logfile_path)
     log.start("Starting " + command_name + " ...")
+
+    ## DO WHAT HAS TO BE DONE
 
     # Create the class instance, configure it with the configuration settings
     inst = cls(config)
@@ -166,6 +132,6 @@ elif len(table_matches) == 1 and len(matches) == 0:
     inst.run()
 
 # Show possible matches if there are more than just one
-else: show_possible_matches(matches, table_matches, tables)
+else: introspection.show_possible_matches(matches, table_matches, tables)
 
 # -----------------------------------------------------------------
