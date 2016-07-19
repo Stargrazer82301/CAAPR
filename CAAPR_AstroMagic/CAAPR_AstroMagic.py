@@ -77,7 +77,7 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
     # Import the image
     importer = ImageImporter()
-    importer.run(image_path, bad_region_path=bad_region_path, fwhm=fwhm)
+    importer.run(image_path, bad_region_path=bad_region_path, fwhm=fwhm, find_error_frame=False)
 
     # Get the imported image
     image = importer.image
@@ -457,7 +457,45 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
 
 
 
-    # Run rest of catalogue-prefetching in a try statement, to catch a pernicious error
+    # Loop over each band, determining map sizes
+    diam_max = 0.0
+    for band in bands_dict.keys():
+        band_dict = bands_dict[band]
+
+        # Check that this band requires star subtraction
+        if band_dict['remove_stars']!=True:
+            continue
+
+        # Determine fits path
+        if os.path.isdir(band_dict['band_dir']):
+            in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
+        elif os.path.isfile(band_dict['band_dir']):
+            in_fitspath = os.path.join( band_dict['band_dir'] )
+
+        # Work out whether the file extension for FITS file in question is .fits or .fits.gz
+        file_found = False
+        if os.path.exists(in_fitspath+'.fits'):
+            in_fitspath = in_fitspath+'.fits'
+            file_found = True
+        elif os.path.exists(in_fitspath+'.fits.gz'):
+            in_fitspath = in_fitspath+'.fits.gz'
+            file_found = True
+        if file_found==False:
+            continue
+
+        # Work out map size
+        band_header = astropy.io.fits.getheader(in_fitspath)
+        band_wcs = astropy.wcs.WCS(band_header)
+        band_cdelt = band_wcs.wcs.cdelt.max()
+        diam = np.max([ band_cdelt*float(band_header['NAXIS1']), band_cdelt*float(band_header['NAXIS2']) ])
+        if diam>diam_max:
+            file_max = in_fitspath
+            diam_max = diam
+            #file_max_cdelt = band_cdelt
+
+
+
+    # Run catalogue-prefetching in a try statement, to catch a pernicious error
     try_counter = 0
     try_success = False
     while try_counter<10:
@@ -465,48 +503,10 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
             break
         try:
 
-
-
-            # Loop over each band, determining map sizes
-            diam_max = 0.0
-            for band in bands_dict.keys():
-                band_dict = bands_dict[band]
-
-                # Check that this band requires star subtraction
-                if band_dict['remove_stars']!=True:
-                    continue
-
-                # Determine fits path
-                if os.path.isdir(band_dict['band_dir']):
-                    in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
-                elif os.path.isfile(band_dict['band_dir']):
-                    in_fitspath = os.path.join( band_dict['band_dir'] )
-
-                # Work out whether the file extension for FITS file in question is .fits or .fits.gz
-                file_found = False
-                if os.path.exists(in_fitspath+'.fits'):
-                    in_fitspath = in_fitspath+'.fits'
-                    file_found = True
-                elif os.path.exists(in_fitspath+'.fits.gz'):
-                    in_fitspath = in_fitspath+'.fits.gz'
-                    file_found = True
-                if file_found==False:
-                    continue
-
-                # Work out map size
-                band_header = astropy.io.fits.getheader(in_fitspath)
-                band_wcs = astropy.wcs.WCS(band_header)
-                band_cdelt = band_wcs.wcs.cdelt.max()
-                diam = np.max([ band_cdelt*float(band_header['NAXIS1']), band_cdelt*float(band_header['NAXIS2']) ])
-                if diam>diam_max:
-                    file_max = in_fitspath
-                    diam_max = diam
-                    #file_max_cdelt = band_cdelt
-
             # Get AstroMagic catalogue object reference fits
             logging.setup_log(level="ERROR")
             importer = ImageImporter()
-            importer.run(file_max)
+            importer.run(file_max, find_error_frame=False)
             image = importer.image
 
             # Run catalogue importer on dummy fits, and save results
@@ -521,10 +521,8 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
             try_success = True
             break
 
-
-
         # Handle error
-        except RuntimeError as e:
+        except ValueError as e:
             if 'rebin' in e.message:
                 if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
                 try_counter += 1
