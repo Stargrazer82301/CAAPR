@@ -521,7 +521,13 @@ class Source(object):
 
         # Get the label of the center segment
         rel_center = self.cutout.rel_position(self.center)
-        label = segments[int(round(rel_center.y)), int(round(rel_center.x))]
+        try:
+            label = segments[int(round(rel_center.y)), int(round(rel_center.x))]
+        except:
+            try:
+                label = segments[int(rel_center.y), int(rel_center.x)]
+            except:
+                return Mask((segments == label))
 
         # If the center pixel is identified as being part of the background, create an empty mask (the center does not
         # correspond to a segment)
