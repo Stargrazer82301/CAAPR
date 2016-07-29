@@ -169,8 +169,20 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
 
 
-        # Handle stars that have been conflated witht the target galaxy
-        galaxy_principal = OverlargeStars(pod, saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, band_dict, temp_dir_path)
+        # Get the segmentation maps (galaxies, stars and other sources) from the SourceFinder
+        galaxy_segments = finder.galaxy_segments
+        star_segments = finder.star_segments
+        other_segments = finder.other_segments
+
+        # Make sure target galaxy isn't identified as star segment
+        target_segment = star_segments[ pod['centre_i'], pod['centre_j'] ]
+        star_segments[ np.where( star_segments==target_segment ) ] = 0.0
+
+
+
+
+        # Handle stars that have been conflated with the target galaxy
+        star_segments = OverlargeStars(pod, star_segments, saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, band_dict, temp_dir_path)
 
         # Region files can be adjusted by the user; if this is done, they have to be reloaded
         star_region = Region.from_file(star_region_path.replace('.reg','_revised.reg'))
@@ -191,13 +203,7 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
 
         # Create a map of the the segmentation maps
-        if pod['verbose']: print '['+pod['id']+'] AstroMagic generating segmentation maps.'
         segments = Image("segments")
-
-        # Get the segmentation maps (galaxies, stars and other sources) from the SourceFinder
-        galaxy_segments = finder.galaxy_segments
-        star_segments = finder.star_segments
-        other_segments = finder.other_segments
 
         # Add the segmentation map of the galaxies
         segments.add_frame(galaxy_segments, "galaxies")
@@ -242,7 +248,7 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
 
 # Define function to saturation regions that wholly intersect target galaxy
-def OverlargeStars(pod, sat_path, star_path, gal_path, image, source_dict, band_dict, temp_dir_path):
+def OverlargeStars(pod, star_segments, sat_path, star_path, gal_path, image, source_dict, band_dict, temp_dir_path):
 
 
 
@@ -264,87 +270,82 @@ def OverlargeStars(pod, sat_path, star_path, gal_path, image, source_dict, band_
         for sat_region in sat_regions:
             sat_indices.append( float(sat_region.attr[1]['text']) )
             sat_areas.append( np.pi * float(sat_region.coord_list[2]) * float(sat_region.coord_list[3]) )
-        sat_array = np.array([sat_areas, sat_indices]).transpose()
-        sat_indices_out = sat_array[:,1].astype(int).tolist()
+        #sat_array = np.array([sat_areas, sat_indices]).transpose()
+        #sat_indices_out = sat_array[:,1].astype(int).tolist()
     except ValueError as error_message:
         if error_message.message=='need more than 0 values to unpack':
             sat_regions = []
-            sat_indices_out = []
     except:
         pdb.set_trace()
 
     # Open galaxy catalogue file, and determine the "primary" name of the one that has been deemed principal
     gal_cat = astropy.table.Table.read(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Galaxies.cat'), format='ascii')
-    if np.where(gal_cat['Principal']=='True')[0].shape[0]==0:
+    where_principal = np.where( np.array([ gal_cat['Name'][i].replace(' ','')==pod['source_dict']['name'] for i in range(0,len(gal_cat)) ])==True )
+    if where_principal[0].shape[0]==0:
         gal_principal = 'NULL'
     else:
-        gal_principal = gal_cat[np.where(gal_cat['Principal']=='True')[0][0]]['Name'].replace(' ','')
+        gal_principal = gal_cat['Name'][where_principal][0].replace(' ','')
 
     # Loop over galaxy region file, identify region corresponding to target galaxy, and create mask array of it
     gal_regions = pyregion.open(gal_path)
     gal_found = False
     for gal_region in gal_regions:
         if 'text' in gal_region.attr[1].keys():
-            #gal_name = gal_region.attr[1]['text'].replace(' ','').replace('principal','')
-            if 'principal' in gal_region.attr[1]['text']:
+            gal_name = gal_region.attr[1]['text'].replace(' ','').replace('principal','')
+            if gal_name==gal_principal:
                 gal_found = True
                 break
-            elif 'principal' not in gal_region.attr[1]['text']:
-                gal_found = True
-                break
-    if gal_found:
-        gal_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(gal_region.coord_list[2:4]), np.max(gal_region.coord_list[2:4])/np.min(gal_region.coord_list[2:4]), gal_region.coord_list[4], gal_region.coord_list[0], gal_region.coord_list[1])
-        gal_area = np.pi * np.max(gal_region.coord_list[2:4]) * np.min(gal_region.coord_list[2:4])
-    else:
-        gal_mask = np.zeros(image.shape)
-        gal_area = 0
+    if gal_found==False:
+        return star_segments
+
+
 
     # Loop back over the saturation regions, not keeping those that aren't being retained, or which wholly encompass target galaxy, or are too lose to galaxy centre
-    sat_indices_bad = []
     sat_regions_out = pyregion.ShapeList([])
-    principal_dist_beam_thresh = 5.0
+    principal_dist_beam_thresh = 2.0
+    star_regions = pyregion.open(star_path)
     for sat_region in sat_regions:
 
-        # Remove saturation regions that are located too close to centre of principal galaxy
-        principal_dist = np.sqrt( (gal_region.coord_list[0]-sat_region.coord_list[0])**2.0 + (gal_region.coord_list[1]-sat_region.coord_list[1])**2.0 )
-        if principal_dist<=((band_dict['beam_arcsec']/pod['pix_arcsec'])*principal_dist_beam_thresh):
-            sat_indices_bad.append( float(sat_region.attr[1]['text']) )
-            continue
-
-        # Remove saturation regions that encompass centre of principal galaxy
+        # Do initial check if saturation region encompasses centre of principal galaxy
         i_dist = gal_region.coord_list[0] - sat_region.coord_list[0]
         j_dist = gal_region.coord_list[1] - sat_region.coord_list[1]
-        if (i_dist**2.0+j_dist**2.0)<=(np.min(gal_region.coord_list[2:4]))**2.0:
-            sat_indices_bad.append( float(sat_region.attr[1]['text']) )
-            continue
+        if (i_dist**2.0+j_dist**2.0)<=(np.min(sat_region.coord_list[2:4]))**2.0:
 
-        # As an ititial test, check that the saturation region is smaller than the target galaxy's region, and that it's not too close to the galaxy centre
-        sat_area = np.pi * np.max(sat_region.coord_list[2:4]) * np.min(sat_region.coord_list[2:4])
-        if (sat_area<gal_area) and (int(sat_region.attr[1]['text']) in sat_indices_out):
-            sat_regions_out.append(sat_region)
-            continue
+            # If initial check indicates risk, do full mask check
+            sat_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(sat_region.coord_list[2:4]), np.max(sat_region.coord_list[2:4])/np.min(sat_region.coord_list[2:4]), sat_region.coord_list[4], sat_region.coord_list[1], sat_region.coord_list[0])
+            if sat_mask[ pod['centre_i'], pod['centre_j'] ]==1.0:
 
-        # Check that saturation region doesn't wholly emcompass target galaxy
+                # If saturation region envelops galaxy core, find corresponding star region
+                sat_region_index = sat_region.attr[1]['text']
+                for star_region in star_regions:
+                    if 'text' in star_region.attr[1].keys():
+                        if star_region.attr[1]['text']==sat_region_index:
+
+                            # Use star region info to create more sensible saturationr egion
+                            star_i_dist = gal_region.coord_list[0] - star_region.coord_list[0]
+                            star_j_dist = gal_region.coord_list[1] - star_region.coord_list[1]
+                            sat_dist_new = np.max([ 0, np.sqrt(star_i_dist**2.0+star_j_dist**2.0)-np.max(gal_region.coord_list[2:4]) ])
+                            sat_region.coord_list[0] = star_region.coord_list[0]
+                            sat_region.coord_list[1] = star_region.coord_list[1]
+                            sat_region.coord_list[2] = sat_dist_new
+                            sat_region.coord_list[3] = sat_dist_new
+
+                            # Update saturated star segments map
+                            star_segments[ np.where(star_segments==float(sat_region_index)) ] = 0.0
+                            sat_mask_new = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(sat_region.coord_list[2:4]), np.max(sat_region.coord_list[2:4])/np.min(sat_region.coord_list[2:4]), sat_region.coord_list[4], sat_region.coord_list[1], sat_region.coord_list[0])
+                            star_segments[ np.where(sat_mask_new==1.0) ] = float(sat_region_index)
+                            sat_regions_out.append(sat_region)
+                            #sat_indices_bad.append( float(sat_region.attr[1]['text']) )
+                            continue
         else:
-            sat_mask = ChrisFuncs.Photom.EllipseMask( np.zeros(image.shape), np.max(sat_region.coord_list[2:4]), np.max(sat_region.coord_list[2:4])/np.min(sat_region.coord_list[2:4]), sat_region.coord_list[4], sat_region.coord_list[0], sat_region.coord_list[1])
-            check_mask = gal_mask + sat_mask
-            if np.where(check_mask==2)[0].shape[0]>int(np.nansum(gal_mask)):
-                sat_indices_bad.append( float(sat_region.attr[1]['text']) )
-                continue
+            sat_regions_out.append(sat_region)
 
-            # Record regions that pass all criteria
-            elif int(sat_region.attr[1]['text']) in sat_indices_out:
-                sat_regions_out.append(sat_region)
+
 
     # Now read in and loop over the star region file
     star_regions = pyregion.open(star_path)
     star_regions_out = pyregion.ShapeList([])
     for star_region in star_regions:
-
-        # Remove stars that are associated with "bad" saturation regions
-        if 'text' in star_region.attr[1].keys():
-            if int(star_region.attr[1]['text']) in sat_indices_bad:
-                continue
 
         # Remove stars that are located too close to centre of principal galaxy
         principal_dist = np.sqrt( (gal_region.coord_list[0]-star_region.coord_list[0])**2.0 + (gal_region.coord_list[1]-star_region.coord_list[1])**2.0 )
@@ -353,6 +354,8 @@ def OverlargeStars(pod, sat_path, star_path, gal_path, image, source_dict, band_
 
         # If star has passed all criteria, record it to output
         star_regions_out.append(star_region)
+
+
 
     # Save updated regions to file
     if len(sat_regions_out)>0:
@@ -366,10 +369,10 @@ def OverlargeStars(pod, sat_path, star_path, gal_path, image, source_dict, band_
         star_regions_out = open(star_path.replace('.reg','_revised.reg'), 'w')
         star_regions_out.close()
 
-    # Return name of principal galaxy
+    # Return updated segments map
     if gal_principal=='NULL':
         gal_principal = None
-    return gal_principal
+    return star_segments
 
 
 
