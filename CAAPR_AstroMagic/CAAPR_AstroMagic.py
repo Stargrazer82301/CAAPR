@@ -291,11 +291,13 @@ def OverlargeStars(pod, star_segments, sat_path, star_path, gal_path, image, sou
     gal_found = False
     for gal_region in gal_regions:
         if 'text' in gal_region.attr[1].keys():
-            gal_name = gal_region.attr[1]['text'].replace(' ','').replace('principal','')
+            gal_name = gal_region.attr[1]['text'].replace(' ','').replace(' (principal)','')
             if gal_name==gal_principal:
                 gal_found = True
                 break
     if gal_found==False:
+        shutil.copy2(sat_path, sat_path.replace('.reg','_revised.reg'))
+        shutil.copy2(star_path, star_path.replace('.reg','_revised.reg'))
         return star_segments
 
 
