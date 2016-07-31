@@ -142,11 +142,11 @@ def ApertureTablePrepare(kwargs_dict):
     if kwargs_dict['aperture_table_path']==None:
         kwargs_dict['aperture_table_path'] = os.path.join( kwargs_dict['output_dir_path'], 'CAAPR_Aperture_Table_'+kwargs_dict['timestamp']+'.csv' )
 
-    # Create output file, and write standard header
-    aperture_table_header = 'name,semimaj_arcsec,axial_ratio,pos_angle\n'
-    aperture_table_file = open( kwargs_dict['aperture_table_path'], 'a')
-    aperture_table_file.write(aperture_table_header)
-    aperture_table_file.close()
+        # Create output file, and write standard header
+        aperture_table_header = 'name,semimaj_arcsec,axial_ratio,pos_angle\n'
+        aperture_table_file = open( kwargs_dict['aperture_table_path'], 'a')
+        aperture_table_file.write(aperture_table_header)
+        aperture_table_file.close()
 
     # Return (potentially-updated) kwargs dict
     return kwargs_dict
