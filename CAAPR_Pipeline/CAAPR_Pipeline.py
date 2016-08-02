@@ -115,6 +115,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
                 photom_output_list.append( pool.apply_async( CAAPR.CAAPR_Photom.PipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
             pool.join()
+            if kwargs_dict['verbose']: print '['+source_dict['name']+'] Gathering parallel threads.'
             photom_list = [output.get() for output in photom_output_list if output.successful()==True]
             photom_list = [photom for photom in photom_list if photom!=None]
 

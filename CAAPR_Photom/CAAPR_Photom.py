@@ -816,14 +816,18 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
     time_fft = time.time()
     conv_map = astropy.convolution.convolve_fft(sersic_map, psf, normalize_kernel=True)
     time_fft = time.time() - time_fft
-    time_direct = time.time()
-    conv_map = astropy.convolution.convolve(sersic_map, psf, normalize_kernel=True)
-    time_direct = time.time() - time_direct
-    if time_fft<time_direct:
-        use_fft = True
-    else:
-        use_fft = False
-
+    use_fft = True
+    if not use_fft:
+        if time_fft<10.0:
+            use_fft = True
+        else:
+            time_direct = time.time()
+            conv_map = astropy.convolution.convolve(sersic_map, psf, normalize_kernel=True)
+            time_direct = time.time() - time_direct
+            if time_fft<time_direct:
+                use_fft = True
+            else:
+                use_fft = False
 
 
 
@@ -838,7 +842,7 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
     params.add('sersic_theta', value=initial_sersic_theta, vary=False)
 
     # Solve with LMfit to find parameters of best-fit sersic profile
-    result = lmfit.minimize(Sersic_LMfit, params, args=(pod, cutout, psf, mask, use_fft), method='leastsq', ftol=1E-5, xtol=1E-5)
+    result = lmfit.minimize(Sersic_LMfit, params, args=(pod, cutout, psf, mask, use_fft), method='leastsq', ftol=1E-5, xtol=1E-5, maxfev=200)
 
     # Extract best-fit results
     sersic_amplitide = result.params['sersic_amplitide'].value

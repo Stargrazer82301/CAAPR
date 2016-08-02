@@ -401,6 +401,7 @@ def UnpaddingCutout(source_dict, band_dict, kwargs_dict):
 
 # Define function that writes final aperture for given soruce to aperture output file
 def RecordAperture(aperture_combined, source_dict, kwargs_dict):
+    if kwargs_dict['verbose']: print '['+source_dict['name']+'] Writing apertures to file.'
 
 
 
@@ -419,6 +420,7 @@ def RecordAperture(aperture_combined, source_dict, kwargs_dict):
 
 # Define function that writes final aperture for given soruce to aperture output file
 def RecordPhotom(photom_list, source_dict, bands_dict, kwargs_dict):
+    if kwargs_dict['verbose']: print '['+source_dict['name']+'] Writing photometry to file.'
 
 
 
