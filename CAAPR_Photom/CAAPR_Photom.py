@@ -146,8 +146,7 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
         # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter, with source aperture masked
-        if kwargs_dict['polysub']==True:
-            pod = CAAPR.CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'])
+        pod = CAAPR.CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], instant_quit=max([not kwargs_dict['polysub']]))
 
 
 

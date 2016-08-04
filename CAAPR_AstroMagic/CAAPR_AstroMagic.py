@@ -48,15 +48,6 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
     if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
 
 
-    """
-    # Handle repeated attempts and timeouts
-    def Handler(signum, frame):
-        raise Exception("Timout!")
-    signal.signal(signal.SIGALRM, Handler)
-    try:
-        signal.alarm(3600)
-    """
-
 
     # The paths to the image and output (absolute or relative to the current working directory)
     output_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'])
@@ -231,6 +222,10 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
         # Determine the path to the result
         result_path = filesystem.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits' )
+        if 'fitting_band_exclude' in pod.keys():
+            if pod['fitting_band_exclude']==True:
+                result_path = filesystem.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub_Thumbnail.fits' )
+
 
         # Save the resulting image as a FITS file
         image.frames.primary.save(result_path, header=image.original_header)
@@ -238,7 +233,7 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
 
         # Grab AstroMagic output and return in pod
-        am_output = astropy.io.fits.getdata( os.path.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') )
+        am_output = astropy.io.fits.getdata( result_path )
         pod['cutout'] = am_output
         pod['pre_reg'] = True
         return pod

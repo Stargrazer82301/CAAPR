@@ -219,7 +219,7 @@ def MapPrelim(pod, source_dict, band_dict, verbose=False):
 
 
 # Define function that fits and subtracts polynomial background filter from map
-def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, cutoff_sigma=2.0):
+def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, cutoff_sigma=2.0, instant_quit=False):
     if pod['verbose']: print '['+pod['id']+'] Determining if (and how) background is significnatly variable.'
 
 
@@ -232,6 +232,14 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
             for i in range(factor)]
             for j in range(factor)]), axis=0)
         return dsarr
+
+
+
+    # If polynomial background subraction not wanted, immediately return everything unchanged
+    if instant_quit:
+         pod['sky_poly'] = False
+         return pod
+
 
 
 

@@ -88,7 +88,7 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
 
         # If star-removal is required, run pod through AstroMagic
-        pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+        pod = ExcludeAperture(pod, source_dict, band_dict, kwargs_dict)
 
 
 
@@ -98,33 +98,18 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
 
         # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter
-        if kwargs_dict['polysub']==True:
-            pod = CAAPR.CAAPR_Pipeline.PolySub(pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'])
+        pod = CAAPR.CAAPR_Pipeline.PolySub( pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'], instant_quit=max([not kwargs_dict['polysub'],pod['aperture_band_exclude']]) )
 
 
 
-        # If this band is not to be considered when constructing final aperture, default to standard minimum aperture and skip further processing
-        if isinstance(source_dict['fitting_bands_exclude'], str):
-            fitting_bands_exclude = source_dict['fitting_bands_exclude'].split(';')
-        elif source_dict['fitting_bands_exclude']==False:
-            fitting_bands_exclude = []
-        if (band_dict['consider_aperture']==False) or (band_dict['band_name'] in fitting_bands_exclude):
-            pod['opt_axial_ratio'] = 1.0
-            pod['opt_angle'] = 0.0
-            pod['opt_semimaj_arcsec'] = ( (2.0*band_dict['beam_arcsec'])**2.0 - band_dict['beam_arcsec']**2.0 )**0.5
-            pod['opt_semimaj_pix'] = pod['opt_semimaj_arcsec'] / pod['pix_arcsec']
-        else:
+        # If sky polynomial removed, run pod through function that determines aperture shape, to provide final estiamte
+        if pod['sky_poly']!=False:
+            pod = ApertureShape(pod)
 
 
 
-            # If sky polynomial removed, run pod through function that determines aperture shape, to provide final estiamte
-            if pod['sky_poly']!=False:
-                pod = ApertureShape(pod)
-
-
-
-            # Run pod through function that determines aperture size
-            pod = ApertureSize(pod, band_dict)
+        # Run pod through function that determines aperture size
+        pod = ApertureSize(pod, band_dict)
 
 
 
@@ -149,6 +134,8 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
 # Define function that determines the shape (not the size) of the source aperture in this band
 def ApertureShape(pod):
+    if pod['aperture_band_exclude']==True:
+        return pod
     verbose = pod['verbose']
     if pod['verbose']: print '['+pod['id']+'] Commencing determination of appropriate axial ratio and positional angle for source aperture.'
 
@@ -214,7 +201,9 @@ def ApertureShape(pod):
 
 
 # Define function that determines the size of the source aperture in this band
-def ApertureSize(pod,band_dict):
+def ApertureSize(pod, band_dict):
+    if pod['aperture_band_exclude']:
+        return pod
     if pod['verbose']: print '['+pod['id']+'] Commencing determination of appropriate size for source aperture.'
     verbose = pod['verbose']
 
@@ -435,6 +424,46 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Final ellipse semi-major axis: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_semimaj_arcsec,4))+' arcsec; final ellipse angle: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_angle,4))+' '+' degrees; final ellipse axial ratio: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_axial_ratio,4))+'.'
     gc.collect()
     return [cont_semimaj_arcsec, cont_axial_ratio, cont_angle, ap_array]
+
+
+
+
+# Define function that check is present band is to be excluded from aperture-fitting
+def ExcludeAperture(pod, source_dict, band_dict, kwargs_dict):
+
+
+
+    # Check if the aperture exclusion field actually contains characters; if so, make list of etries, and if not, record an empty list
+    if isinstance(source_dict['aperture_bands_exclude'], str):
+        aperture_bands_exclude = source_dict['aperture_bands_exclude'].split(';')
+    elif source_dict['aperture_bands_exclude']==False:
+        aperture_bands_exclude = []
+
+    # If present band is to be excluded, record a generic null aperture
+    if (band_dict['consider_aperture']==False) or (band_dict['band_name'] in aperture_bands_exclude):
+        pod['aperture_band_exclude'] = True
+
+    # If exclusion not required, record and return
+    else:
+        pod['aperture_band_exclude'] = False
+        return pod
+
+
+    # Set generic null aperture properties
+    pod['opt_axial_ratio'] = 1.0
+    pod['opt_angle'] = 0.0
+    pod['opt_semimaj_arcsec'] = ( (2.0*band_dict['beam_arcsec'])**2.0 - band_dict['beam_arcsec']**2.0 )**0.5
+    pod['opt_semimaj_pix'] = pod['opt_semimaj_arcsec'] / pod['pix_arcsec']
+    pod['semimaj_initial_pix'] = pod['opt_semimaj_arcsec'] / pod['pix_arcsec']
+
+
+    return pod
+
+
+
+
+
+
 
 
 
