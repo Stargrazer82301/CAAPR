@@ -242,7 +242,6 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
 
 
 
-
     # If image has pixels smaller than some limit, downsample image to improve processing time
     pix_size = pod['pix_arcsec']
     pix_size_limit = 2.0

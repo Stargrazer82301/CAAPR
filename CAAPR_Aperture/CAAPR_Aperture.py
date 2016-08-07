@@ -87,8 +87,15 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
 
 
-        # If star-removal is required, run pod through AstroMagic
+        # Check if this band is to be excluded from aperture-fitting; if so, return null aperture information
         pod = ExcludeAperture(pod, source_dict, band_dict, kwargs_dict)
+#        if pod['aperture_band_exclude']==True:
+#            return pod['null_output_dict']
+
+
+
+        # If star-removal is required, run pod through AstroMagic
+        pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
 
 
 
@@ -428,6 +435,7 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
 
 
 
+
 # Define function that check is present band is to be excluded from aperture-fitting
 def ExcludeAperture(pod, source_dict, band_dict, kwargs_dict):
 
@@ -448,7 +456,6 @@ def ExcludeAperture(pod, source_dict, band_dict, kwargs_dict):
         pod['aperture_band_exclude'] = False
         return pod
 
-
     # Set generic null aperture properties
     pod['opt_axial_ratio'] = 1.0
     pod['opt_angle'] = 0.0
@@ -456,14 +463,17 @@ def ExcludeAperture(pod, source_dict, band_dict, kwargs_dict):
     pod['opt_semimaj_pix'] = pod['opt_semimaj_arcsec'] / pod['pix_arcsec']
     pod['semimaj_initial_pix'] = pod['opt_semimaj_arcsec'] / pod['pix_arcsec']
 
+    # Create aperture output dictionry containing null values
+    output_dict = {'band_name':band_dict['band_name'],
+                   'opt_semimaj_arcsec':pod['opt_semimaj_arcsec'],
+                   'opt_axial_ratio':pod['opt_axial_ratio'],
+                   'opt_angle':pod['opt_angle']}
+    pod['null_output_dict'] = output_dict
 
+#    # Crate thumbnail-sized version, as that's all we need now
+#    CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], img_rad_arcsec, thumb_rad)
+
+    # Return pod
     return pod
-
-
-
-
-
-
-
 
 

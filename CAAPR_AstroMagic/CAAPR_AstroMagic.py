@@ -222,10 +222,6 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
 
         # Determine the path to the result
         result_path = filesystem.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits' )
-        if 'fitting_band_exclude' in pod.keys():
-            if pod['fitting_band_exclude']==True:
-                result_path = filesystem.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub_Thumbnail.fits' )
-
 
         # Save the resulting image as a FITS file
         image.frames.primary.save(result_path, header=image.original_header)
