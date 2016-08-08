@@ -26,114 +26,78 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
 
 
-    # Determine whether the user is specificing a directroy full of FITS files in this band (in which case use standardised filename format), or just a single FITS file
-    try:
-        if os.path.isdir(band_dict['band_dir']):
-            in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
-        elif os.path.isfile(band_dict['band_dir']):
-            in_fitspath = os.path.join( band_dict['band_dir'] )
-    except:
-        pdb.set_trace()
-
-    # Work out whether the file extension for FITS file in question is .fits or .fits.gz
-    file_found = False
-    if os.path.exists(in_fitspath+'.fits'):
-        in_fitspath = in_fitspath+'.fits'
-        file_found = True
-    elif os.path.exists(in_fitspath+'.fits.gz'):
-        in_fitspath = in_fitspath+'.fits.gz'
-        file_found = True
-
-    # Report to user if no file found; otherwise, progress to pipeline
-    if file_found==False:
-        print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
-        print '['+source_id+'] Assuming no data in this band for current source.'
-    else:
-
-        # Carry out small random wait, to stop RAM checks from syncing up
-        time.sleep(5.0*np.random.rand())
-
-        # Read in FITS file in question
-        in_fitsdata = astropy.io.fits.open(in_fitspath)
-        in_image = in_fitsdata[0].data
-        in_header = in_fitsdata[0].header
-        in_fitsdata.close()
-        in_wcs = astropy.wcs.WCS(in_header)
-        in_fitspath_size = float(os.stat(in_fitspath).st_size)
-
-        # Create the pod (Photometry Organisation Dictionary), which will bundle all the photometry data for this source & band into one dictionary to be passed between functions
-        pod = {'in_fitspath':in_fitspath,
-               'in_image':in_image,
-               'in_header':in_header,
-               'in_wcs':in_wcs,
-               'cutout':in_image.copy(),
-               'band_dict':band_dict,
-               'source_dict':source_dict,
-               'output_dir_path':kwargs_dict['output_dir_path'],
-               'temp_dir_path':kwargs_dict['temp_dir_path'],
-               'in_fitspath_size':in_fitspath_size,
-               'id':source_id,
-               'verbose':kwargs_dict['verbose']}
+    # Carry out small random wait, to stop RAM checks from syncing up later
+    time.sleep(5.0*np.random.rand())
 
 
 
-
-        # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
-        if pod['verbose']: print '['+pod['id']+'] Parsing input data.'
-        pod = CAAPR.CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
-        if pod['within_bounds']==False:
-            return None
-        CAAPR.CAAPR_IO.MemCheck(pod)
+    # Perform initial checks of target file type and location; return if not present
+    in_fitspath, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, band_dict, kwargs_dict)
+    if file_found == False:
+        return
 
 
 
-        # Check if this band is to be excluded from aperture-fitting; if so, return null aperture information
-        pod = ExcludeAperture(pod, source_dict, band_dict, kwargs_dict)
-#        if pod['aperture_band_exclude']==True:
-#            return pod['null_output_dict']
+    # Create the pod (Photometry Organisation Dictionary), which will read in the FITS file, and bundle all the photometry data for this source & band into one dictionary to be passed between functions
+    pod = CAAPR.CAAPR_Pipeline.PodInitiate(in_fitspath, source_dict, band_dict, kwargs_dict)
 
 
 
-        # If star-removal is required, run pod through AstroMagic
-        pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+    # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
+    pod = CAAPR.CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
+    if pod['within_bounds']==False:
+        return None
+    CAAPR.CAAPR_IO.MemCheck(pod)
 
 
 
-        # Run pod through function that determines aperture shape, to provide preliminary estimate to facilitate removal of large-scale sky
+    # Check if this band is to be excluded from aperture-fitting; if so, return null aperture information
+    pod = ExcludeAperture(pod, source_dict, band_dict, kwargs_dict)
+    if pod['band_exclude']==True:
+        return pod['null_output_dict']
+
+
+
+    # If star-removal is required, run pod through AstroMagic
+    pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+
+
+
+    # Run pod through function that determines aperture shape, to provide preliminary estimate to facilitate removal of large-scale sky
+    pod = ApertureShape(pod)
+
+
+
+    # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter
+    pod = CAAPR.CAAPR_Pipeline.PolySub( pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'], instant_quit=max([not kwargs_dict['polysub'],pod['band_exclude']]) )
+
+
+
+    # If sky polynomial removed, run pod through function that determines aperture shape, to provide final estiamte
+    if pod['sky_poly']!=False:
         pod = ApertureShape(pod)
 
 
 
-        # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter
-        pod = CAAPR.CAAPR_Pipeline.PolySub( pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'], instant_quit=max([not kwargs_dict['polysub'],pod['aperture_band_exclude']]) )
+    # Run pod through function that determines aperture size
+    pod = ApertureSize(pod, band_dict)
 
 
 
-        # If sky polynomial removed, run pod through function that determines aperture shape, to provide final estiamte
-        if pod['sky_poly']!=False:
-            pod = ApertureShape(pod)
+    # If thumbnail images have been requested, save a copy of the current image (ie, with any star and/or background subtaction)
+    if kwargs_dict['thumbnails']==True:
+        astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'])
 
 
 
-        # Run pod through function that determines aperture size
-        pod = ApertureSize(pod, band_dict)
-
-
-
-        # If thumbnail images have been requested, save a copy of the current image (ie, with any star and/or background subtaction)
-        if kwargs_dict['thumbnails']==True:
-            astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'])
-
-
-
-        # Now return final aperture informaton to main pipeline, and clean up garbage
-        output_dict = {'band_name':band_dict['band_name'],
-                       'opt_semimaj_arcsec':pod['opt_semimaj_arcsec'],
-                       'opt_axial_ratio':pod['opt_axial_ratio'],
-                       'opt_angle':pod['opt_angle']}
-        gc.collect()
-        del(pod)
-        return output_dict
+    # Now return final aperture informaton to main pipeline, and clean up garbage
+    output_dict = {'band_name':band_dict['band_name'],
+                   'opt_semimaj_arcsec':pod['opt_semimaj_arcsec'],
+                   'opt_axial_ratio':pod['opt_axial_ratio'],
+                   'opt_angle':pod['opt_angle']}
+    gc.collect()
+    del(pod)
+    return output_dict
 
 
 
@@ -141,7 +105,7 @@ def PipelineAperture(source_dict, band_dict, kwargs_dict):
 
 # Define function that determines the shape (not the size) of the source aperture in this band
 def ApertureShape(pod):
-    if pod['aperture_band_exclude']==True:
+    if pod['band_exclude']==True:
         return pod
     verbose = pod['verbose']
     if pod['verbose']: print '['+pod['id']+'] Commencing determination of appropriate axial ratio and positional angle for source aperture.'
@@ -209,7 +173,7 @@ def ApertureShape(pod):
 
 # Define function that determines the size of the source aperture in this band
 def ApertureSize(pod, band_dict):
-    if pod['aperture_band_exclude']:
+    if pod['band_exclude']:
         return pod
     if pod['verbose']: print '['+pod['id']+'] Commencing determination of appropriate size for source aperture.'
     verbose = pod['verbose']
@@ -449,11 +413,11 @@ def ExcludeAperture(pod, source_dict, band_dict, kwargs_dict):
 
     # If present band is to be excluded, record a generic null aperture
     if (band_dict['consider_aperture']==False) or (band_dict['band_name'] in aperture_bands_exclude):
-        pod['aperture_band_exclude'] = True
+        pod['band_exclude'] = True
 
     # If exclusion not required, record and return
     else:
-        pod['aperture_band_exclude'] = False
+        pod['band_exclude'] = False
         return pod
 
     # Set generic null aperture properties
@@ -475,5 +439,14 @@ def ExcludeAperture(pod, source_dict, band_dict, kwargs_dict):
 
     # Return pod
     return pod
+
+
+
+# Define function that handles bands excluded from aperture fitting, so that they appear in thumbnail grid
+def ExcludedThumb(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined):
+    return
+
+
+
 
 

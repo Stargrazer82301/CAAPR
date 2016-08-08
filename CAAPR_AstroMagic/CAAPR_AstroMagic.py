@@ -271,7 +271,7 @@ def OverlargeStars(pod, star_segments, sat_path, star_path, gal_path, image, sou
 
     # Open galaxy catalogue file, and determine the "primary" name of the one that has been deemed principal
     gal_cat = astropy.table.Table.read(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Galaxies.cat'), format='ascii')
-    where_principal = np.where( np.array([ gal_cat['Name'][i].replace(' ','')==pod['source_dict']['name'] for i in range(0,len(gal_cat)) ])==True )
+    where_principal = np.where( np.array([ gal_cat['Name'][i].replace(' ','')==source_dict['name'] for i in range(0,len(gal_cat)) ])==True )
     if where_principal[0].shape[0]==0:
         gal_principal = 'NULL'
     else:
@@ -433,7 +433,6 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
         return
     if str(source_dict['starsub_bands_exclude'])=='True':
         return
-    if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic retrieving list of foreground stars in map from online catalogues.'
 
     # If star subtraction is possibly required, check band-by-band
     if kwargs_dict['starsub']==True:
@@ -446,7 +445,8 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
         if star_sub_check==False:
             return
 
-    # If all checks passed, and star subtraction is required, make sure that AstroMagic temp directory is clear
+    # If all checks passed, and star subtraction is required, inform user and make sure that AstroMagic temp directory is clear
+    if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic retrieving list of foreground stars in map from online catalogues.'
     if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic')):
         shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
     os.mkdir(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))

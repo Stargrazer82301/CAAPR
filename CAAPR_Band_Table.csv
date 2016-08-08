@@ -17,7 +17,7 @@ band_name,band_dir,use_error_map,make_cutout,calib_error,beam_arcsec,colour_map,
 #WISE_4.6,/home/saruman/spx7cjc/DustPedia/WISE/Cutouts/,False,False,0.034,6.4,pink,1.25,1.601,1,1,True,True,1,False
 #WISE_12,/home/saruman/spx7cjc/DustPedia/WISE/Cutouts/,False,False,0.046,6.5,pink,1.25,1.601,1,1,False,True,1,False
 #WISE_22,/home/saruman/spx7cjc/DustPedia/WISE/Cutouts/,False,False,0.056,12,pink,1.25,1.601,1,1,False,True,1,/home/herdata/spx7cjc/Beams/Aniano_WISE_22_Small.fits
-Spitzer_3.6,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,False,False,0.03,1.66,pink,1.25,1.601,1,1,True,True,1,False
+#Spitzer_3.6,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,False,False,0.03,1.66,pink,1.25,1.601,1,1,True,True,1,False
 #Spitzer_4.5,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,False,False,0.03,1.72,pink,1.25,1.601,1,1,True,True,1,False
 #Spitzer_5.8,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,False,False,0.03,1.88,pink,1.25,1.601,1,1,True,True,1,False
 #Spitzer_8.0,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,False,False,0.03,1.98,pink,1.25,1.601,1,1,True,True,1,False
@@ -25,7 +25,7 @@ Spitzer_3.6,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,False,False,0.03,1.
 #Spitzer_70,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,False,False,0.1,18,pink,1.25,1.601,4,1,False,False,1,/home/herdata/spx7cjc/Beams/Aniano_MIPS_70_Small.fits
 #Spitzer_160,/home/saruman/spx7cjc/DustPedia/Spitzer/Cutouts/,False,False,0.12,38,pink,1.25,1.601,10,1,False,False,1,/home/herdata/spx7cjc/Beams/Aniano_MIPS_160_Small.fits
 #PACS_70,/home/saruman/spx7cjc/DustPedia/PACS/Cutouts/,False,1800,0.07,9,gist_heat,1.25,1.601,4,1,True,False,1,/home/herdata/spx7cjc/Beams/Aniano_PACS_70_Small.fits
-#PACS_100,/home/saruman/spx7cjc/DustPedia/PACS/Cutouts/,False,1800,0.07,10,gist_heat,1.25,1.601,4,1,True,False,1,/home/herdata/spx7cjc/Beams/Aniano_PACS_100_Small.fits
+PACS_100,/home/saruman/spx7cjc/DustPedia/PACS/Cutouts/,False,1800,0.07,10,gist_heat,1.25,1.601,4,1,True,False,1,/home/herdata/spx7cjc/Beams/Aniano_PACS_100_Small.fits
 #PACS_160,/home/saruman/spx7cjc/DustPedia/PACS/Cutouts/,False,1800,0.07,13,gist_heat,1.25,1.601,4,1,True,False,1,/home/herdata/spx7cjc/Beams/Aniano_PACS_160_Small.fits
 SPIRE_250,/home/user/spx7cjc/Desktop/Saruman/DustPedia/SPIRE/Cutouts/DustPedia/,False,False,0.055,18,gist_heat,1.25,1.601,10,1,True,False,1,/home/herdata/spx7cjc/Beams/SPIRE_250_Small.fits
 #SPIRE_350,/home/user/spx7cjc/Desktop/Saruman/DustPedia/SPIRE/Cutouts/DustPedia/,False,False,0.055,25,gist_heat,1.25,1.601,10,1,False,False,1,/home/herdata/spx7cjc/Beams/SPIRE_350_Small.fits
