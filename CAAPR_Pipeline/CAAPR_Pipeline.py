@@ -68,7 +68,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
             random.shuffle(bands_dict_keys)
             pool = mp.Pool(processes=kwargs_dict['n_proc'])
             for band in bands_dict_keys:
-                aperture_output_list.append( pool.apply_async( CAAPR.CAAPR_Aperture.PipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
+                aperture_output_list.append( pool.apply_async( CAAPR.CAAPR_Aperture.SubpipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
             pool.join()
             del(pool)
@@ -78,7 +78,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         # If parallelisation is disabled, process sources one-at-a-time
         elif kwargs_dict['parallel']==False:
             for band in bands_dict.keys():
-                aperture_output_list.append( CAAPR.CAAPR_Aperture.PipelineAperture(source_dict, bands_dict[band], kwargs_dict) )
+                aperture_output_list.append( CAAPR.CAAPR_Aperture.SubpipelineAperture(source_dict, bands_dict[band], kwargs_dict) )
                 aperture_list = [output for output in aperture_output_list if output!=None]
 
         # Combine all fitted apertures to produce amalgam aperture
@@ -220,7 +220,7 @@ def FilePrelim(source_dict, band_dict, kwargs_dict):
 # Initiate the pod (Photometry Organisation Dictionary)
 def PodInitiate(in_fitspath, source_dict, band_dict, kwargs_dict):
     source_id = source_dict['name']+'_'+band_dict['band_name']
-    if kwargs_dict['verbose']: print '['+source_id+'] Loading FITS file.'
+    if kwargs_dict['verbose']: print '['+source_id+'] Reading in FITS data.'
 
 
 

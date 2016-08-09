@@ -660,6 +660,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
                 vars()['subfig'+str(b)].axis_labels.hide()
                 vars()['subfig'+str(b)].tick_labels.hide()
                 vars()['subfig'+str(b)].ticks.hide()
+                line_width = 4.0
 
                 # Extract band-specific aperture dimensions
                 band_ap_angle = aperture_list[b]['opt_angle']
@@ -675,8 +676,9 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
                 band_ap_axial_ratio = band_ap_semimaj / band_ap_semimaj
 
                 # Plot band-specific aperture (if one was provided)
-                line_width = 4.0
-                if bands_dict[band_name]['consider_aperture']==True:
+                if isinstance(source_dict['aperture_bands_exclude'], str):
+                    aperture_bands_exclude = source_dict['aperture_bands_exclude'].split(';')
+                if bands_dict[band_name]['consider_aperture']==True and band_name not in aperture_bands_exclude:
                     vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*band_ap_semimaj, 2.0*band_ap_semimin, angle=band_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/2.0, linestyle='dotted')
 
                 # Extract combined aperture dimensions
