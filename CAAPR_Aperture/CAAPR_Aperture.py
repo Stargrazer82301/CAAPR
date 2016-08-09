@@ -415,7 +415,7 @@ def ExcludeAperture(pod, source_dict, band_dict, kwargs_dict):
     elif source_dict['aperture_bands_exclude']==False:
         aperture_bands_exclude = []
 
-    # If present band is to be excluded, record a generic null aperture
+    # If present band is to be excluded, note this fact in pod
     if (band_dict['consider_aperture']==False) or (band_dict['band_name'] in aperture_bands_exclude):
         pod['band_exclude'] = True
 
@@ -438,9 +438,6 @@ def ExcludeAperture(pod, source_dict, band_dict, kwargs_dict):
                    'opt_angle':pod['opt_angle']}
     pod['null_output_dict'] = output_dict
 
-#    # Crate thumbnail-sized version, as that's all we need now
-#    CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], img_rad_arcsec, thumb_rad)
-
     # Return pod
     if pod['verbose']: print '['+pod['id']+'] No aperture fitting required from this source in this band.'
     return pod
@@ -458,7 +455,7 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_
     if kwargs_dict['thumbnails']==False:
         return
 
-    # Check if the aperture exclusion field for this source actually contains characters; if so make list of entries, else return
+    # Check if the aperture exclusion field for this source actually contains characters; if so make list of entries, else produce empty list
     if isinstance(source_dict['aperture_bands_exclude'], str):
         aperture_bands_exclude = source_dict['aperture_bands_exclude'].split(';')
     else:
@@ -474,7 +471,7 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_
         return
     else:
         random.shuffle(aperture_bands_exclude)
-        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Preparing thumbnail data for fitting-excluded bands.'
+        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Preparing thumbnail data for bands excluded from aperture-fitting.'
 
     # In standard operation, process multiple sources in parallel
     if kwargs_dict['parallel']==True:

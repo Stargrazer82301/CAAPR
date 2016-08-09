@@ -131,6 +131,9 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         # Record photometry results to file
         CAAPR.CAAPR_IO.RecordPhotom(photom_list, source_dict, bands_dict, kwargs_dict)
 
+        # Prepare thumbnail images for bands excluded from photometry
+        CAAPR.CAAPR_Photom.ExcludedThumb(source_dict, bands_dict, kwargs_dict)
+
         # Create grid of thumbnail images
         CAAPR.CAAPR_IO.PhotomThumbGrid(source_dict, bands_dict, kwargs_dict)
 

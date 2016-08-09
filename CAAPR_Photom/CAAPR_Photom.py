@@ -6,8 +6,11 @@ import gc
 import pdb
 import time
 import math
+import random
 import re
+import copy
 import warnings
+import multiprocessing as mp
 import numpy as np
 import scipy.optimize
 import scipy.ndimage.measurements
@@ -69,13 +72,20 @@ def SubpipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 
 
+    # Check if this band is to be excluded from aperture-fitting; if so, return null aperture information
+    pod = ExcludePhotom(pod, source_dict, band_dict, kwargs_dict)
+    if pod['band_exclude']==True:
+        return pod['null_output_dict']
+
+
+
     # If star-removal is required, run pod through AstroMagic
     pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
 
 
 
     # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter, with source aperture masked
-    pod = CAAPR.CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], instant_quit=max([not kwargs_dict['polysub']]))
+    pod = CAAPR.CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], instant_quit=max([not kwargs_dict['polysub'],pod['band_exclude']]))
 
 
 
@@ -206,6 +216,8 @@ def AperturePrelim(pod, source_dict, band_dict, kwargs_dict):
 
 # Define actual function that actually performs actual photometry
 def Photom(pod, band_dict):
+    if pod['band_exclude']==True:
+        return pod
     if pod['verbose']: print '['+pod['id']+'] Performing aperture photometry.'
 
 
@@ -1007,3 +1019,130 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
     # Report and return extinction-correced photometry
     if kwargs_dict['verbose']: print '['+pod['id']+'] Applying Galactic extinction correction of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr_mag,4))+' mag (ie, factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr,4))+').'
     return pod
+
+
+
+
+
+# Define function that check is present band is to be excluded from photometry
+def ExcludePhotom(pod, source_dict, band_dict, kwargs_dict):
+
+
+
+    # Check if the photometry exclusion field actually contains characters; if so, make list of entries, and if not, record an empty list
+    if isinstance(source_dict['photom_bands_exclude'], str):
+        aperture_bands_exclude = source_dict['photom_bands_exclude'].split(';')
+    elif source_dict['photom_bands_exclude']==False:
+        aperture_bands_exclude = []
+
+    # If present band is to be excluded, note this fact in pod
+    if (band_dict['consider_aperture']==False) or (band_dict['band_name'] in aperture_bands_exclude):
+        pod['band_exclude'] = True
+
+    # If exclusion not required, record and return
+    else:
+        pod['band_exclude'] = False
+        return pod
+
+    # Create photometry output dictionry containing null values
+    output_dict = {'band_name':band_dict['band_name'], 'ap_sum':np.NaN, 'ap_error':np.NaN}
+    pod['null_output_dict'] = output_dict
+
+    # Return pod
+    if pod['verbose']: print '['+pod['id']+'] No photometry required from this source in this band.'
+    return pod
+
+
+
+
+
+# Define function that handles bands excluded from photometry, so that they appear in thumbnail grid
+def ExcludedThumb(source_dict, bands_dict, kwargs_dict):
+
+
+
+    # If thumbnails not required, end immediately
+    if kwargs_dict['thumbnails']==False:
+        return
+
+    # Check if the photometry exclusion field for this source actually contains characters; if so make list of entries, else produce empty list
+    if isinstance(source_dict['photom_bands_exclude'], str):
+        photom_bands_exclude = source_dict['photom_bands_exclude'].split(';')
+    else:
+        photom_bands_exclude = []
+
+    # Now consider bands which have been assigned a blancket photometry exclusion
+    photom_bands_exclude = list( set( photom_bands_exclude ) )
+    photom_bands_exclude = np.array(photom_bands_exclude)[ np.in1d( photom_bands_exclude, bands_dict.keys() ) ]
+
+    # If no bands require processing here, end immediately; else prepare to loop over bands that do require processing
+    if len(photom_bands_exclude)==0:
+        return
+    else:
+        random.shuffle(photom_bands_exclude)
+        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Preparing thumbnail data for bands excluded from photometry.'
+
+    # In standard operation, process multiple sources in parallel
+    if kwargs_dict['parallel']==True:
+        ex_ap_pool = mp.Pool(processes=kwargs_dict['n_proc'])
+        for band in photom_bands_exclude:
+            ex_ap_pool.apply_async( ExcludedSubpipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict,) )
+        ex_ap_pool.close()
+        ex_ap_pool.join()
+        del(ex_ap_pool)
+
+    # If parallelisation is disabled, process sources one-at-a-time
+    elif kwargs_dict['parallel']==False:
+        for band in photom_bands_exclude:
+            ExcludedSubpipelinePhotom(source_dict, bands_dict[band], kwargs_dict)
+
+
+
+
+
+# Define 'pseudo-dummy' version of the photometry sub-pipeline, to run excluded bands through
+def ExcludedSubpipelinePhotom(source_dict, band_dict, kwargs_dict_inviolate):
+    source_id = source_dict['name']+'_'+band_dict['band_name']
+
+    # Make deep copy of kwargs dict, to disable verbosity
+    kwargs_dict = copy.deepcopy(kwargs_dict_inviolate)
+    kwargs_dict['verbose'] = False
+
+    # Run through initial stages of aperture sub-pipeline, as would occur usually
+    in_fitspath_prelim, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, band_dict, kwargs_dict)
+    if file_found == False:
+        return
+    pod = CAAPR.CAAPR_Pipeline.PodInitiate(in_fitspath_prelim, source_dict, band_dict, kwargs_dict)
+    pod = CAAPR.CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
+    if pod['within_bounds']==False:
+        return
+    pod = AperturePrelim(pod, source_dict, band_dict, kwargs_dict)
+    CAAPR.CAAPR_IO.MemCheck(pod)
+
+    # Use thumbnail cutout function to create a cutout that's only as large as it needs to be for the thumbnail grid
+    img_naxis_pix = np.max([ pod['in_header']['NAXIS1'], pod['in_header']['NAXIS1'] ])
+    img_naxis_arcsec = float(img_naxis_pix) * float(pod['pix_arcsec'])
+    img_rad_arcsec = img_naxis_arcsec / 2.0
+    thumb_rad_arcsec = 1.1 * pod['adj_semimaj_arcsec'] * band_dict['annulus_outer']
+    CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], img_rad_arcsec, thumb_rad_arcsec)
+
+    # Rename thumbnail cutout, and make it the 'active' map by repeating necessary processing
+    thumb_output = os.path.join( kwargs_dict['temp_dir_path'], 'Processed_Maps', source_id+'_Thumbnail.fits' )
+    pod['in_fitspath'] = thumb_output
+    in_fitsdata = astropy.io.fits.open(pod['in_fitspath'])
+    pod['in_image'] = in_fitsdata[0].data
+    pod['in_header'] = in_fitsdata[0].header
+    in_fitsdata.close()
+    pod['in_wcs'] = astropy.wcs.WCS(pod['in_header'])
+    pod['in_fitspath_size'] = float(os.stat(pod['in_fitspath']).st_size)
+    thumb_centre_xy = pod['in_wcs'].wcs_world2pix( np.array([[ source_dict['ra'], source_dict['dec'] ]]), 0 )
+    pod['centre_i'], pod['centre_j'] = float(thumb_centre_xy[0][1]), float(thumb_centre_xy[0][0])
+
+    # Run thumbnail cutout thorugh AstroMagic, save result, and delete temporary files
+    pod['cutout'] = pod['in_image'].copy()
+    pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+    os.remove(thumb_output)
+    astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], clobber=True)
+    magic_output = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits')
+    if os.path.exists(magic_output):
+        os.remove(magic_output)
