@@ -1036,7 +1036,7 @@ def ExcludePhotom(pod, source_dict, band_dict, kwargs_dict):
         aperture_bands_exclude = []
 
     # If present band is to be excluded, note this fact in pod
-    if (band_dict['consider_aperture']==False) or (band_dict['band_name'] in aperture_bands_exclude):
+    if band_dict['band_name'] in aperture_bands_exclude:
         pod['band_exclude'] = True
 
     # If exclusion not required, record and return
@@ -1050,6 +1050,7 @@ def ExcludePhotom(pod, source_dict, band_dict, kwargs_dict):
 
     # Return pod
     if pod['verbose']: print '['+pod['id']+'] No photometry required from this source in this band.'
+
     return pod
 
 

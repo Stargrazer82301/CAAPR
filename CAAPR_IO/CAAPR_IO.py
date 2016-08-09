@@ -678,6 +678,8 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
                 # Plot band-specific aperture (if one was provided)
                 if isinstance(source_dict['aperture_bands_exclude'], str):
                     aperture_bands_exclude = source_dict['aperture_bands_exclude'].split(';')
+                else:
+                    aperture_bands_exclude = []
                 if bands_dict[band_name]['consider_aperture']==True and band_name not in aperture_bands_exclude:
                     vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*band_ap_semimaj, 2.0*band_ap_semimin, angle=band_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/2.0, linestyle='dotted')
 
