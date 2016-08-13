@@ -68,7 +68,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
             random.shuffle(bands_dict_keys)
             pool = mp.Pool(processes=kwargs_dict['n_proc'])
             for band in bands_dict_keys:
-                aperture_output_list.append( pool.apply_async( CAAPR.CAAPR_Aperture.PipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
+                aperture_output_list.append( pool.apply_async( CAAPR.CAAPR_Aperture.SubpipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
             pool.join()
             del(pool)
@@ -78,7 +78,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         # If parallelisation is disabled, process sources one-at-a-time
         elif kwargs_dict['parallel']==False:
             for band in bands_dict.keys():
-                aperture_output_list.append( CAAPR.CAAPR_Aperture.PipelineAperture(source_dict, bands_dict[band], kwargs_dict) )
+                aperture_output_list.append( CAAPR.CAAPR_Aperture.SubpipelineAperture(source_dict, bands_dict[band], kwargs_dict) )
                 aperture_list = [output for output in aperture_output_list if output!=None]
 
         # Combine all fitted apertures to produce amalgam aperture
@@ -86,6 +86,9 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
         # Record aperture properties to file
         CAAPR.CAAPR_IO.RecordAperture(aperture_combined, source_dict, kwargs_dict)
+
+        # Prepare thumbnail images for bands excluded from aperture fitting
+        CAAPR.CAAPR_Aperture.ExcludedThumb(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined)
 
         # Create grid of thumbnail images
         CAAPR.CAAPR_IO.ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_combined)
@@ -112,7 +115,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
             random.shuffle(bands_dict_keys)
             pool = mp.Pool(processes=kwargs_dict['n_proc'])
             for band in bands_dict_keys:
-                photom_output_list.append( pool.apply_async( CAAPR.CAAPR_Photom.PipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict) ) )
+                photom_output_list.append( pool.apply_async( CAAPR.CAAPR_Photom.SubpipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict) ) )
             pool.close()
             pool.join()
             if kwargs_dict['verbose']: print '['+source_dict['name']+'] Gathering parallel threads.'
@@ -122,11 +125,14 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         # If parallelisation is disabled, process sources one-at-a-time
         elif kwargs_dict['parallel']==False:
             for band in bands_dict.keys():
-                photom_output_list.append( CAAPR.CAAPR_Photom.PipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
+                photom_output_list.append( CAAPR.CAAPR_Photom.SubpipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
                 photom_list = [output for output in photom_output_list if output!=None]
 
         # Record photometry results to file
         CAAPR.CAAPR_IO.RecordPhotom(photom_list, source_dict, bands_dict, kwargs_dict)
+
+        # Prepare thumbnail images for bands excluded from photometry
+        CAAPR.CAAPR_Photom.ExcludedThumb(source_dict, bands_dict, kwargs_dict)
 
         # Create grid of thumbnail images
         CAAPR.CAAPR_IO.PhotomThumbGrid(source_dict, bands_dict, kwargs_dict)
@@ -177,10 +183,80 @@ def BandInitiate(band_dict):
 
 
 
+# Define function that performs preimilary checks of file type and location
+def FilePrelim(source_dict, band_dict, kwargs_dict):
+    source_id = source_dict['name']+'_'+band_dict['band_name']
+    if kwargs_dict['verbose']: print '['+source_id+'] Inspecting FITS file type and location.'
+
+
+
+    # Determine whether the user is specificing a directroy full of FITS files in this band (in which case use standardised filename format), or just a single FITS file
+    try:
+        if os.path.isdir(band_dict['band_dir']):
+            in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
+        elif os.path.isfile(band_dict['band_dir']):
+            in_fitspath = os.path.join( band_dict['band_dir'] )
+    except:
+        pdb.set_trace()
+
+    # Work out whether the file extension for FITS file in question is .fits or .fits.gz
+    file_found = False
+    if os.path.exists(in_fitspath+'.fits'):
+        in_fitspath = in_fitspath+'.fits'
+        file_found = True
+    elif os.path.exists(in_fitspath+'.fits.gz'):
+        in_fitspath = in_fitspath+'.fits.gz'
+        file_found = True
+
+    # Report to user if file not found
+    if file_found==False:
+        print '['+source_id+'] No appropriately-named FITS file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
+        print '['+source_id+'] Assuming no data in this band for current source.'
+
+    # Return file values
+    return in_fitspath, file_found
+
+
+
+
+
+# Initiate the pod (Photometry Organisation Dictionary)
+def PodInitiate(in_fitspath, source_dict, band_dict, kwargs_dict):
+    source_id = source_dict['name']+'_'+band_dict['band_name']
+    if kwargs_dict['verbose']: print '['+source_id+'] Reading in FITS data.'
+
+
+
+    # Read in FITS file in question
+    in_fitsdata = astropy.io.fits.open(in_fitspath)
+    in_image = in_fitsdata[0].data
+    in_header = in_fitsdata[0].header
+    in_fitsdata.close()
+    in_wcs = astropy.wcs.WCS(in_header)
+    in_fitspath_size = float(os.stat(in_fitspath).st_size)
+
+    # Create the pod (Photometry Organisation Dictionary), which will bundle all the photometry data for this source & band into one dictionary to be passed between functions
+    pod = {'in_fitspath':in_fitspath,
+           'in_image':in_image,
+           'in_header':in_header,
+           'in_wcs':in_wcs,
+           'cutout':in_image.copy(),
+           'output_dir_path':kwargs_dict['output_dir_path'],
+           'temp_dir_path':kwargs_dict['temp_dir_path'],
+           'in_fitspath_size':in_fitspath_size,
+           'id':source_id,
+           'verbose':kwargs_dict['verbose']}
+
+    # Return pod
+    return pod
+
+
+
+
 
 # Define function that determines preliminary map values
 def MapPrelim(pod, source_dict, band_dict, verbose=False):
-    verbose = pod['verbose']
+    if pod['verbose']: print '['+pod['id']+'] Determining properties of map.'
 
 
 
@@ -207,7 +283,7 @@ def MapPrelim(pod, source_dict, band_dict, verbose=False):
         pod['within_bounds'] = False
         if 'band_dir_inviolate' in band_dict.keys():
             band_dict['band_dir'] = band_dict['band_dir_inviolate']
-        if verbose: print '['+pod['id']+'] Target not within bounds of map.'
+        if pod['verbose']: print '['+pod['id']+'] Target not within bounds of map.'
     else:
         pod['within_bounds'] = True
 

@@ -6,8 +6,11 @@ import gc
 import pdb
 import time
 import math
+import random
 import re
+import copy
 import warnings
+import multiprocessing as mp
 import numpy as np
 import scipy.optimize
 import scipy.ndimage.measurements
@@ -32,198 +35,180 @@ plt.ioff()
 
 
 # The aperture-fitting sub-pipeline
-def PipelinePhotom(source_dict, band_dict, kwargs_dict):
+def SubpipelinePhotom(source_dict, band_dict, kwargs_dict):
     source_id = source_dict['name']+'_'+band_dict['band_name']
 
 
 
-    # Determine whether the user is specificing a directroy full of FITS files in this band (in which case use standardised filename format), or just a single FITS file
-    try:
-        if os.path.isdir(band_dict['band_dir']):
-            in_fitspath = os.path.join( band_dict['band_dir'], source_dict['name']+'_'+band_dict['band_name'] )
-        elif os.path.isfile(band_dict['band_dir']):
-            in_fitspath = os.path.join( band_dict['band_dir'] )
-    except:
-        pdb.set_trace()
+    # Carry out small random wait, to stop RAM checks from syncing up
+    time.sleep(5.0*np.random.rand())
 
 
-    # Work out whether the file extension for FITS file in question is .fits or .fits.gz
-    file_found = False
-    if os.path.exists(in_fitspath+'.fits'):
-        in_fitspath = in_fitspath+'.fits'
-        file_found = True
-    elif os.path.exists(in_fitspath+'.fits.gz'):
-        in_fitspath = in_fitspath+'.fits.gz'
-        file_found = True
 
-    # Report to user if no file found; otherwise, progress to pipeline
+    # Perform initial checks of target file type and location; return if not present
+    in_fitspath, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, band_dict, kwargs_dict)
     if file_found==False:
-        print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
-        print '['+source_id+'] Assuming no data in this band for current source.'
-        output_dict = {'band_name':band_dict['band_name'],
-                       'ap_sum':np.NaN,
-                       'ap_error':np.NaN}
+        output_dict = {'band_name':band_dict['band_name'], 'ap_sum':np.NaN, 'ap_error':np.NaN}
         return output_dict
+
+
+
+    # Create the pod (Photometry Organisation Dictionary), which will read in the FITS file, and bundle all the photometry data for this source & band into one dictionary to be passed between functions
+    pod = CAAPR.CAAPR_Pipeline.PodInitiate(in_fitspath, source_dict, band_dict, kwargs_dict)
+
+
+
+    # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
+    pod = CAAPR.CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
+    if pod['within_bounds']==False:
+        output_dict = {'band_name':band_dict['band_name'], 'ap_sum':np.NaN, 'ap_error':np.NaN}
+        return output_dict
+    CAAPR.CAAPR_IO.MemCheck(pod)
+
+
+
+    # Read in aperture file, extract aperture for current source, and apply aperture corrections for beam size
+    pod = AperturePrelim(pod, source_dict, band_dict, kwargs_dict)
+
+
+
+    # Check if this band is to be excluded from aperture-fitting; if so, return null aperture information
+    pod = ExcludePhotom(pod, source_dict, band_dict, kwargs_dict)
+    if pod['band_exclude']==True:
+        return pod['null_output_dict']
+
+
+
+    # If star-removal is required, run pod through AstroMagic
+    pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+
+
+
+    # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter, with source aperture masked
+    pod = CAAPR.CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], instant_quit=max([not kwargs_dict['polysub'],pod['band_exclude']]))
+
+
+
+    # Run pod through function that (finally) performs the actual photometry
+    pod = Photom(pod, band_dict)
+
+
+
+    # If photometry recorded null flux, skip determination of aperture noise, recording null value for this too, instead
+    if np.isnan(pod['ap_sum'])==True:
+        pod['ap_error'] = np.NaN
     else:
-
-        # Carry out small random wait, to stop RAM checks from syncing up
-        time.sleep(5.0*np.random.rand())
-
-        # Read in FITS file in question
-        in_fitsdata = astropy.io.fits.open(in_fitspath)
-        in_image = in_fitsdata[0].data
-        in_header = in_fitsdata[0].header
-        in_fitsdata.close()
-        in_wcs = astropy.wcs.WCS(in_header)
-        in_fitspath_size = float(os.stat(in_fitspath).st_size)
-
-        # Create the pod (Photometry Organisation Dictionary), which will bundle all the photometry data for this source & band into one dictionary to be passed between functions
-        pod = {'in_fitspath':in_fitspath,
-               'in_image':in_image,
-               'in_header':in_header,
-               'in_wcs':in_wcs,
-               'cutout':in_image.copy(),
-               'band_dict':band_dict,
-               'source_dict':source_dict,
-               'kwargs_dict':kwargs_dict,
-               'output_dir_path':kwargs_dict['output_dir_path'],
-               'temp_dir_path':kwargs_dict['temp_dir_path'],
-               'in_fitspath_size':in_fitspath_size,
-               'id':source_id,
-               'verbose':kwargs_dict['verbose']}
         CAAPR.CAAPR_IO.MemCheck(pod)
 
 
 
-        # Read in aperture file
-        aperture_table = np.genfromtxt(kwargs_dict['aperture_table_path'], delimiter=',', names=True, dtype=None)
-        aperture_index = np.where( aperture_table['name']==source_dict['name'] )
-        if aperture_index[0].shape[0]>1:
-            raise ValueError('Aperture value caontains more than one entry for current galaxy')
+        # Attempt to determine aperture noise the preferred way, using full-size randomly-placed apertures
+        if kwargs_dict['verbose']: print '['+source_id+'] Estimating aperture noise using full-size randomly-placed sky apertures.'
+        ap_noise_dict = ApNoise(pod['cutout'].copy(), source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], downsample=int(band_dict['downsample_factor']))
+        if ap_noise_dict['fail']==False:
+            if kwargs_dict['verbose']: print '['+source_id+'] Aperture noise successfully estimated using full-size randomly-placed sky apertures.'
+            pod['ap_noise'] = ap_noise_dict['ap_noise']
+
+
+
+        # If full-size apertures were unable to produce a valid aperture noise estimate, commence aperture extrapolation
         else:
-            aperture_index = aperture_index[0][0]
-
-        # Extract aperture corresponding to current source, dealing with special case where aperture file contains only one source
-        if aperture_table['semimaj_arcsec'].shape==() and np.where( aperture_table['name']==source_dict['name'] )[0][0]==0:
-            opt_semimaj_arcsec = aperture_table['semimaj_arcsec']
-            opt_axial_ratio = aperture_table['axial_ratio']
-            opt_angle = aperture_table['pos_angle']
-        else:
-            opt_semimaj_arcsec = aperture_table['semimaj_arcsec'][aperture_index]
-            opt_axial_ratio = aperture_table['axial_ratio'][aperture_index]
-            opt_angle = aperture_table['pos_angle'][aperture_index]
-        opt_semimin_arcsec = opt_semimaj_arcsec / opt_axial_ratio
-
-
-
-        # Run pod through preliminary processing, to determine initial quantities; if target not within bounds of map, end processing here
-        pod = CAAPR.CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
-        if pod['within_bounds']==False:
-            output_dict = {'band_name':band_dict['band_name'],
-                       'ap_sum':np.NaN,
-                       'ap_error':np.NaN}
-            return output_dict
-
-
-
-        # Adjust aperture to account for beam size of current band, and record to pod
-        adj_semimaj_arcsec = 0.5 * ( (2.0*opt_semimaj_arcsec)**2.0 + band_dict['beam_arcsec']**2.0 )**0.5
-        adj_semimin_arcsec = 0.5 * ( (2.0*opt_semimin_arcsec)**2.0 + band_dict['beam_arcsec']**2.0 )**0.5
-        adj_axial_ratio = adj_semimaj_arcsec / adj_semimin_arcsec
-        adj_angle = opt_angle
-        pod['adj_semimaj_arcsec'] = adj_semimaj_arcsec
-        pod['adj_semimin_arcsec'] = adj_semimin_arcsec
-        pod['adj_semimaj_pix'] = adj_semimaj_arcsec / pod['pix_arcsec']
-        pod['adj_semimin_pix'] = adj_semimin_arcsec / pod['pix_arcsec']
-        pod['adj_axial_ratio'] = adj_axial_ratio
-        pod['adj_angle'] = adj_angle
-
-
-
-        # If star-removal is required, run pod through AstroMagic
-        pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
-
-
-
-        # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter, with source aperture masked
-        pod = CAAPR.CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], instant_quit=max([not kwargs_dict['polysub']]))
-
-
-
-        # Run pod through function that (finally) performs the actual photometry
-        pod = Photom(pod, band_dict)
-
-
-
-        # If photometry recorded null flux, skip determination of aperture noise, recording null value for this too, instead
-        if np.isnan(pod['ap_sum'])==True:
-            pod['ap_error'] = np.NaN
-        else:
-
-
-
-            # Attempt to determine aperture noise the preferred way, using full-size randomly-placed apertures
-            if kwargs_dict['verbose']: print '['+source_id+'] Estimating aperture noise using full-size randomly-placed sky apertures.'
+            sky_success_counter = ap_noise_dict['sky_success_counter']
+            if kwargs_dict['verbose']: print '['+source_id+'] Unable to estiamte aperture noise using full-size randomly-placed sky apertures (only '+str(int(sky_success_counter))+' could be placed); switching to aperture extrapolation.'
             CAAPR.CAAPR_IO.MemCheck(pod)
-            ap_noise_dict = ApNoise(pod['cutout'].copy(), source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'], downsample=int(band_dict['downsample_factor']))
-            if ap_noise_dict['fail']==False:
-                if kwargs_dict['verbose']: print '['+source_id+'] Aperture noise successfully estimated using full-size randomly-placed sky apertures.'
-                pod['ap_noise'] = ap_noise_dict['ap_noise']
+            ap_noise_dict = ApNoiseExtrap(pod['cutout'].copy(), source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
+            pod['ap_noise'] = ap_noise_dict['ap_noise']
 
 
 
-            # If full-size apertures were unable to produce a valid aperture noise estimate, commence aperture extrapolation
-            else:
-                sky_success_counter = ap_noise_dict['sky_success_counter']
-                if kwargs_dict['verbose']: print '['+source_id+'] Unable to estiamte aperture noise using full-size randomly-placed sky apertures (only '+str(int(sky_success_counter))+' could be placed); switching to aperture extrapolation.'
-                CAAPR.CAAPR_IO.MemCheck(pod)
-                ap_noise_dict = ApNoiseExtrap(pod['cutout'].copy(), source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
-                pod['ap_noise'] = ap_noise_dict['ap_noise']
 
-            # If even aperture extrapolation is unable to produce an aperture noise estimate, report null value
-            if ap_noise_dict['fail']==True:
-                pod['ap_noise'] = np.NaN
-            else:
-                if pod['verbose']: print '['+pod['id']+'] Final aperture noise is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_noise'],4))+' (in map units).'
+        # If even aperture extrapolation is unable to produce an aperture noise estimate, report null value
+        if ap_noise_dict['fail']==True:
+            pod['ap_noise'] = np.NaN
+        else:
+            if pod['verbose']: print '['+pod['id']+'] Final aperture noise is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_noise'],4))+' (in map units).'
 
 
 
-            # Calculate calibration uncertainty
-            calib_err = abs( pod['ap_sum'] * band_dict['calib_error'] )
-            if pod['verbose']:print '['+pod['id']+'] Calibration uncertainty is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(calib_err,4))+' (in map units).'
+        # Calculate calibration uncertainty
+        calib_err = abs( pod['ap_sum'] * band_dict['calib_error'] )
+        if pod['verbose']:print '['+pod['id']+'] Calibration uncertainty is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(calib_err,4))+' (in map units).'
 
-            # Calculate final uncertainty
-            pod['ap_error'] = ( pod['ap_noise']**2.0 + calib_err**2.0 )**0.5
-            if np.isnan(pod['ap_noise'])==True:
-                pod['ap_error'] = -1.0 * pod['ap_sum'] * band_dict['calib_error']
-
-
-
-            # Run pod through function that performs aperture correction
-            pod = ApCorrect(pod, source_dict, band_dict, kwargs_dict)
+        # Calculate final uncertainty
+        pod['ap_error'] = ( pod['ap_noise']**2.0 + calib_err**2.0 )**0.5
+        if np.isnan(pod['ap_noise'])==True:
+            pod['ap_error'] = -1.0 * pod['ap_sum'] * band_dict['calib_error']
 
 
 
-            # Use IRSA dust extinction service to correction fluxes for extinction
-            pod = ExtCorrrct(pod, source_dict, band_dict, kwargs_dict)
+        # Run pod through function that performs aperture correction
+        pod = ApCorrect(pod, source_dict, band_dict, kwargs_dict)
 
 
 
-        # If thumbnail images have been requested, save a copy of the current image (ie, with any star and/or background subtaction)
-        if kwargs_dict['thumbnails']==True:
-            astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'])
+        # Use IRSA dust extinction service to correction fluxes for extinction
+        pod = ExtCorrrct(pod, source_dict, band_dict, kwargs_dict)
 
 
 
-        # Now return final photometry informaton to main pipeline, and clean up garbage
-        if np.isnan(pod['ap_sum'])==False:
-            if pod['verbose']:print '['+pod['id']+'] Final source flux and uncertainty is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_sum'],4))+' +/- '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_error'],4))+' (in map units).'
-        output_dict = {'band_name':band_dict['band_name'],
-                       'ap_sum':pod['ap_sum'],
-                       'ap_error':pod['ap_error']}
-        gc.collect()
-        del(pod)
-        return output_dict
+    # If thumbnail images have been requested, save a copy of the current image (ie, with any star and/or background subtaction)
+    if kwargs_dict['thumbnails']==True:
+        astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'])
+
+
+
+    # Now return final photometry informaton to main pipeline, and clean up garbage
+    if np.isnan(pod['ap_sum'])==False:
+        if pod['verbose']:print '['+pod['id']+'] Final source flux and uncertainty is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_sum'],4))+' +/- '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(pod['ap_error'],4))+' (in map units).'
+    output_dict = {'band_name':band_dict['band_name'], 'ap_sum':pod['ap_sum'], 'ap_error':pod['ap_error']}
+    gc.collect()
+    del(pod)
+    return output_dict
+
+
+
+
+
+# Define functiont that reads in aperture file, identifies aperture for current source, and applies aperture corrections for beam size
+def AperturePrelim(pod, source_dict, band_dict, kwargs_dict):
+
+
+
+    # Read in aperture file
+    aperture_table = np.genfromtxt(kwargs_dict['aperture_table_path'], delimiter=',', names=True, dtype=None)
+    aperture_index = np.where( aperture_table['name']==source_dict['name'] )
+    if aperture_index[0].shape[0]>1:
+        raise ValueError('Aperture value caontains more than one entry for current galaxy')
+    else:
+        aperture_index = aperture_index[0][0]
+
+    # Extract aperture corresponding to current source, dealing with special case where aperture file contains only one source
+    if aperture_table['semimaj_arcsec'].shape==() and np.where( aperture_table['name']==source_dict['name'] )[0][0]==0:
+        opt_semimaj_arcsec = aperture_table['semimaj_arcsec']
+        opt_axial_ratio = aperture_table['axial_ratio']
+        opt_angle = aperture_table['pos_angle']
+    else:
+        opt_semimaj_arcsec = aperture_table['semimaj_arcsec'][aperture_index]
+        opt_axial_ratio = aperture_table['axial_ratio'][aperture_index]
+        opt_angle = aperture_table['pos_angle'][aperture_index]
+    opt_semimin_arcsec = opt_semimaj_arcsec / opt_axial_ratio
+
+    # Adjust aperture to account for beam size of current band, and record to pod
+    adj_semimaj_arcsec = 0.5 * ( (2.0*opt_semimaj_arcsec)**2.0 + band_dict['beam_arcsec']**2.0 )**0.5
+    adj_semimin_arcsec = 0.5 * ( (2.0*opt_semimin_arcsec)**2.0 + band_dict['beam_arcsec']**2.0 )**0.5
+    adj_axial_ratio = adj_semimaj_arcsec / adj_semimin_arcsec
+    adj_angle = opt_angle
+
+    # Save adjusted values to pod
+    pod['adj_semimaj_arcsec'] = adj_semimaj_arcsec
+    pod['adj_semimin_arcsec'] = adj_semimin_arcsec
+    pod['adj_semimaj_pix'] = adj_semimaj_arcsec / pod['pix_arcsec']
+    pod['adj_semimin_pix'] = adj_semimin_arcsec / pod['pix_arcsec']
+    pod['adj_axial_ratio'] = adj_axial_ratio
+    pod['adj_angle'] = adj_angle
+
+    # Return pod
+    return pod
 
 
 
@@ -231,6 +216,8 @@ def PipelinePhotom(source_dict, band_dict, kwargs_dict):
 
 # Define actual function that actually performs actual photometry
 def Photom(pod, band_dict):
+    if pod['band_exclude']==True:
+        return pod
     if pod['verbose']: print '['+pod['id']+'] Performing aperture photometry.'
 
 
@@ -604,7 +591,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
         ap_noise = ChrisFuncs.SigmaClip(sky_sum_list, tolerance=0.001, median=True, sigma_thresh=3.0)[0]
         ap_noise_dict = {'fail':False, 'ap_noise':ap_noise, 'ap_num':sky_success_counter, 'prior_mask':prior_mask, 'flag_mask':flag_mask}
         #ChrisFuncs.Cutout(prior_mask, '/home/saruman/spx7cjc/DustPedia/Prior.fits')
-        if kwargs_dict['verbose']:print '['+source_id+'] Aperture noise from current random apertures is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_noise,4))+' (in map units).'
+        if kwargs_dict['verbose']: print '['+source_id+'] Aperture noise from current random apertures is '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_noise,4))+' (in map units).'
         cutout = cutout_inviolate
         return ap_noise_dict
 
@@ -1032,3 +1019,131 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
     # Report and return extinction-correced photometry
     if kwargs_dict['verbose']: print '['+pod['id']+'] Applying Galactic extinction correction of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr_mag,4))+' mag (ie, factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr,4))+').'
     return pod
+
+
+
+
+
+# Define function that check is present band is to be excluded from photometry
+def ExcludePhotom(pod, source_dict, band_dict, kwargs_dict):
+
+
+
+    # Check if the photometry exclusion field actually contains characters; if so, make list of entries, and if not, record an empty list
+    if isinstance(source_dict['photom_bands_exclude'], str):
+        aperture_bands_exclude = source_dict['photom_bands_exclude'].split(';')
+    elif source_dict['photom_bands_exclude']==False:
+        aperture_bands_exclude = []
+
+    # If present band is to be excluded, note this fact in pod
+    if band_dict['band_name'] in aperture_bands_exclude:
+        pod['band_exclude'] = True
+
+    # If exclusion not required, record and return
+    else:
+        pod['band_exclude'] = False
+        return pod
+
+    # Create photometry output dictionry containing null values
+    output_dict = {'band_name':band_dict['band_name'], 'ap_sum':np.NaN, 'ap_error':np.NaN}
+    pod['null_output_dict'] = output_dict
+
+    # Return pod
+    if pod['verbose']: print '['+pod['id']+'] No photometry required from this source in this band.'
+
+    return pod
+
+
+
+
+
+# Define function that handles bands excluded from photometry, so that they appear in thumbnail grid
+def ExcludedThumb(source_dict, bands_dict, kwargs_dict):
+
+
+
+    # If thumbnails not required, end immediately
+    if kwargs_dict['thumbnails']==False:
+        return
+
+    # Check if the photometry exclusion field for this source actually contains characters; if so make list of entries, else produce empty list
+    if isinstance(source_dict['photom_bands_exclude'], str):
+        photom_bands_exclude = source_dict['photom_bands_exclude'].split(';')
+    else:
+        photom_bands_exclude = []
+
+    # Now consider bands which have been assigned a blancket photometry exclusion
+    photom_bands_exclude = list( set( photom_bands_exclude ) )
+    photom_bands_exclude = np.array(photom_bands_exclude)[ np.in1d( photom_bands_exclude, bands_dict.keys() ) ]
+
+    # If no bands require processing here, end immediately; else prepare to loop over bands that do require processing
+    if len(photom_bands_exclude)==0:
+        return
+    else:
+        random.shuffle(photom_bands_exclude)
+        if kwargs_dict['verbose']: print '['+source_dict['name']+'] Preparing thumbnail data for bands excluded from photometry.'
+
+    # In standard operation, process multiple sources in parallel
+    if kwargs_dict['parallel']==True:
+        ex_ap_pool = mp.Pool(processes=kwargs_dict['n_proc'])
+        for band in photom_bands_exclude:
+            ex_ap_pool.apply_async( ExcludedSubpipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict,) )
+        ex_ap_pool.close()
+        ex_ap_pool.join()
+        del(ex_ap_pool)
+
+    # If parallelisation is disabled, process sources one-at-a-time
+    elif kwargs_dict['parallel']==False:
+        for band in photom_bands_exclude:
+            ExcludedSubpipelinePhotom(source_dict, bands_dict[band], kwargs_dict)
+
+
+
+
+
+# Define 'pseudo-dummy' version of the photometry sub-pipeline, to run excluded bands through
+def ExcludedSubpipelinePhotom(source_dict, band_dict, kwargs_dict_inviolate):
+    source_id = source_dict['name']+'_'+band_dict['band_name']
+
+    # Make deep copy of kwargs dict, to disable verbosity
+    kwargs_dict = copy.deepcopy(kwargs_dict_inviolate)
+    kwargs_dict['verbose'] = False
+
+    # Run through initial stages of aperture sub-pipeline, as would occur usually
+    in_fitspath_prelim, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, band_dict, kwargs_dict)
+    if file_found == False:
+        return
+    pod = CAAPR.CAAPR_Pipeline.PodInitiate(in_fitspath_prelim, source_dict, band_dict, kwargs_dict)
+    pod = CAAPR.CAAPR_Pipeline.MapPrelim(pod, source_dict, band_dict)
+    if pod['within_bounds']==False:
+        return
+    pod = AperturePrelim(pod, source_dict, band_dict, kwargs_dict)
+    CAAPR.CAAPR_IO.MemCheck(pod)
+
+    # Use thumbnail cutout function to create a cutout that's only as large as it needs to be for the thumbnail grid
+    img_naxis_pix = np.max([ pod['in_header']['NAXIS1'], pod['in_header']['NAXIS1'] ])
+    img_naxis_arcsec = float(img_naxis_pix) * float(pod['pix_arcsec'])
+    img_rad_arcsec = img_naxis_arcsec / 2.0
+    thumb_rad_arcsec = 1.1 * pod['adj_semimaj_arcsec'] * band_dict['annulus_outer']
+    CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], img_rad_arcsec, thumb_rad_arcsec)
+
+    # Rename thumbnail cutout, and make it the 'active' map by repeating necessary processing
+    thumb_output = os.path.join( kwargs_dict['temp_dir_path'], 'Processed_Maps', source_id+'_Thumbnail.fits' )
+    pod['in_fitspath'] = thumb_output
+    in_fitsdata = astropy.io.fits.open(pod['in_fitspath'])
+    pod['in_image'] = in_fitsdata[0].data
+    pod['in_header'] = in_fitsdata[0].header
+    in_fitsdata.close()
+    pod['in_wcs'] = astropy.wcs.WCS(pod['in_header'])
+    pod['in_fitspath_size'] = float(os.stat(pod['in_fitspath']).st_size)
+    thumb_centre_xy = pod['in_wcs'].wcs_world2pix( np.array([[ source_dict['ra'], source_dict['dec'] ]]), 0 )
+    pod['centre_i'], pod['centre_j'] = float(thumb_centre_xy[0][1]), float(thumb_centre_xy[0][0])
+
+    # Run thumbnail cutout thorugh AstroMagic, save result, and delete temporary files
+    pod['cutout'] = pod['in_image'].copy()
+    pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+    os.remove(thumb_output)
+    astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], clobber=True)
+    magic_output = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits')
+    if os.path.exists(magic_output):
+        os.remove(magic_output)
