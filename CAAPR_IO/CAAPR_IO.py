@@ -612,7 +612,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
             bands_list_present.append(band_name)
 
         # Calculate desired size of thumbnail, based on fitted apertures, and size of map
-        thumb_rad = np.ceil( 1.1 * aperture_combined[0] * bands_dict[band_name]['annulus_outer'] )
+        thumb_rad = np.ceil( 1.25 * aperture_combined[0] * bands_dict[band_name]['annulus_outer'] )
         img_header = astropy.io.fits.getheader(img_input)
         img_wcs = astropy.wcs.WCS(img_header)
         img_pix_arcsec = np.max(3600.0*img_wcs.wcs.cdelt)
@@ -840,7 +840,7 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
             bands_list_present.append(band_name)
 
         # Calculate desired size of thumbnail, based on fitted apertures, and size of map
-        thumb_rad = np.ceil( 1.1 * opt_semimaj_arcsec * bands_dict[band_name]['annulus_outer'] )
+        thumb_rad = np.ceil( 1.25 * opt_semimaj_arcsec * bands_dict[band_name]['annulus_outer'] )
         img_header = astropy.io.fits.getheader(img_input)
         img_wcs = astropy.wcs.WCS(img_header)
         img_pix_arcsec = np.max(3600.0*img_wcs.wcs.cdelt)
