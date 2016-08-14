@@ -464,9 +464,16 @@ def ThumbCatalogue(pod, source_dict, band_dict, kwargs_dict, catalog_importer):
             gal_centre = np.array( [False]*gal_cat.as_array().shape[0] )
             gal_centre[i] = True
 
-    # Reduce catalogue to only those entries that lie within thumbnail cutout; if this removes all galaxies, continue
+    # Reduce catalogue to only those entries that lie within thumbnail cutout; if this removes all galaxies, make dummy entry and continue
     gal_cat = gal_cat[ np.where( gal_thumb==True ) ]
     if gal_cat.as_array().shape[0]==0:
+        gal_cat.add_row()
+        for col in gal_cat.colnames:
+            gal_cat[col].mask[0] = True
+        gal_cat[0]['Name'] = source_dict['name']
+        gal_cat[0]['Right ascension'] = source_dict['ra']
+        gal_cat[0]['Declination'] = source_dict['dec']
+        gal_cat[0]['Principal'] = True
         return gal_cat
 
     # If no galaxies are now labelled as principal, set the most central galaxy to be
