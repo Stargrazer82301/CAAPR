@@ -1080,8 +1080,8 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict):
     if len(photom_bands_exclude)==0:
         return
     else:
-        random.shuffle(photom_bands_exclude)
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Preparing thumbnail data for bands excluded from photometry.'
+        random.shuffle(photom_bands_exclude)
 
     # In standard operation, process multiple sources in parallel
     if kwargs_dict['parallel']==True:

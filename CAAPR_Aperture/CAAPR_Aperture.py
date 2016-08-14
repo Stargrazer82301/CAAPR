@@ -470,8 +470,8 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_
     if len(aperture_bands_exclude)==0:
         return
     else:
-        random.shuffle(aperture_bands_exclude)
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Preparing thumbnail data for bands excluded from aperture-fitting.'
+        random.shuffle(aperture_bands_exclude)
 
     # In standard operation, process multiple sources in parallel
     if kwargs_dict['parallel']==True:
@@ -530,6 +530,7 @@ def ExcludedSubpipelineAperture(aperture_combined, source_dict, band_dict, kwarg
 
     # Run thumbnail cutout thorugh AstroMagic, save result, and delete temporary files
     pod['cutout'] = pod['in_image'].copy()
+    pod['starsub_thumbnail'] = True
     pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
     os.remove(thumb_output)
     astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], clobber=True)

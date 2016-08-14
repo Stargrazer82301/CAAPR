@@ -104,9 +104,15 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
         catalog_importer = CatalogImporter()
         catalog_importer.config.stars.use_catalog_file = True
         catalog_importer.config.galaxies.use_catalog_file = True
-        catalog_importer.config.stars.catalog_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Stars.cat') #os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat')
-        catalog_importer.config.galaxies.catalog_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Galaxies.cat') #os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat')
+        catalog_importer.config.stars.catalog_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Stars.cat')
+        catalog_importer.config.galaxies.catalog_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Galaxies.cat')
         catalog_importer.run(image.frames.primary)
+
+        # If currently handling cut-down thumbnail, only use relevant portion of catalogues
+        if 'starsub_thumbnail' in pod.keys():
+            if pod['starsub_thumbnail']==True:
+                galaxy_catalog_thumb = ThumbCatalogue(pod, source_dict, band_dict, kwargs_dict, catalog_importer)
+                catalog_importer.galactic_catalog = galaxy_catalog_thumb
 
 
 
@@ -423,6 +429,58 @@ def ExcessGalaxies(gal_region_path, gal_principal):
 
 
 
+# Define function to only deal with relevant portion of imported catalogues, when only working with thumbnail cutouts
+def ThumbCatalogue(pod, source_dict, band_dict, kwargs_dict, catalog_importer):
+
+
+
+    # Make copy of galaxy catalogue, and make arrays to record thumb coverage
+    gal_cat = catalog_importer.galactic_catalog.copy()
+    gal_thumb = np.array( [False]*gal_cat.as_array().shape[0] )
+    gal_centre = np.array( pod['cutout'].shape )/2.0
+    gal_centre_dist_min = 1E50
+
+    # Loop over each entry in galaxy catalogue
+    for i in range(0, gal_cat.as_array().shape[0]):
+        gal_xy = pod['in_wcs'].wcs_world2pix( np.array([[ gal_cat['Right ascension'][i], gal_cat['Declination'][i] ]]), 0 )
+
+        # Check if coord lies outside thumbnail
+        if gal_xy[0][1]<=0:
+            continue
+        if gal_xy[0][1]>=pod['cutout'].shape[0]:
+            continue
+        if gal_xy[0][0]<=0:
+            continue
+        if gal_xy[0][0]>=pod['cutout'].shape[1]:
+            continue
+
+        # Take note if coord lies within thumbnail
+        gal_thumb[i] = True
+
+        # Record if current galaxy is closest yet to centre
+        gal_centre_dist = np.sqrt( (gal_xy[0][1]-float(pod['cutout'].shape[0]))**2.0 + (gal_xy[0][0]-float(pod['cutout'].shape[1]))**2.0 )
+        if gal_centre_dist<gal_centre_dist_min:
+            gal_centre_dist_min = gal_centre_dist
+            gal_centre = np.array( [False]*gal_cat.as_array().shape[0] )
+            gal_centre[i] = True
+
+    # Reduce catalogue to only those entries that lie within thumbnail cutout; if this removes all galaxies, continue
+    gal_cat = gal_cat[ np.where( gal_thumb==True ) ]
+    if gal_cat.as_array().shape[0]==0:
+        return gal_cat
+
+    # If no galaxies are now labelled as principal, set the most central galaxy to be
+    if np.where( gal_cat['Principal']==True )[0].shape[0]==0:
+        gal_centre = gal_centre[ np.where( gal_thumb==True ) ]
+        gal_cat['Principal'] = gal_centre
+
+    # Return  new catalogue
+    return gal_cat
+
+
+
+
+
 # Define function that acquires online catalogues for astromagic processing
 def PreCatalogue(source_dict, bands_dict, kwargs_dict):
 
@@ -468,6 +526,8 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
         elif os.path.isfile(band_dict['band_dir']):
             in_fitspath = os.path.join( band_dict['band_dir'] )
 
+
+
         # Work out whether the file extension for FITS file in question is .fits or .fits.gz
         file_found = False
         if os.path.exists(in_fitspath+'.fits'):
@@ -487,7 +547,6 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
         if diam>diam_max:
             file_max = in_fitspath
             diam_max = diam
-            #file_max_cdelt = band_cdelt
 
 
 
