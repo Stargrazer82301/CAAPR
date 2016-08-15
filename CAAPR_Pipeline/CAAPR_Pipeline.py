@@ -38,6 +38,12 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
 
 
+    # Check if any data actually exists for this source
+    if SourcePrelim(source_dict, bands_dict, kwargs_dict)==False:
+        return
+
+
+
     # Loop over bands for initial processing
     for band in bands_dict.keys():
 
@@ -149,6 +155,25 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
     gc.collect()
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Total time taken for souce: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-source_start,4))+' seconds.'
     if kwargs_dict['thumbnails']==True: [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
+
+
+
+
+
+# Define function to check if data actually exists for any band for this source
+def SourcePrelim(source_dict, bands_dict, kwargs_dict):
+
+
+
+    # Check that any of the bands actually have data for this source
+    bands_check = []
+    for band in bands_dict.keys():
+        in_fitspath, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, bands_dict[band], kwargs_dict)
+        bands_check.append(file_found)
+    if True not in bands_check:
+        return False
+    elif True in bands_check:
+        return True
 
 
 

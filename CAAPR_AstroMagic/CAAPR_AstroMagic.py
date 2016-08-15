@@ -16,6 +16,7 @@ import astropy.wcs
 from astropy.units import Unit
 import pyregion
 import ChrisFuncs
+import CAAPR
 from pts.magic.core.image import Image
 from pts.magic.misc.imageimporter import ImageImporter
 from pts.magic.sources.finder import SourceFinder
@@ -509,6 +510,19 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
                 star_sub_check = True
         if star_sub_check==False:
             return
+
+    # Now check that data actually exists for the bands in question for this source
+    bands_check = []
+    for band in bands_dict.keys():
+        if bands_dict[band]['remove_stars']==True:
+            in_fitspath, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, bands_dict[band], kwargs_dict)
+            bands_check.append(file_found)
+        elif bands_dict[band]['remove_stars']==False:
+            bands_check.append(False)
+    if True not in bands_check:
+        return
+
+
 
     # If all checks passed, and star subtraction is required, inform user and make sure that AstroMagic temp directory is clear
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic retrieving list of foreground stars in map from online catalogues.'
