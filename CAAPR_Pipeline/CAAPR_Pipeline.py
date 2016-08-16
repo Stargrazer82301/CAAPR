@@ -7,6 +7,7 @@ import gc
 import pdb
 import time
 import re
+import copy
 import warnings
 import numbers
 import random
@@ -166,9 +167,11 @@ def SourcePrelim(source_dict, bands_dict, kwargs_dict):
 
 
     # Check that any of the bands actually have data for this source
+    kwargs_dict_copy = copy.deepcopy(kwargs_dict)
+    kwargs_dict_copy['verbose'] = False
     bands_check = []
     for band in bands_dict.keys():
-        in_fitspath, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, bands_dict[band], kwargs_dict)
+        in_fitspath, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, bands_dict[band], kwargs_dict_copy)
         bands_check.append(file_found)
     if True not in bands_check:
         return False
