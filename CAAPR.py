@@ -42,7 +42,8 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
           parallel = True,
           n_proc = mp.cpu_count()-2,
           thumbnails = True,
-          verbose = True
+          debug = False,
+          verbose = True,
           ):
 
 
@@ -63,6 +64,7 @@ def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
                    'parallel':parallel,
                    'n_proc':n_proc,
                    'thumbnails':thumbnails,
+                   'debug':debug,
                    'verbose':verbose}
 
 
@@ -125,7 +127,7 @@ if __name__ == "__main__":
     testing = True
     parallel = False
     starsub = True
-    fit_apertures = True
+    fit_apertures = False
     aperture_table_path = None
     if fit_apertures==False:
         aperture_table_path = 'CAAPR_Aperture_Table_Test.csv'
