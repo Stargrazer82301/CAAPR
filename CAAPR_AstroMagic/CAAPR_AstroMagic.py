@@ -604,13 +604,11 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
             try_success = True
             break
 
-        # Handle error
+        # Handle errors
         except ValueError as e:
             if 'rebin' in e.message:
                 if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
                 try_counter += 1
-            else:
-                pdb.set_trace()
         except IndexError as e:
             if 'out of range' in e.message:
                 if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'

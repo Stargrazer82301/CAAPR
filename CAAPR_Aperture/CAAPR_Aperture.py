@@ -291,7 +291,11 @@ def ApertureSize(pod, band_dict):
     # Establish what fraction of the pixels inside a band's aperture are NaNs
     pix_good = ChrisFuncs.Photom.EllipseQuickSum(pod['cutout'], opt_semimaj_pix, pod['opt_axial_ratio'], pod['opt_angle'], pod['centre_i'], pod['centre_j'], i_trans, j_trans)[1]
     pix_tot = np.where( ChrisFuncs.Photom.EllipseMask(pod['cutout'], opt_semimaj_pix, pod['opt_axial_ratio'], pod['opt_angle'], pod['centre_i'], pod['centre_j']) == 1 )[0].shape[0]
-    pix_good_frac = float(pix_good) / float(pix_tot)
+    pdb.set_trace()
+    if pix_tot==0.0:
+        pix_good_frac = 0.0
+    else:
+        pix_good_frac = float(pix_good) / float(pix_tot)
 
     # Before final reporting, tidy up and return to unconvolved cutout
     pod['cutout'] = cutout_unconv
