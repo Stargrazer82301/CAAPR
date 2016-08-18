@@ -430,9 +430,9 @@ def ExcludeAperture(pod, source_dict, band_dict, kwargs_dict):
     # Set generic null aperture properties
     pod['opt_axial_ratio'] = 1.0
     pod['opt_angle'] = 0.0
-    pod['opt_semimaj_arcsec'] = ( (2.0*band_dict['beam_arcsec'])**2.0 - band_dict['beam_arcsec']**2.0 )**0.5
-    pod['opt_semimaj_pix'] = pod['opt_semimaj_arcsec'] / pod['pix_arcsec']
-    pod['semimaj_initial_pix'] = pod['opt_semimaj_arcsec'] / pod['pix_arcsec']
+    pod['opt_semimaj_arcsec'] = 0.0#( (2.0*band_dict['beam_arcsec'])**2.0 - band_dict['beam_arcsec']**2.0 )**0.5
+    pod['opt_semimaj_pix'] = 0.0#pod['opt_semimaj_arcsec'] / pod['pix_arcsec']
+    pod['semimaj_initial_pix'] = 0.0#pod['opt_semimaj_arcsec'] / pod['pix_arcsec']
 
     # Create aperture output dictionry containing null values
     output_dict = {'band_name':band_dict['band_name'],
