@@ -127,10 +127,10 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
             catalog_importer.run(image.frames.primary)
 
             # If currently handling cut-down thumbnail, only use relevant portion of catalogues
-            if 'starsub_thumbnail' in pod.keys():
-                if pod['starsub_thumbnail']==True:
-                    galaxy_catalog_thumb = ThumbCatalogue(pod, source_dict, band_dict, kwargs_dict, catalog_importer)
-                    catalog_importer.galactic_catalog = galaxy_catalog_thumb
+#            if 'starsub_thumbnail' in pod.keys():
+#                if pod['starsub_thumbnail']==True:
+            galaxy_catalog_thumb = ThumbCatalogue(pod, source_dict, band_dict, kwargs_dict, catalog_importer)
+            catalog_importer.galactic_catalog = galaxy_catalog_thumb
 
 
 
@@ -264,11 +264,11 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
         # Handle exceptions
         except:
             am_crash += 1
-        if am_crash>=10:
-            if kwargs_dict['debug']:
-                raise ValueError('AstroMagic failed! Suggest debugging.')
-            else:
-                return pod
+            if am_crash>=10:
+                if kwargs_dict['debug']:
+                    raise ValueError('AstroMagic failed for '+pod['id']+'! Suggest debugging.')
+                else:
+                    return pod
 
 
 

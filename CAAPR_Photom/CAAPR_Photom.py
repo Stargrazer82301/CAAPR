@@ -1139,8 +1139,11 @@ def ExcludedSubpipelinePhotom(source_dict, band_dict, kwargs_dict_inviolate):
     thumb_centre_xy = pod['in_wcs'].wcs_world2pix( np.array([[ source_dict['ra'], source_dict['dec'] ]]), 0 )
     pod['centre_i'], pod['centre_j'] = float(thumb_centre_xy[0][1]), float(thumb_centre_xy[0][0])
 
-    # Run thumbnail cutout thorugh AstroMagic, save result, and delete temporary files
+    # Run thumbnail cutout thorugh AstroMagic (deleting any pre-existing data), save result, and remove temporary files
     pod['cutout'] = pod['in_image'].copy()
+    pod['starsub_thumbnail'] = True
+    if os.path.exists( os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') ):
+        os.remove( os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') )
     pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
     os.remove(thumb_output)
     astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], clobber=True)
