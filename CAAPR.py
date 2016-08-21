@@ -1,22 +1,15 @@
 # Import smorgasbord
-import os
+#import os
 import sys
 sys.path.insert(0, '../')
 import gc
-import pdb
-import shutil
-import psutil
 import time
-import resource
 import random
 import warnings
 warnings.filterwarnings('ignore')
-import numpy as np
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 import multiprocessing as mp
-import ChrisFuncs
 import CAAPR_IO
 import CAAPR_Pipeline
 import CAAPR_Aperture
@@ -125,9 +118,9 @@ if __name__ == "__main__":
 
     # Run function
     testing = True
-    parallel = False
+    parallel = True
     starsub = True
-    fit_apertures = True
+    fit_apertures = False
     aperture_table_path = None
     if fit_apertures==False:
         aperture_table_path = 'CAAPR_Aperture_Table_Test.csv'
