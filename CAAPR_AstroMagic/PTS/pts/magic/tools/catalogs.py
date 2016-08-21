@@ -638,6 +638,13 @@ def get_galaxy_info(name, position):
         gal_redshift = None
         gal_type = None
 
+    except astroquery.exceptions.TimeoutError:
+
+        # Set attributes
+        gal_name = name
+        gal_redshift = None
+        gal_type = None
+
     # Create a new Vizier object and set the row limit to -1 (unlimited)
     viz = Vizier(keywords=["galaxies", "optical"])
     viz.ROW_LIMIT = -1
