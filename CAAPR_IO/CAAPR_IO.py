@@ -469,6 +469,13 @@ def MemCheck(pod, thresh_fraction=0.75, thresh_factor=20.0, swap_thresh_fraction
 
 
 
+
+    # Check whether psutil is available (as it is only for unix systems)
+    try:
+        import psutil
+    except:
+        if pod['verbose']:print '['+pod['id']+'] Library psutil not available (is this a Windows system?); unable to check RAM, proceeding regardless.'
+
     # Start infinite loop
     wait_initial = True
     wait_count = 0
