@@ -7,7 +7,6 @@ import pdb
 import time
 import csv
 import shutil
-import psutil
 import multiprocessing as mp
 import numpy as np
 import matplotlib
@@ -245,31 +244,14 @@ def Cutout(source_dict, band_dict, kwargs_dict):
     in_cdelt = in_wcs.wcs.cdelt.max()
     in_cdelt_arcsec = in_cdelt * 3600.0
 
-    # Check if Montage is installed
-    try:
-        import montage_wrapper
-        montage_installed = True
-    except:
-        print '['+source_id+'] Montage and/or the Python Montage wrapper module could not be imported. A cruder cutout method will be used, which could cause projection effects for large maps etc. If this matters to you, install Montage and the Python Montage wrapper module!'
-        montage_installed = False
-
     # Construct output path (likewise for error map, if necessary)
     out_fitspath = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
     if band_dict['use_error_map']==True:
         out_fitspath_error = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
 
-    # If Montage is installed, use it to produce cutout
-    if montage_installed:
-        montage_wrapper.commands.mHdr(str(source_dict['ra'])+' '+str(source_dict['dec']), band_dict['make_cutout']/3600.0, os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), pix_size=in_cdelt_arcsec)
-        montage_wrapper.wrappers.reproject(in_fitspath, out_fitspath, header=os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
-        if band_dict['use_error_map']==True:
-            montage_wrapper.wrappers.reproject(in_fitspath_error, out_fitspath_error, header=os.path.join(kwargs_dict['temp_dir_path'],'hdr.txt'), north_aligned=True, exact_size=True, hdu=None, cleanup=True, silent_cleanup=True)
-
-    # If montage isn't installed, use the ChrisFuncs cutout function instead
-    elif not montage_installed:
-        ChrisFuncs.FitsCutout(in_fitspath, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath)
-        if band_dict['use_error_map']==True:
-            ChrisFuncs.FitsCutout(in_fitspath_error, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath_error)
+    ChrisFuncs.FitsCutout(in_fitspath, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath)
+    if band_dict['use_error_map']==True:
+        ChrisFuncs.FitsCutout(in_fitspath_error, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath_error)
 
     # Return the directory of the newly-created cutout
     out_fitsdir = os.path.split(out_fitspath)[0]
