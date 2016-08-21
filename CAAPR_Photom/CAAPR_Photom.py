@@ -968,8 +968,21 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sys.stdout = open(os.devnull, "w")
-        irsa_query = astroquery.irsa_dust.IrsaDust.get_extinction_table( str(source_dict['ra'])+', '+str(source_dict['dec']) )
+        query_count = 0
+        query_success = False
+        while not query_success:
+            if query_count>=10:
+                break
+            try:
+                irsa_query = astroquery.irsa_dust.IrsaDust.get_extinction_table( str(source_dict['ra'])+', '+str(source_dict['dec']) )
+                query_success = True
+                break
+            except:
+                query_count += 1
         sys.stdout = sys.__stdout__
+    if not query_success:
+        print '['+pod['id']+'] Unable to access IRSA Galactic Dust Reddening & Extinction Service after 10 attemps.'
+        raise ValueError('Unable to access IRSA Galactic Dust Reddening & Extinction Service after 10 attemps.')
 
 
 
