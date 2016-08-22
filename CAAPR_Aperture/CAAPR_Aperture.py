@@ -38,7 +38,7 @@ def SubpipelineAperture(source_dict, band_dict, kwargs_dict):
     # Perform initial checks of target file type and location; return if not present
     in_fitspath, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, band_dict, kwargs_dict)
     if file_found == False:
-        return
+        return None
 
 
 
@@ -341,6 +341,8 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
     axial_ratio_list = []
     angle_list = []
     for aperture in aperture_output_list:
+        if aperture==False:
+            continue
         try:
             semimaj_arcsec_list.append( aperture['opt_semimaj_arcsec'] )
             axial_ratio_list.append( aperture['opt_axial_ratio'] )
@@ -402,6 +404,28 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Final ellipse semi-major axis: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_semimaj_arcsec,4))+' arcsec; final ellipse angle: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_angle,4))+' '+' degrees; final ellipse axial ratio: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_axial_ratio,4))+'.'
     gc.collect()
     return [cont_semimaj_arcsec, cont_axial_ratio, cont_angle, ap_array]
+
+
+
+
+# Define function to check that all bands which were supposed to undergo photometry have done so
+def ApertureCheck(aperture_attempts, aperture_output_list, source_dict, bands_dict, kwargs_dict):
+
+
+
+    # Compare number of bands with photometry returned to number of bands for which photometry was requested
+    if len(aperture_output_list)==len(bands_dict.keys()):
+        aperture_attempts = 'Success'
+        return aperture_attempts
+
+    # Check how many attempts have been made so far, and proceed accordingly
+    else:
+        aperture_attempts += 1
+        if aperture_attempts>=5:
+            print '['+source_dict['name']+'] Aperture fitting failed 5 times in succession; suggest debugging.'
+            raise ValueError('Aperture fitting failed 5 times in succession; suggest debugging.')
+        else:
+            return aperture_attempts
 
 
 

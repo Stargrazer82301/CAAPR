@@ -67,26 +67,33 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
     # If aperture file not provided, commence aperture-fitting sub-pipeline
     if kwargs_dict['fit_apertures']==True:
 
-        # In standard operation, process multiple sources in parallel
-        aperture_start = time.time()
-        aperture_output_list = []
-        if kwargs_dict['parallel']==True:
-            bands_dict_keys = bands_dict.keys()
-            random.shuffle(bands_dict_keys)
-            pool = mp.Pool(processes=kwargs_dict['n_proc'])
-            for band in bands_dict_keys:
-                aperture_output_list.append( pool.apply_async( CAAPR.CAAPR_Aperture.SubpipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
-            pool.close()
-            pool.join()
-            del(pool)
-            aperture_list = [output.get() for output in aperture_output_list if output.successful()==True]
-            aperture_list = [aperture for aperture in aperture_list if aperture!=None]
+        # Process sources inside while loop, to catch 'missed' bands
+        aperture_attempts = 0
+        while aperture_attempts!='Success':
 
-        # If parallelisation is disabled, process sources one-at-a-time
-        elif kwargs_dict['parallel']==False:
-            for band in bands_dict.keys():
-                aperture_output_list.append( CAAPR.CAAPR_Aperture.SubpipelineAperture(source_dict, bands_dict[band], kwargs_dict) )
-                aperture_list = [output for output in aperture_output_list if output!=None]
+            # In standard operation, process multiple sources in parallel
+            aperture_start = time.time()
+            aperture_output_list = []
+            if kwargs_dict['parallel']==True:
+                bands_dict_keys = bands_dict.keys()
+                random.shuffle(bands_dict_keys)
+                pool = mp.Pool(processes=kwargs_dict['n_proc'])
+                for band in bands_dict_keys:
+                    aperture_output_list.append( pool.apply_async( CAAPR.CAAPR_Aperture.SubpipelineAperture, args=(source_dict, bands_dict[band], kwargs_dict) ) )
+                pool.close()
+                pool.join()
+                del(pool)
+                aperture_list = [output.get() for output in aperture_output_list if output.successful()==True]
+                aperture_list = [aperture for aperture in aperture_list if aperture!=None]
+
+            # If parallelisation is disabled, process sources one-at-a-time
+            elif kwargs_dict['parallel']==False:
+                for band in bands_dict.keys():
+                    aperture_output_list.append( CAAPR.CAAPR_Aperture.SubpipelineAperture(source_dict, bands_dict[band], kwargs_dict) )
+                    aperture_list = [output for output in aperture_output_list if output!=None]
+
+            # Check that all photometry completed
+            aperture_attempts = CAAPR.CAAPR_Aperture.ApertureCheck(aperture_attempts, aperture_output_list, source_dict, bands_dict, kwargs_dict)
 
         # Combine all fitted apertures to produce amalgam aperture
         aperture_combined = CAAPR.CAAPR_Aperture.CombineAperture(aperture_list, source_dict, kwargs_dict)
@@ -114,26 +121,33 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
         if kwargs_dict['aperture_table_path']==False and kwargs_dict['fit_apertures']==False:
             raise ValueError('User has requested no aperture-fitting, and no photometry!')
 
-        # In standard operation, process multiple sources in parallel
-        photom_start = time.time()
-        photom_output_list = []
-        if kwargs_dict['parallel']==True:
-            bands_dict_keys = bands_dict.keys()
-            random.shuffle(bands_dict_keys)
-            pool = mp.Pool(processes=kwargs_dict['n_proc'])
-            for band in bands_dict_keys:
-                photom_output_list.append( pool.apply_async( CAAPR.CAAPR_Photom.SubpipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict) ) )
-            pool.close()
-            pool.join()
-            if kwargs_dict['verbose']: print '['+source_dict['name']+'] Gathering parallel threads.'
-            photom_list = [output.get() for output in photom_output_list if output.successful()==True]
-            photom_list = [photom for photom in photom_list if photom!=None]
+        # Process sources inside while loop, to catch 'missed' bands
+        photom_attempts = 0
+        while photom_attempts!='Success':
 
-        # If parallelisation is disabled, process sources one-at-a-time
-        elif kwargs_dict['parallel']==False:
-            for band in bands_dict.keys():
-                photom_output_list.append( CAAPR.CAAPR_Photom.SubpipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
-                photom_list = [output for output in photom_output_list if output!=None]
+                # In standard operation, process multiple sources in parallel
+                photom_start = time.time()
+                photom_output_list = []
+                if kwargs_dict['parallel']==True:
+                    bands_dict_keys = bands_dict.keys()
+                    random.shuffle(bands_dict_keys)
+                    pool = mp.Pool(processes=kwargs_dict['n_proc'])
+                    for band in bands_dict_keys:
+                        photom_output_list.append( pool.apply_async( CAAPR.CAAPR_Photom.SubpipelinePhotom, args=(source_dict, bands_dict[band], kwargs_dict) ) )
+                    pool.close()
+                    pool.join()
+                    if kwargs_dict['verbose']: print '['+source_dict['name']+'] Gathering parallel threads.'
+                    photom_output_list = [output.get() for output in photom_output_list if output.successful()==True]
+                    photom_list = [photom for photom in photom_output_list if photom!=None]
+
+                # If parallelisation is disabled, process sources one-at-a-time
+                elif kwargs_dict['parallel']==False:
+                    for band in bands_dict.keys():
+                        photom_output_list.append( CAAPR.CAAPR_Photom.SubpipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
+                        photom_list = [photom for photom in photom_output_list if photom!=None]
+
+                # Check that all photometry completed
+                photom_attempts = CAAPR.CAAPR_Photom.PhotomCheck(photom_attempts, photom_output_list, source_dict, bands_dict, kwargs_dict)
 
         # Record photometry results to file
         CAAPR.CAAPR_IO.RecordPhotom(photom_list, source_dict, bands_dict, kwargs_dict)

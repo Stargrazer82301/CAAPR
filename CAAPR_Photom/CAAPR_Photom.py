@@ -1070,6 +1070,29 @@ def ExcludePhotom(pod, source_dict, band_dict, kwargs_dict):
 
 
 
+# Define function to check that all bands which were supposed to undergo photometry have done so
+def PhotomCheck(photom_attempts, photom_output_list, source_dict, bands_dict, kwargs_dict):
+
+
+
+    # Compare number of bands with photometry returned to number of bands for which photometry was requested
+    if len(photom_output_list)==len(bands_dict.keys()):
+        photom_attempts = 'Success'
+        return photom_attempts
+
+    # Check how many attempts have been made so far, and proceed accordingly
+    else:
+        photom_attempts += 1
+        if photom_attempts>=5:
+            print '['+source_dict['name']+'] Photometry failed 5 times in succession; suggest debugging.'
+            raise ValueError('Photometry failed 5 times in succession; suggest debugging.')
+        else:
+            return photom_attempts
+
+
+
+
+
 # Define function that handles bands excluded from photometry, so that they appear in thumbnail grid
 def ExcludedThumb(source_dict, bands_dict, kwargs_dict):
 
