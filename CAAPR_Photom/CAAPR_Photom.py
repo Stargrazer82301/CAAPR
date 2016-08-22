@@ -1081,6 +1081,7 @@ def PhotomCheck(photom_attempts, photom_output_list, source_dict, bands_dict, kw
 
 
     # Compare number of bands with photometry returned to number of bands for which photometry was requested
+    photom_limit = 5
     if len(photom_output_list)==len(bands_dict.keys()):
         photom_attempts = 'Success'
         return photom_attempts
@@ -1088,9 +1089,11 @@ def PhotomCheck(photom_attempts, photom_output_list, source_dict, bands_dict, kw
     # Check how many attempts have been made so far, and proceed accordingly
     else:
         photom_attempts += 1
-        if photom_attempts>=5:
-            print '['+source_dict['name']+'] Photometry failed 5 times in succession; suggest debugging.'
-            raise ValueError('Photometry failed 5 times in succession; suggest debugging.')
+        time.sleep(30.0)
+        if photom_attempts>=photom_limit:
+            print '['+source_dict['name']+'] Photometry failed '+str(photom_limit)+' times in succession; suggest debugging.'
+            pdb.set_trace()
+            raise ValueError('Photometry failed '+str(photom_limit)+' times in succession; suggest debugging.')
         else:
             return photom_attempts
 

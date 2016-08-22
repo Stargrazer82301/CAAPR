@@ -414,6 +414,7 @@ def ApertureCheck(aperture_attempts, aperture_output_list, source_dict, bands_di
 
 
     # Compare number of bands with photometry returned to number of bands for which photometry was requested
+    aperture_limit = 5
     if len(aperture_output_list)==len(bands_dict.keys()):
         aperture_attempts = 'Success'
         return aperture_attempts
@@ -421,9 +422,11 @@ def ApertureCheck(aperture_attempts, aperture_output_list, source_dict, bands_di
     # Check how many attempts have been made so far, and proceed accordingly
     else:
         aperture_attempts += 1
-        if aperture_attempts>=5:
-            print '['+source_dict['name']+'] Aperture fitting failed 5 times in succession; suggest debugging.'
-            raise ValueError('Aperture fitting failed 5 times in succession; suggest debugging.')
+        time.sleep(30.0)
+        if aperture_attempts>=aperture_limit:
+            print '['+source_dict['name']+'] Aperture fitting failed '+str(aperture_limit)+' times in succession; suggest debugging.'
+            pdb.set_trace()
+            raise ValueError('Aperture fitting failed '+str(aperture_limit)+' times in succession; suggest debugging.')
         else:
             return aperture_attempts
 
