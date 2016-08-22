@@ -266,8 +266,10 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
             am_crash += 1
             if am_crash>=10:
                 if kwargs_dict['debug']:
+                    print '['+pod['id']+'] AstroMagic failed for '+pod['id']+'! Suggest debugging.'
                     raise ValueError('AstroMagic failed for '+pod['id']+'! Suggest debugging.')
                 else:
+                    print '['+pod['id']+'] AstroMagic failed for '+pod['id']+'! Suggest debugging.'
                     return pod
 
 
@@ -299,8 +301,8 @@ def OverlargeStars(pod, star_segments, sat_path, star_path, gal_path, image, sou
             sat_areas.append( np.pi * float(sat_region.coord_list[2]) * float(sat_region.coord_list[3]) )
         #sat_array = np.array([sat_areas, sat_indices]).transpose()
         #sat_indices_out = sat_array[:,1].astype(int).tolist()
-    except ValueError as error_message:
-        if error_message.message=='need more than 0 values to unpack':
+    except ValueError as exception:
+        if exception.message=='need more than 0 values to unpack':
             sat_regions = []
     except:
         pdb.set_trace()
