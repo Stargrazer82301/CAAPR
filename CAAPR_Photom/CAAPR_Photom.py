@@ -750,17 +750,12 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
 
         # If PSF pixel size is different to map pixel size, rescale PSF accordingly
         if (pod['pix_arcsec']/psf_cdelt_arcsec)>1.001 or (pod['pix_arcsec']/psf_cdelt_arcsec)<0.999:
+            zoom_factor = float(psf_cdelt_arcsec) / float(pod['pix_arcsec'])
+            psf = scipy.ndimage.zoom(psf_in, (zoom_factor,zoom_factor), mode='nearest')
 
-            # 'Trim' the edges of the input PSF until the rescaled PSF has odd dimensions
-            psf_even = True
-            while psf_even:
-                zoom_factor = float(psf_cdelt_arcsec) / float(pod['pix_arcsec'])
-                psf = scipy.ndimage.zoom(psf_in, (zoom_factor,zoom_factor), mode='nearest')
-                if (psf.shape[0]%2!=0) and (psf.shape[1]%2!=0):
-                    psf_even = False
-                else:
-                    psf_in = psf_in[1:,1:]
-                    psf_in = psf_in[:-1,:-1]
+            # If necessary, rebin the PSF so it has odd dimensions
+            if not ( psf.shape[0]%2!=0 and psf.shape[1]%2!=0 ):
+                psf = ChrisFuncs.FromGitHub.martynbristow.rebin(psf, tuple(np.array(psf.shape)-1))
 
         # Else, if pixel sizes are already the same, leave as-is
         elif ((pod['pix_arcsec']/psf_cdelt_arcsec)>=0.999) and ((pod['pix_arcsec']/psf_cdelt_arcsec)<=0.001):
@@ -794,7 +789,7 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
     # Make sure that PSF array is smaller than sersic model array (as required for convolution); if not, remove its edges such that it is
     if psf.shape[0]>sersic_map.shape[0] or psf.shape[1]>sersic_map.shape[1]:
         excess = max( psf.shape[0]-sersic_map.shape[0], psf.shape[1]-sersic_map.shape[1] )
-        border = int( np.round( np.ceil( float(excess) / 2.0 ) - 1.0 ) )
+        border = max( 2, int( np.round( np.ceil( float(excess) / 2.0 ) - 1.0 ) ) )
         psf = psf[border:,border:]
         psf = psf[:-border,:-border]
 
