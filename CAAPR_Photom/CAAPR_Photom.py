@@ -963,26 +963,31 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
         if kwargs_dict['verbose']: print '['+pod['id']+'] Galactic extinction correction not available for this band.'
         return pod
 
-    # Else if extinction correction is possible, query IRSA dust extinction service
+    # Else if extinction correction is possible, prepare query IRSA dust extinction service
     if kwargs_dict['verbose']: print '['+pod['id']+'] Retreiving extinction corrections from IRSA Galactic Dust Reddening & Extinction Service.'
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sys.stdout = open(os.devnull, "w")
         query_count = 0
         query_success = False
+
+        # Keep trying to access extinction corrections, until it works
+        query_limit = 100
         while not query_success:
-            if query_count>=10:
+            if query_count>=query_limit:
                 break
             try:
                 irsa_query = astroquery.irsa_dust.IrsaDust.get_extinction_table( str(source_dict['ra'])+', '+str(source_dict['dec']) )
                 query_success = True
                 break
-            except:
+            except Exception as exception:
+                print '['+pod['id']+'] IRSA Galactic Dust Reddening & Extinction Service query failed: \"'+str(exception.message)+'\" - reattempting'
                 query_count += 1
+                time.sleep(10.0)
         sys.stdout = sys.__stdout__
     if not query_success:
-        print '['+pod['id']+'] Unable to access IRSA Galactic Dust Reddening & Extinction Service after 10 attemps.'
-        raise ValueError('Unable to access IRSA Galactic Dust Reddening & Extinction Service after 10 attemps.')
+        print '['+pod['id']+'] Unable to access IRSA Galactic Dust Reddening & Extinction Service after '+str(query_limit)+' attemps.'
+        raise ValueError('Unable to access IRSA Galactic Dust Reddening & Extinction Service after '+str(query_limit)+' attemps.')
 
 
 
