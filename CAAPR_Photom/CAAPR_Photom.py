@@ -375,7 +375,10 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
 
     # Identify contiguous region associated with target source
     if ap_debug: print 'Pruning: Identifying coverage region associated with source'
-    cont_target = scipy.stats.mode(cont_search_values[np.where(cont_search_values>0)])[0][0]
+    if np.where(cont_search_values>0)[0].shape[0]==0:
+        cont_target = 0
+    else:
+        cont_target = scipy.stats.mode(cont_search_values[np.where(cont_search_values>0)])[0][0]
     cont_where_bad = np.where( cont_label!=cont_target )
 
     # Remove random coordinates that are more distant than most distant part of the coverage region the target source lies in
