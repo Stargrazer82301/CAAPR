@@ -224,8 +224,6 @@ def Cutout(source_dict, band_dict, kwargs_dict):
         in_fitspath = in_fitspath+'.fits.gz'
     else:
         in_fitspath = None
-        print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
-        print '['+source_id+'] Assuming no data in this band for current source.'
         return band_dict
 
     # If error maps are being used, construct this path also
@@ -238,17 +236,12 @@ def Cutout(source_dict, band_dict, kwargs_dict):
         else:
             raise ValueError('No appropriately-named error file found in target directroy (please ensure that error filesnames are in \"[NAME]_[BAND]_Error.fits\" format.')
 
-    # Determine pixel size
-    in_header = astropy.io.fits.getheader(in_fitspath)
-    in_wcs = astropy.wcs.WCS(in_header)
-    in_cdelt = in_wcs.wcs.cdelt.max()
-    in_cdelt_arcsec = in_cdelt * 3600.0
-
     # Construct output path (likewise for error map, if necessary)
     out_fitspath = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
     if band_dict['use_error_map']==True:
         out_fitspath_error = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
 
+    # Create cutout
     ChrisFuncs.FitsCutout(in_fitspath, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath)
     if band_dict['use_error_map']==True:
         ChrisFuncs.FitsCutout(in_fitspath_error, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath_error)
@@ -299,8 +292,6 @@ def UnpaddingCutout(source_dict, band_dict, kwargs_dict):
         in_fitspath = in_fitspath+'.fits.gz'
     else:
         in_fitspath = None
-        print '['+source_id+'] No appropriately-named input file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
-        print '['+source_id+'] Assuming no data in this band for current source.'
         return band_dict
 
     # If error maps are being used, construct this path also

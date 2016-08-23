@@ -176,7 +176,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
 
 # Define function to check if data actually exists for any band for this source
-def SourcePrelim(source_dict, bands_dict, kwargs_dict):
+def SourcePrelim(source_dict, bands_dict, kwargs_dict):    
 
 
 
@@ -185,8 +185,16 @@ def SourcePrelim(source_dict, bands_dict, kwargs_dict):
     kwargs_dict_copy['verbose'] = False
     bands_check = []
     for band in bands_dict.keys():
+        source_id = source_dict['name']+'_'+bands_dict[band]['band_name']
         in_fitspath, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, bands_dict[band], kwargs_dict_copy)
         bands_check.append(file_found)
+        
+    # Report to user if no data found
+    if file_found==False:
+        print '['+source_id+'] No appropriately-named FITS file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
+        print '['+source_id+'] Assuming no data in this band for current source.'
+        
+    # Return result
     if True not in bands_check:
         return False
     elif True in bands_check:
@@ -249,11 +257,6 @@ def FilePrelim(source_dict, band_dict, kwargs_dict):
     elif os.path.exists(in_fitspath+'.fits.gz'):
         in_fitspath = in_fitspath+'.fits.gz'
         file_found = True
-
-    # Report to user if file not found
-    if file_found==False:
-        print '['+source_id+'] No appropriately-named FITS file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
-        print '['+source_id+'] Assuming no data in this band for current source.'
 
     # Return file values
     return in_fitspath, file_found
