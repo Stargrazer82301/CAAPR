@@ -242,9 +242,9 @@ def Cutout(source_dict, band_dict, kwargs_dict):
         out_fitspath_error = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
 
     # Create cutout
-    ChrisFuncs.FitsCutout(in_fitspath, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath)
+    ChrisFuncs.FitsCutout(in_fitspath, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath, reproj=True)
     if band_dict['use_error_map']==True:
-        ChrisFuncs.FitsCutout(in_fitspath_error, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath_error)
+        ChrisFuncs.FitsCutout(in_fitspath_error, source_dict['ra'], source_dict['dec'], int(round(float(band_dict['make_cutout'])/2.0)), exten=0, outfile=out_fitspath_error, reproj=True)
 
     # Return the directory of the newly-created cutout
     out_fitsdir = os.path.split(out_fitspath)[0]
