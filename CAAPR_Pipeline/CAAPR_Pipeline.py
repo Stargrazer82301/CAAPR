@@ -176,7 +176,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
 
 # Define function to check if data actually exists for any band for this source
-def SourcePrelim(source_dict, bands_dict, kwargs_dict):    
+def SourcePrelim(source_dict, bands_dict, kwargs_dict):
 
 
 
@@ -188,12 +188,19 @@ def SourcePrelim(source_dict, bands_dict, kwargs_dict):
         source_id = source_dict['name']+'_'+bands_dict[band]['band_name']
         in_fitspath, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, bands_dict[band], kwargs_dict_copy)
         bands_check.append(file_found)
-        
+
     # Report to user if no data found
     if file_found==False:
         print '['+source_id+'] No appropriately-named FITS file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
         print '['+source_id+'] Assuming no data in this band for current source.'
-        
+
+        # Make null entries in tables, as necessary
+        if kwargs_dict['fit_apertures']==True:
+            null_aperture_combined = [np.NaN, np.NaN, np.NaN, np.NaN]
+            CAAPR.CAAPR_IO.RecordAperture(null_aperture_combined, source_dict, kwargs_dict)
+        if kwargs_dict['do_photom']==True:
+            CAAPR.CAAPR_IO.RecordPhotom([], source_dict, bands_dict, kwargs_dict)
+
     # Return result
     if True not in bands_check:
         return False
