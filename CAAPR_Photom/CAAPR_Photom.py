@@ -1171,6 +1171,7 @@ def ExcludedSubpipelinePhotom(source_dict, band_dict, kwargs_dict_inviolate):
     if pod['within_bounds']==False:
         return
     pod = AperturePrelim(pod, source_dict, band_dict, kwargs_dict)
+    pod = CAAPR.CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], instant_quit=(not kwargs_dict['polysub']))
     CAAPR.CAAPR_IO.MemCheck(pod)
 
     # Use thumbnail cutout function to create a cutout that's only as large as it needs to be for the thumbnail grid
