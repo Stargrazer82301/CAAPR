@@ -242,8 +242,6 @@ def BandInitiate(band_dict):
 
 # Define function that performs preimilary checks of file type and location
 def FilePrelim(source_dict, band_dict, kwargs_dict):
-    source_id = source_dict['name']+'_'+band_dict['band_name']
-    if kwargs_dict['verbose']: print '['+source_id+'] Inspecting FITS file type and location.'
 
 
 
