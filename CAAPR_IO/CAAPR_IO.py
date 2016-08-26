@@ -442,7 +442,6 @@ def MemCheck(pod, thresh_fraction=0.75, thresh_factor=20.0, swap_thresh_fraction
 
 
 
-
     # Check whether psutil is available (as it is only for unix systems)
     try:
         import psutil
@@ -930,7 +929,7 @@ def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, img_rad_arcsec, 
             ChrisFuncs.FitsEmbed( img_input, img_margin, exten=0, outfile=img_input )
 
         # Produce cutout, and neated header as necessary (to quell noisy APLpy verbosity later on)
-        ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, outfile=img_output )
+        ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, outfile=img_output, reproj=True )
         cutout_data, cutout_header = astropy.io.fits.getdata(img_output, header=True)
         del cutout_header['RADESYS']
         cutout_header['EQUINOX'] = 2000.0
