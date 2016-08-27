@@ -559,14 +559,18 @@ def ExcludedSubpipelineAperture(aperture_combined, source_dict, band_dict, kwarg
     pod['centre_i'], pod['centre_j'] = float(thumb_centre_xy[0][1]), float(thumb_centre_xy[0][0])
 
     # Run thumbnail cutout thorugh AstroMagic, save result, and delete temporary files
-    pod['cutout'] = pod['in_image'].copy()
-    pod['starsub_thumbnail'] = True
-    pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
-    os.remove(thumb_output)
+    if kwargs_dict['starsub']==True:
+        pod['cutout'] = pod['in_image'].copy()
+        pod['starsub_thumbnail'] = True
+        pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+        os.remove(thumb_output)
+        magic_output = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits')
+        if os.path.exists(magic_output):
+            os.remove(magic_output)
+
+    # Save resulting cutout
     astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], clobber=True)
-    magic_output = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits')
-    if os.path.exists(magic_output):
-        os.remove(magic_output)
+
 
 
 

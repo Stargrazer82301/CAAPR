@@ -600,7 +600,10 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         img_rad_arcsec = img_naxis_arcsec / 2.0
 
         # Produce cutouts, and end loop
-        thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad,) )
+        if kwargs_dict['parallel']==True:
+            thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad,) )
+        elif kwargs_dict['parallel']==False:
+            ThumbCutout(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad)
     thumb_pool.close()
     thumb_pool.join()
 
@@ -828,7 +831,10 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
         img_rad_arcsec = img_naxis_arcsec / 2.0
 
         # Produce cutouts, and end loop
-        thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad,) )
+        if kwargs_dict['parallel']==True:
+            thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad,) )
+        elif kwargs_dict['parallel']==False:
+            ThumbCutout(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad)
     thumb_pool.close()
     thumb_pool.join()
 
@@ -911,7 +917,7 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
 
 
 
-# Define function for producing an appropriately-sized cutout in current band (with console output disabled), with an equinox header keyword to make APLpy *shut up*
+# Define function for producing an appropriately-sized cutout in current band
 def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, img_rad_arcsec, thumb_rad):
 
 
@@ -919,27 +925,18 @@ def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, img_rad_arcsec, 
     # Construct output path
     img_output = os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_dict['band_name']+'_Thumbnail.fits')
 
-    # Supress needlessly verbose output from astropy
-    try:
-        sys.stdout = open(os.devnull, "w")
+    # If map is smaller than requested map region, embed it in a larger array
+    if img_rad_arcsec<=thumb_rad:
+        img_margin = thumb_rad - img_rad_arcsec
+        ChrisFuncs.FitsEmbed( img_input, img_margin, exten=0, outfile=img_input )
 
-        # If map is smaller than requested map region, embed it in a larger array
-        if img_rad_arcsec<=thumb_rad:
-            img_margin = thumb_rad - img_rad_arcsec
-            ChrisFuncs.FitsEmbed( img_input, img_margin, exten=0, outfile=img_input )
+    # Produce cutout, and neated header as necessary (to quell noisy APLpy verbosity later on)
+    cutout_parallel = ( not kwargs_dict['parallel'] )
+    cutout_hdulist = ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, variable=True, reproj=True, parallel=cutout_parallel )
+    cutout_data = cutout_hdulist[0].data
+    cutout_header = cutout_hdulist[0].header
+    cutout_header['EQUINOX'] = 2000.0
+    cutout_header['EPOCH'] = 2000.0
 
-        # Produce cutout, and neated header as necessary (to quell noisy APLpy verbosity later on)
-        ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, outfile=img_output, reproj=True )
-        cutout_data, cutout_header = astropy.io.fits.getdata(img_output, header=True)
-        del cutout_header['RADESYS']
-        cutout_header['EQUINOX'] = 2000.0
-        cutout_header['EPOCH'] = 2000.00
-
-        # Write thumbnail cutout to file, and end output supression
-        astropy.io.fits.writeto(img_output, cutout_data, header=cutout_header, clobber=True)
-        sys.stdout = sys.__stdout__
-    except:
-        sys.stdout = sys.__stdout__
-        pdb.set_trace()
-
-
+    # Write thumbnail cutout to file, and end output supression
+    astropy.io.fits.writeto(img_output, cutout_data, header=cutout_header, clobber=True)

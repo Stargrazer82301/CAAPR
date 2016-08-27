@@ -962,25 +962,25 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
         return pod
 
     # Else if extinction correction is possible, prepare query IRSA dust extinction service
-    if kwargs_dict['verbose']: print '['+pod['id']+'] Retreiving extinction corrections from IRSA Galactic Dust Reddening & Extinction Service.'    
+    if kwargs_dict['verbose']: print '['+pod['id']+'] Retreiving extinction corrections from IRSA Galactic Dust Reddening & Extinction Service.'
     query_count = 0
     query_success = False
     query_limit = 100
 
-    # Keep trying to access extinction corrections, until it works    
+    # Keep trying to access extinction corrections, until it works
     while not query_success:
         if query_count>=query_limit:
             break
-        
+
         # Carry out query
-        try:       
+        try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sys.stdout = open(os.devnull, "w")
                 irsa_query = astroquery.irsa_dust.IrsaDust.get_extinction_table( str(source_dict['ra'])+', '+str(source_dict['dec']) )
             query_success = True
             break
-        
+
         # Handle exceptions
         except Exception as exception:
             sys.stdout = sys.__stdout__
@@ -1194,13 +1194,16 @@ def ExcludedSubpipelinePhotom(source_dict, band_dict, kwargs_dict_inviolate):
     pod['centre_i'], pod['centre_j'] = float(thumb_centre_xy[0][1]), float(thumb_centre_xy[0][0])
 
     # Run thumbnail cutout thorugh AstroMagic (deleting any pre-existing data), save result, and remove temporary files
-    pod['cutout'] = pod['in_image'].copy()
-    pod['starsub_thumbnail'] = True
-    if os.path.exists( os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') ):
-        os.remove( os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') )
-    pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
-    os.remove(thumb_output)
+    if kwargs_dict['starsub']==True:
+        pod['cutout'] = pod['in_image'].copy()
+        pod['starsub_thumbnail'] = True
+        if os.path.exists( os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') ):
+            os.remove( os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') )
+        pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
+        os.remove(thumb_output)
+        magic_output = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits')
+        if os.path.exists(magic_output):
+            os.remove(magic_output)
+
+    # Save resulting cutout
     astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], clobber=True)
-    magic_output = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits')
-    if os.path.exists(magic_output):
-        os.remove(magic_output)
