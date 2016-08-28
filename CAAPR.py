@@ -120,7 +120,7 @@ if __name__ == "__main__":
     testing = True
     parallel = True
     starsub = False
-    fit_apertures = True
+    fit_apertures = False
     aperture_table_path = None
     if fit_apertures==False:
         aperture_table_path = 'CAAPR_Aperture_Table_Test.csv'

@@ -932,7 +932,7 @@ def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, img_rad_arcsec, 
 
     # Produce cutout, and neated header as necessary (to quell noisy APLpy verbosity later on)
     cutout_parallel = ( not kwargs_dict['parallel'] )
-    cutout_hdulist = ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, variable=True, reproj=True, parallel=cutout_parallel )
+    cutout_hdulist = ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, variable=True, reproj=True, parallel=cutout_parallel, fast=True )
     cutout_data = cutout_hdulist[0].data
     cutout_header = cutout_hdulist[0].header
     cutout_header['EQUINOX'] = 2000.0
