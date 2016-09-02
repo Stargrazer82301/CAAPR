@@ -12,6 +12,8 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import astropy
+astropy.log.setLevel('ERROR')
 import astropy.io.fits
 import astropy.wcs
 import aplpy
@@ -629,69 +631,57 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         dx = x_fig_subdim
         dy = y_fig_subdim
 
-        # Disable console output and warnings whilst plotting images
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                sys.stdout = open(os.devnull, "w")
+        # Create and format image
+        vars()['subfig'+str(b)] = aplpy.FITSFigure(img_output, figure=fig, subplot=[x_min, y_min, dx, dy])
+        vars()['subfig'+str(b)].show_colorscale(cmap=bands_dict[band_name]['colour_map'], stretch='arcsinh', pmin=7.5, pmax=99.5)
+        vars()['subfig'+str(b)].set_nan_color('black')
+        vars()['subfig'+str(b)].axis_labels.hide()
+        vars()['subfig'+str(b)].tick_labels.hide()
+        vars()['subfig'+str(b)].ticks.hide()
+        line_width = 4.0
 
-                # Create and format image
-                vars()['subfig'+str(b)] = aplpy.FITSFigure(img_output, figure=fig, subplot=[x_min, y_min, dx, dy])
-                vars()['subfig'+str(b)].show_colorscale(cmap=bands_dict[band_name]['colour_map'], stretch='arcsinh', pmin=7.5, pmax=99.5)
-                vars()['subfig'+str(b)].set_nan_color('black')
-                vars()['subfig'+str(b)].axis_labels.hide()
-                vars()['subfig'+str(b)].tick_labels.hide()
-                vars()['subfig'+str(b)].ticks.hide()
-                line_width = 4.0
+        # Extract band-specific aperture dimensions
+        band_ap_angle = aperture_list[b]['opt_angle']
+        band_ap_axial_ratio = aperture_list[b]['opt_axial_ratio']
+        band_ap_semimaj = (aperture_list[b]['opt_semimaj_arcsec'])/3600.0
+        band_ap_semimin = band_ap_semimaj / band_ap_axial_ratio
+        band_beam_width = bands_dict[band_name]['beam_arcsec'] / 3600.0
+        print band_name
+        print band_ap_semimaj*3600.0
+        band_ap_semimaj = ( band_ap_semimaj**2.0 + (0.5*band_beam_width)**2.0 )**0.5
+        print band_ap_semimaj*3600.0
+        band_ap_semimin = ( band_ap_semimin**2.0 + (0.5*band_beam_width)**2.0 )**0.5
+        band_ap_axial_ratio = band_ap_semimaj / band_ap_semimaj
 
-                # Extract band-specific aperture dimensions
-                band_ap_angle = aperture_list[b]['opt_angle']
-                band_ap_axial_ratio = aperture_list[b]['opt_axial_ratio']
-                band_ap_semimaj = (aperture_list[b]['opt_semimaj_arcsec'])/3600.0
-                band_ap_semimin = band_ap_semimaj / band_ap_axial_ratio
-                band_beam_width = bands_dict[band_name]['beam_arcsec'] / 3600.0
-                print band_name
-                print band_ap_semimaj*3600.0
-                band_ap_semimaj = ( band_ap_semimaj**2.0 + (0.5*band_beam_width)**2.0 )**0.5
-                print band_ap_semimaj*3600.0
-                band_ap_semimin = ( band_ap_semimin**2.0 + (0.5*band_beam_width)**2.0 )**0.5
-                band_ap_axial_ratio = band_ap_semimaj / band_ap_semimaj
+        # Plot band-specific aperture (if one was provided)
+        if isinstance(source_dict['aperture_bands_exclude'], str):
+            aperture_bands_exclude = source_dict['aperture_bands_exclude'].split(';')
+        else:
+            aperture_bands_exclude = []
+        if bands_dict[band_name]['consider_aperture']==True and band_name not in aperture_bands_exclude:
+            vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*band_ap_semimaj, 2.0*band_ap_semimin, angle=band_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/2.0, linestyle='dotted')
 
-                # Plot band-specific aperture (if one was provided)
-                if isinstance(source_dict['aperture_bands_exclude'], str):
-                    aperture_bands_exclude = source_dict['aperture_bands_exclude'].split(';')
-                else:
-                    aperture_bands_exclude = []
-                if bands_dict[band_name]['consider_aperture']==True and band_name not in aperture_bands_exclude:
-                    vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*band_ap_semimaj, 2.0*band_ap_semimin, angle=band_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/2.0, linestyle='dotted')
+        # Extract combined aperture dimensions
+        comb_ap_angle = aperture_combined[2]
+        comb_ap_axial_ratio = aperture_combined[1]
+        comb_ap_semimaj = aperture_combined[0]/3600.0
+        comb_ap_semimin = comb_ap_semimaj / comb_ap_axial_ratio
+        print comb_ap_semimaj*3600.0
+        comb_ap_semimaj = ( comb_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
+        print comb_ap_semimaj*3600.0
+        comb_ap_semimin = ( comb_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
 
-                # Extract combined aperture dimensions
-                comb_ap_angle = aperture_combined[2]
-                comb_ap_axial_ratio = aperture_combined[1]
-                comb_ap_semimaj = aperture_combined[0]/3600.0
-                comb_ap_semimin = comb_ap_semimaj / comb_ap_axial_ratio
-                print comb_ap_semimaj*3600.0
-                comb_ap_semimaj = ( comb_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
-                print comb_ap_semimaj*3600.0
-                comb_ap_semimin = ( comb_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
+        # Plot combined aperture
+        vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*comb_ap_semimaj, 2.0*comb_ap_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width)
 
-                # Plot combined aperture
-                vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*comb_ap_semimaj, 2.0*comb_ap_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width)
+        # Plot combined background annulus
+        band_ann_inner_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_inner']
+        band_ann_outer_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_outer']
+        vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_inner_semimaj, band_ann_inner_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
+        vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_outer_semimaj, band_ann_outer_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
 
-                # Plot combined background annulus
-                band_ann_inner_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_inner']
-                band_ann_outer_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_outer']
-                vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_inner_semimaj, band_ann_inner_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
-                vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_outer_semimaj, band_ann_outer_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
-
-                # Plot label
-                vars()['subfig'+str(b)].add_label(0.035, 0.92, bands_dict[band_name]['band_name'], relative=True, size=20, color='white', horizontalalignment='left')
-
-                # Restore console output
-                sys.stdout = sys.__stdout__
-        except:
-            sys.stdout = sys.__stdout__
-            pdb.set_trace()
+        # Plot label
+        vars()['subfig'+str(b)].add_label(0.035, 0.92, bands_dict[band_name]['band_name'], relative=True, size=20, color='white', horizontalalignment='left')
 
         # Progress counters
         counter += 1
@@ -857,47 +847,35 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
         dx = x_fig_subdim
         dy = y_fig_subdim
 
-        # Disable console output and warnings whilst plotting images
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                sys.stdout = open(os.devnull, "w")
+        # Create and format image
+        vars()['subfig'+str(w)] = aplpy.FITSFigure(img_output, figure=fig, subplot=[x_min, y_min, dx, dy])
+        vars()['subfig'+str(w)].show_colorscale(cmap=bands_dict[band_name]['colour_map'], stretch='arcsinh', pmin=7.5, pmax=99.5)
+        vars()['subfig'+str(w)].set_nan_color('black')
+        vars()['subfig'+str(w)].axis_labels.hide()
+        vars()['subfig'+str(w)].tick_labels.hide()
+        vars()['subfig'+str(w)].ticks.hide()
 
-                # Create and format image
-                vars()['subfig'+str(w)] = aplpy.FITSFigure(img_output, figure=fig, subplot=[x_min, y_min, dx, dy])
-                vars()['subfig'+str(w)].show_colorscale(cmap=bands_dict[band_name]['colour_map'], stretch='arcsinh', pmin=7.5, pmax=99.5)
-                vars()['subfig'+str(w)].set_nan_color('black')
-                vars()['subfig'+str(w)].axis_labels.hide()
-                vars()['subfig'+str(w)].tick_labels.hide()
-                vars()['subfig'+str(w)].ticks.hide()
+        # Extract combined aperture dimensions
+        band_beam_width = bands_dict[band_name]['beam_arcsec'] / 3600.0
+        comb_ap_angle = opt_angle
+        comb_ap_axial_ratio = opt_axial_ratio
+        comb_ap_semimaj = opt_semimaj_arcsec/3600.0
+        comb_ap_semimin = comb_ap_semimaj / comb_ap_axial_ratio
+        comb_ap_semimaj = ( comb_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
+        comb_ap_semimin = ( comb_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
 
-                # Extract combined aperture dimensions
-                band_beam_width = bands_dict[band_name]['beam_arcsec'] / 3600.0
-                comb_ap_angle = opt_angle
-                comb_ap_axial_ratio = opt_axial_ratio
-                comb_ap_semimaj = opt_semimaj_arcsec/3600.0
-                comb_ap_semimin = comb_ap_semimaj / comb_ap_axial_ratio
-                comb_ap_semimaj = ( comb_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
-                comb_ap_semimin = ( comb_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
+        # Plot combined aperture
+        line_width = 4.0
+        vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*comb_ap_semimaj, 2.0*comb_ap_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width)
 
-                # Plot combined aperture
-                line_width = 4.0
-                vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*comb_ap_semimaj, 2.0*comb_ap_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width)
+        # Plot combined background annulus
+        band_ann_inner_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_inner']
+        band_ann_outer_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_outer']
+        vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_inner_semimaj, band_ann_inner_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
+        vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_outer_semimaj, band_ann_outer_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
 
-                # Plot combined background annulus
-                band_ann_inner_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_inner']
-                band_ann_outer_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_outer']
-                vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_inner_semimaj, band_ann_inner_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
-                vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_outer_semimaj, band_ann_outer_semimaj/comb_ap_axial_ratio, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
-
-                # Plot label
-                vars()['subfig'+str(w)].add_label(0.035, 0.92, bands_dict[band_name]['band_name'], relative=True, size=20, color='white', horizontalalignment='left')
-
-                # Restore console output
-                sys.stdout = sys.__stdout__
-        except:
-            sys.stdout = sys.__stdout__
-            pdb.set_trace()
+        # Plot label
+        vars()['subfig'+str(w)].add_label(0.035, 0.92, bands_dict[band_name]['band_name'], relative=True, size=20, color='white', horizontalalignment='left')
 
         # Progress counters
         counter += 1
@@ -908,7 +886,7 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
 
     # Save figure, and remove temporary files
     fig.savefig( os.path.join(kwargs_dict['output_dir_path'],'Photometry_Thumbnails',source_dict['name']+'_Thumbnail_Grid.png'), facecolor='white', dpi=100.0)
-    [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
+    [ os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map ]
     fig.clear()
     plt.close('all')
     gc.collect()
@@ -925,14 +903,9 @@ def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, img_rad_arcsec, 
     # Construct output path
     img_output = os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_dict['band_name']+'_Thumbnail.fits')
 
-    # If map is smaller than requested map region, embed it in a larger array
-    if img_rad_arcsec<=thumb_rad:
-        img_margin = thumb_rad - img_rad_arcsec
-        ChrisFuncs.FitsEmbed( img_input, img_margin, exten=0, outfile=img_input )
-
-    # Produce cutout, and neated header as necessary (to quell noisy APLpy verbosity later on)
+    # Produce cutout, and neaten header as necessary (to quell noisy APLpy verbosity later on)
     cutout_parallel = ( not kwargs_dict['parallel'] )
-    cutout_hdulist = ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, variable=True, reproj=True, parallel=cutout_parallel, fast=True )
+    cutout_hdulist = ChrisFuncs.FitsCutout( img_input, source_dict['ra'], source_dict['dec'], thumb_rad, exten=0, variable=True, reproj=False, parallel=cutout_parallel, fast=True )
     cutout_data = cutout_hdulist[0].data
     cutout_header = cutout_hdulist[0].header
     cutout_header['EQUINOX'] = 2000.0

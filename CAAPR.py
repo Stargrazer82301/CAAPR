@@ -118,14 +118,14 @@ if __name__ == "__main__":
 
     # Run function
     testing = True
-    parallel = True
+    parallel = False
     starsub = False
     fit_apertures = False
     aperture_table_path = None
     if fit_apertures==False:
         aperture_table_path = 'CAAPR_Aperture_Table_Test.csv'
     if testing:
-        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=8, sources_table_path='CAAPR_Source_Table_Test.csv', polysub=True, starsub=starsub, fit_apertures=fit_apertures, do_photom=True, aperture_table_path=aperture_table_path, parallel=parallel, debug=True)
+        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=4, sources_table_path='CAAPR_Source_Table_Test.csv', polysub=True, starsub=starsub, fit_apertures=fit_apertures, do_photom=True, aperture_table_path=aperture_table_path, parallel=parallel, debug=True)
 
         # Jubilate
         print 'All done!'

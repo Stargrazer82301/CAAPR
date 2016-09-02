@@ -543,7 +543,7 @@ def ExcludedSubpipelineAperture(aperture_combined, source_dict, band_dict, kwarg
     img_naxis_pix = np.max([ pod['in_header']['NAXIS1'], pod['in_header']['NAXIS1'] ])
     img_naxis_arcsec = float(img_naxis_pix) * float(pod['pix_arcsec'])
     img_rad_arcsec = img_naxis_arcsec / 2.0
-    thumb_rad_arcsec = 1.25 * aperture_combined[0] * band_dict['annulus_outer']
+    thumb_rad_arcsec = 1.35 * aperture_combined[0] * band_dict['annulus_outer']
     CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], img_rad_arcsec, thumb_rad_arcsec)
 
     # Rename thumbnail cutout, and make it the 'active' map by repeating necessary processing
@@ -567,6 +567,9 @@ def ExcludedSubpipelineAperture(aperture_combined, source_dict, band_dict, kwarg
         magic_output = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits')
         if os.path.exists(magic_output):
             os.remove(magic_output)
+    else:
+        pod['cutout'] = pod['in_image'].copy()
+        os.remove(thumb_output)
 
     # Save resulting cutout
     astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], clobber=True)
