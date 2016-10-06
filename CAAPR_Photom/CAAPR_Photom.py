@@ -938,112 +938,20 @@ def Sersic_LMfit(params, pod, cutout, psf, mask, use_fft, lmfit=True): #astropy.
 
 
 
-# Define function that performs extinction correction on photometry, via IRSA dust extinction service (which uses the Schlafly & Finkbeiner 2011 prescription)
+# Define function that performs extinction correction on photometry, via ChrisFuncs function that calls IRSA dust extinction service (which uses the Schlafly & Finkbeiner 2011 prescription)
 def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
 
 
 
-    # If extinction correction not required, immediately return pod unaltered
-    if kwargs_dict['extinction_corr']!=True:
-        return pod
+    # Run source details through function
+    irsa_band_excorr = ChrisFuncs.ExtCorrrct(source_dict['ra'], source_dict['dec'], band_dict['band_name'], verbose=kwargs_dict['verbose'], verbose_prefix='['+pod['id']+'] ')
 
-
-
-    # List bands for which IRSA provids corrections
-    excorr_possible = ['GALEX_FUV','GALEX_NUV','SDSS_u','SDSS_g','SDSS_r','SDSS_i','SDSS_z','CTIO_U','CTIO_B','CTIO_V','CTIO_R','CTIO_I','DSS_B','DSS_R','DSS_I','2MASS_J','2MASS_H','2MASS_Ks','UKIRT_J','UKIRT_H','UKIRT_K','Spitzer_3.6','Spitzer_4.5','Spitzer_5.8','Spitzer_8.0','WISE_3.4','WISE_4.6']
-
-    # Check if corrections are available for this band
-    photom_band_parsed = CAAPR.CAAPR_Pipeline.BandParse(band_dict['band_name'])
-    if photom_band_parsed==None:
-        if kwargs_dict['verbose']: print '['+pod['id']+'] Unable to parse band name; not conducting Galactic extinction correction for this band.'
-        return pod
-    if photom_band_parsed not in excorr_possible:
-        if kwargs_dict['verbose']: print '['+pod['id']+'] Galactic extinction correction not available for this band.'
-        return pod
-
-    # Else if extinction correction is possible, prepare query IRSA dust extinction service
-    if kwargs_dict['verbose']: print '['+pod['id']+'] Retreiving extinction corrections from IRSA Galactic Dust Reddening & Extinction Service.'
-    query_count = 0
-    query_success = False
-    query_limit = 100
-
-    # Keep trying to access extinction corrections, until it works
-    while not query_success:
-        if query_count>=query_limit:
-            break
-
-        # Carry out query
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                sys.stdout = open(os.devnull, "w")
-                irsa_query = astroquery.irsa_dust.IrsaDust.get_extinction_table( str(source_dict['ra'])+', '+str(source_dict['dec']) )
-            query_success = True
-            break
-
-        # Handle exceptions
-        except Exception as exception:
-            sys.stdout = sys.__stdout__
-            if query_count==0:
-                print '['+pod['id']+'] IRSA Galactic Dust Reddening & Extinction Service query failed with error: \"'+repr(exception.message)+'\" - reattempting.'
-            query_count += 1
-            time.sleep(60.0)
-        except:
-            sys.stdout = sys.__stdout__
-            if query_count==0:
-                print '['+pod['id']+'] IRSA Galactic Dust Reddening & Extinction Service query failed: reattempting (exception not caught).'
-            query_count += 1
-            time.sleep(60.0)
-    if not query_success:
-        print '['+pod['id']+'] Unable to access IRSA Galactic Dust Reddening & Extinction Service after '+str(query_limit)+' attemps.'
-        raise ValueError('Unable to access IRSA Galactic Dust Reddening & Extinction Service after '+str(query_limit)+' attemps.')
-
-
-
-    # Loop over entries in the IRSA table, looking for the current band
-    irsa_band_exists = False
-    for irsa_band_raw in irsa_query['Filter_name'].tolist():
-        irsa_band_parsed = CAAPR.CAAPR_Pipeline.BandParse(irsa_band_raw)
-        if irsa_band_parsed==None:
-            continue
-
-        # If band found in IRSA table, apply quoted Schlafly & Finkbeiner extinction correction
-        if irsa_band_parsed==photom_band_parsed:
-            irsa_band_index = np.where( irsa_query['Filter_name']==irsa_band_raw )[0][0]
-            irsa_band_excorr_mag = irsa_query['A_SandF'][irsa_band_index]
-            irsa_band_excorr = 10.0**( irsa_band_excorr_mag / 2.51 )
-            pod['ap_sum'] *= irsa_band_excorr
-            pod['ap_error'] *= irsa_band_excorr
-            irsa_band_exists = True
-            break
-
-
-
-    # If band is GALEX, determine appropriate extinction correction using reddening coefficients derived from Cardelli (1989) extinction law (cf Gil de Paz 2007, arXiv:1009.4705, arXiv:1108.2837)
-    if (irsa_band_exists==False) and (photom_band_parsed in ['GALEX_FUV','GALEX_NUV']):
-
-        # Get the A(V) / E(B-V) extinction-to-excess ratio in V-band
-        irsa_v_index = np.where( irsa_query['Filter_name']=='CTIO V' )[0][0]
-        irsa_av_ebv_ratio = irsa_query["A_over_E_B_V_SandF"][irsa_v_index]
-
-        # Get the A(V) attenuation in V-band
-        irsa_av = irsa_query["A_SandF"][irsa_v_index]
-
-        # Determine the factor
-        if photom_band_parsed=='GALEX_FUV':
-            reddening_coeff = 7.9
-        elif photom_band_parsed=='GALEX_NUV':
-            reddening_coeff = 8.0
-
-        # Calculate and apply the extincton correction
-        irsa_band_excorr_mag = reddening_coeff * ( irsa_av / irsa_av_ebv_ratio )
-        irsa_band_excorr = 10.0**( irsa_band_excorr_mag / 2.51 )
-        pod['ap_sum'] *= irsa_band_excorr
-        pod['ap_error'] *= irsa_band_excorr
-
-
+    # Update photometry with extinction corrections
+    pod['ap_sum'] *= irsa_band_excorr
+    pod['ap_error'] *= irsa_band_excorr
 
     # Report and return extinction-correced photometry
+    irsa_band_excorr_mag = 2.51*np.log10(irsa_band_excorr)
     if kwargs_dict['verbose']: print '['+pod['id']+'] Applying Galactic extinction correction of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr_mag,4))+' mag (ie, factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr,4))+').'
     return pod
 

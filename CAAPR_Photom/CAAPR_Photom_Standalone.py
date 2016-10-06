@@ -6,14 +6,11 @@ import pdb
 import time
 import warnings
 import numpy as np
-import scipy.ndimage
 import astropy.io.fits
 import astropy.wcs
 import astropy.convolution
 import astropy.modeling
 import astroquery.irsa_dust
-import lmfit
-import ChrisFuncs
 import CAAPR
 
 
@@ -75,50 +72,6 @@ def StandaloneApCorrect(psf_path, cutout, pix_arcsec, semimaj_pix, axial_ratio, 
     # Determine aperture correction factor, and return
     ap_correction = pod['ap_sum']
     return ap_correction
-
-
-
-
-
-# Standalone wrapper around ExtCorrect: A function that performs extinction correction on photometry, via IRSA dust extinction service (which uses the Schlafly & Finkbeiner 2011 prescription)
-def StandaloneExtCorrrct(ra, dec, band_name):
-    """
-    Arguments of CAAPR.CAAPR_Photom_Standalone.ExtCorrrct:
-
-    ra:                 Right ascenscion of the target coorindate.
-    dec:                Declination of the target coordinate.
-    band_name:          The name of the band in question.
-
-    Returns:
-
-    excorr:             The determined Galactic extionction correction, in magnititudes, for band in question at the target coordinates
-    """
-
-
-
-    # Construct staw-man pod
-    pod = {'id':'',
-           'ap_sum':1.0,
-           'ap_error':1.0}
-
-    # Construct straw-man source dictionary
-    source_dict = {'ra':ra,
-                   'dec':dec}
-
-    # Construct straw-man band dictionary
-    band_dict = {'band_name':band_name}
-
-    # Construct straw-man kwargs dictionary
-    kwargs_dict = {'verbose':False,
-                   'extinction_corr':True}
-
-    # Call actual ExtCorrect function
-    pod = CAAPR.CAAPR_Photom.ExtCorrrct(pod, source_dict, band_dict, kwargs_dict)
-
-    # Determine extinction correction, and return
-    excorr = np.abs( 2.51 * np.log10( pod['ap_sum'] ) )
-    return excorr
-
 
 
 
