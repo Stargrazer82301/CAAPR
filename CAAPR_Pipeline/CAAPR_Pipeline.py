@@ -190,9 +190,8 @@ def SourcePrelim(source_dict, bands_dict, kwargs_dict):
         bands_check.append(file_found)
 
     # Report to user if no data found
-    if file_found==False:
-        print '['+source_id+'] No appropriately-named FITS file found in target directroy (please ensure that filesnames are in \"[NAME]_[BAND].fits\" format.)'
-        print '['+source_id+'] Assuming no data in this band for current source.'
+    if True not in bands_check:
+        print '['+source_id+'] No data found in target directory(/ies) for current source.'
 
         # Make null entries in tables, as necessary
         if kwargs_dict['fit_apertures']==True:
