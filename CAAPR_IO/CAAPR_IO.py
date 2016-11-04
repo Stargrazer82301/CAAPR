@@ -646,10 +646,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         band_ap_semimaj = (aperture_list[b]['opt_semimaj_arcsec'])/3600.0
         band_ap_semimin = band_ap_semimaj / band_ap_axial_ratio
         band_beam_width = bands_dict[band_name]['beam_arcsec'] / 3600.0
-        print band_name
-        print band_ap_semimaj*3600.0
         band_ap_semimaj = ( band_ap_semimaj**2.0 + (0.5*band_beam_width)**2.0 )**0.5
-        print band_ap_semimaj*3600.0
         band_ap_semimin = ( band_ap_semimin**2.0 + (0.5*band_beam_width)**2.0 )**0.5
         band_ap_axial_ratio = band_ap_semimaj / band_ap_semimaj
 
@@ -666,9 +663,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         comb_ap_axial_ratio = aperture_combined[1]
         comb_ap_semimaj = aperture_combined[0]/3600.0
         comb_ap_semimin = comb_ap_semimaj / comb_ap_axial_ratio
-        print comb_ap_semimaj*3600.0
         comb_ap_semimaj = ( comb_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
-        print comb_ap_semimaj*3600.0
         comb_ap_semimin = ( comb_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
 
         # Plot combined aperture
