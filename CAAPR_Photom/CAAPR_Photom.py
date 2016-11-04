@@ -355,7 +355,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
     # Define how many random aperture are desired/required/permitted
     sky_success_target = 50
     sky_success_min = 20
-    sky_gen_max = 100
+    sky_gen_max = 200
 
     # Generate random polar coordinates to draw from
     if ap_debug: print 'Setup: Generating pool of random polar coordinates'
