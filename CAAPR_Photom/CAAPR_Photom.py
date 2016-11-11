@@ -650,12 +650,18 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
 
 
 
-        # Calculate values to plot
+        # Calculate log of mini aperture area and noise
         log_mini_ap_area = np.log10(np.pi*min_ap_rad_pix_output**2.0)
         log_mini_ap_noise = np.log10(mini_ap_noise_output)
-        mini_ap_noise_err_rel = mini_ap_num_output**0.5 / mini_ap_num_output
+
+        # Calculate poisson uncertaity on calculated noise
+        mini_ap_noise_err = mini_ap_num_output**0.5
+
+        # Weight points according to distance in log space from true aperture area
+        mini_ap_noise_err *= np.log10(ap_area) - log_mini_ap_area
+
         #mini_ap_noise_err = np.abs( mini_ap_noise_output * mini_ap_noise_err_rel )
-        log_mini_ap_noise_err = mini_ap_noise_err_rel#ChrisFuncs.LogError(mini_ap_noise_output, mini_ap_noise_err)
+        log_mini_ap_noise_err = ChrisFuncs.LogError(mini_ap_noise_output, mini_ap_noise_err)
 
         # Define straight-line function, and fit it to points
         def Line(x,m,c):
