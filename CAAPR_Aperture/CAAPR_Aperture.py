@@ -258,10 +258,10 @@ def ApertureSize(pod, band_dict):
             if verbose: print '['+pod['id']+'] Course analysis finds that radial SNR=2 between semi-major axes of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ann_bounds[0][1]*pod['pix_arcsec'],4))+' and '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ann_bounds[0][0]*pod['pix_arcsec'],4))+' arcseconds.'
             break
 
-    # If SNR=2 threshold not reached, set to minimum semi-major axis of two beam-widths
+    # If SNR=2 threshold not reached, set to minimum semi-major axis of half a beam-width
     if snr_success==False:
         ann_bounds = [( ann_brute_range[i], np.floor(pod['cutout'].shape[0]/2.0) )]
-        opt_semimaj_pix = pod['beam_pix'] * 2.0
+        opt_semimaj_pix = pod['beam_pix'] * 0.5
         opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
         if verbose: print '['+pod['id']+'] No SNR=2 threshold found; hence reverting to two beam-width minimum value of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_semimaj_arcsec,4))+' arcseconds.'
     else:
