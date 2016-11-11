@@ -10,12 +10,12 @@ warnings.filterwarnings('ignore')
 import matplotlib
 matplotlib.use('Agg')
 import multiprocessing as mp
-import CAAPR_IO
+import ChrisFuncs
 import CAAPR_Pipeline
+import CAAPR_IO
 import CAAPR_Aperture
 import CAAPR_Photom
 import CAAPR_AstroMagic
-
 
 
 

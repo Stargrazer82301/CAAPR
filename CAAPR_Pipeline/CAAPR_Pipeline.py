@@ -255,12 +255,15 @@ def FilePrelim(source_dict, band_dict, kwargs_dict):
 
     # Work out whether the file extension for FITS file in question is .fits or .fits.gz
     file_found = False
-    if os.path.exists(in_fitspath+'.fits'):
-        in_fitspath = in_fitspath+'.fits'
-        file_found = True
-    elif os.path.exists(in_fitspath+'.fits.gz'):
-        in_fitspath = in_fitspath+'.fits.gz'
-        file_found = True
+    try:
+        if os.path.exists(in_fitspath+'.fits'):
+            in_fitspath = in_fitspath+'.fits'
+            file_found = True
+        elif os.path.exists(in_fitspath+'.fits.gz'):
+            in_fitspath = in_fitspath+'.fits.gz'
+            file_found = True
+    except:
+        raise ValueError('Path provided for band '+str(band_dict['band_name'])+' refers to neither a file nor a folder.')
 
     # Return file values
     return in_fitspath, file_found

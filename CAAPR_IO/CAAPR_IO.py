@@ -18,6 +18,7 @@ import astropy.io.fits
 import astropy.wcs
 import aplpy
 import ChrisFuncs
+import CAAPR
 plt.ioff()
 
 
