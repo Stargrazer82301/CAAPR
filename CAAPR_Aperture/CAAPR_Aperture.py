@@ -258,12 +258,12 @@ def ApertureSize(pod, band_dict):
             if verbose: print '['+pod['id']+'] Course analysis finds that radial SNR=2 between semi-major axes of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ann_bounds[0][1]*pod['pix_arcsec'],4))+' and '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ann_bounds[0][0]*pod['pix_arcsec'],4))+' arcseconds.'
             break
 
-    # If SNR=2 threshold not reached, set to minimum semi-major axis of half a beam-width
+    # If SNR=2 threshold not reached, set to default minimum semi-major axis
     if snr_success==False:
         ann_bounds = [( ann_brute_range[i], np.floor(pod['cutout'].shape[0]/2.0) )]
-        opt_semimaj_pix = pod['beam_pix'] * 0.5
+        opt_semimaj_pix = pod['beam_pix'] * 0.0
         opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
-        if verbose: print '['+pod['id']+'] No SNR=2 threshold found; hence reverting to two beam-width minimum value of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_semimaj_arcsec,4))+' arcseconds.'
+        if verbose: print '['+pod['id']+'] No SNR=2 threshold found; hence reverting to default minimum aperture size of one beam-width.' #+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_semimaj_arcsec,4))+' arcseconds.'
     else:
 
         # Now use scipy differential evolution optimisation to find, with more precision, the semi-major axis at which annulus falls to a SNR of 2
@@ -281,13 +281,13 @@ def ApertureSize(pod, band_dict):
         opt_semimaj_pix = ann_fit['x'][0]
         opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
         if verbose: print '['+pod['id']+'] Precision analysis finds that radial SNR=2 at semi-major axis of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_semimaj_arcsec,4))+' arcseconds.'
-
-        # For small sources, default to minimum semi-major axis of two beam-widths
+        """
+        # For small sources, default to minimum semi-major axis of one beam-width
         if opt_semimaj_pix<(ann_beams*2.0):
             opt_semimaj_pix = pod['beam_pix'] * 2.0
             opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
-            if verbose: print '['+pod['id']+'] Semi-major axis at which SNR=2 is less than two beam-widths; hence reverting to two beam-width minimum value of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_semimaj_arcsec,4))+' arcseconds.'
-
+            if verbose: print '['+pod['id']+'] Semi-major axis at which SNR=2 is less than one beam-width; hence reverting to two beam-width minimum value of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(opt_semimaj_arcsec,4))+' arcseconds.'
+        """
     # Establish what fraction of the pixels inside a band's aperture are NaNs
     pix_good = ChrisFuncs.Photom.EllipseQuickSum(pod['cutout'], opt_semimaj_pix, pod['opt_axial_ratio'], pod['opt_angle'], pod['centre_i'], pod['centre_j'], i_trans, j_trans)[1]
     pix_tot = np.where( ChrisFuncs.Photom.EllipseMask(pod['cutout'], opt_semimaj_pix, pod['opt_axial_ratio'], pod['opt_angle'], pod['centre_i'], pod['centre_j']) == 1 )[0].shape[0]
@@ -301,23 +301,28 @@ def ApertureSize(pod, band_dict):
     del(cutout_unconv)
     gc.collect()
 
-    # If more than 10% of the pixels in the aperture are NaNs, report NaN values for aperture dimensions; else proceed normally
+    # If more than 10% of the pixels in the aperture are NaNs, report default values for aperture dimensions
     if pix_good_frac<0.9:
-        opt_semimaj_pix = pod['beam_pix'] * 2.0
+        opt_semimaj_pix = pod['beam_pix'] * 0.0
         opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
-        if verbose: print '['+pod['id']+'] More than 10% of pixels in fitted aperture are NaNs; hence reverting to two beam-width minimum value of '+str(opt_semimaj_arcsec)[:7]+' arcseconds.'
+        if verbose: print '['+pod['id']+'] More than 10% of pixels in fitted aperture are NaNs; hence reverting to default minimum aperture size of one beam-width.' #+str(opt_semimaj_arcsec)[:7]+' arcseconds.'
         pod['opt_semimaj_arcsec'] = opt_semimaj_arcsec
         pod['opt_axial_ratio'] = 1.0
         pod['opt_angle'] = 0.0
-    else:
 
-        # Deconvolve aperture semi-major axis with beam, by subtracting in quadrature
+    # If dimensions are otherwise default, report to pod
+    if abs( opt_semimaj_arcsec**2.0 - (0.5*band_dict['beam_arcsec'])**2.0 )**0.5<=0.0:
+        opt_semimaj_pix = pod['beam_pix'] * 0.0
+        pod['opt_semimaj_arcsec'] = opt_semimaj_pix * pod['pix_arcsec']
+        pod['opt_axial_ratio'] = 1.0
+        pod['opt_angle'] = 0.0
+
+    # Else deconvolve aperture semi-major axis with beam, by subtracting in quadrature, and record dimensions to pod
+    else:
         adj_semimaj_arcsec = abs( opt_semimaj_arcsec**2.0 - (0.5*band_dict['beam_arcsec'])**2.0 )**0.5
         opt_semimin_arcsec = opt_semimaj_arcsec / pod['opt_axial_ratio']
         adj_semimin_arcsec = abs( opt_semimin_arcsec**2.0 - (0.5*band_dict['beam_arcsec'])**2.0 )**0.5
         adj_ax_ratio = adj_semimaj_arcsec / adj_semimin_arcsec
-
-        # Record final dimensions to pod
         pod['opt_semimaj_arcsec'] = adj_semimaj_arcsec
         pod['opt_semimaj_pix'] = adj_semimaj_arcsec / pod['pix_arcsec']
         pod['opt_axial_ratio'] = adj_ax_ratio
