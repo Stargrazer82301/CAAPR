@@ -597,7 +597,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         thumb_rad = np.ceil(1.1 * aperture_combined[0] * bands_dict[band_name]['annulus_outer'] )
         img_header = astropy.io.fits.getheader(img_input)
         img_wcs = astropy.wcs.WCS(img_header)
-        img_pix_arcsec = np.max(3600.0*img_wcs.wcs.cdelt)
+        img_pix_arcsec = 3600.0 *np.mean(np.abs(np.diagonal(img_wcs.pixel_scale_matrix)))
         img_naxis_pix = np.max([img_header['NAXIS1'],img_header['NAXIS1']])
         img_naxis_arcsec = float(img_naxis_pix) * float(img_pix_arcsec)
         img_rad_arcsec = img_naxis_arcsec / 2.0
