@@ -178,7 +178,7 @@ def AperturePrelim(pod, source_dict, band_dict, kwargs_dict):
     aperture_table = np.genfromtxt(kwargs_dict['aperture_table_path'], delimiter=',', names=True, dtype=None)
     aperture_index = np.where( aperture_table['name']==source_dict['name'] )
     if aperture_index[0].shape[0]>1:
-        raise ValueError('Aperture value caontains more than one entry for current galaxy')
+        raise Exception('Aperture value caontains more than one entry for current galaxy')
     else:
         aperture_index = aperture_index[0][0]
 
@@ -1016,7 +1016,7 @@ def PhotomCheck(photom_attempts, photom_output_list, source_dict, bands_dict, kw
         if photom_attempts>=photom_limit:
             print '['+source_dict['name']+'] Photometry failed '+str(photom_limit)+' times in succession; suggest debugging.'
             pdb.set_trace()
-            raise ValueError('Photometry failed '+str(photom_limit)+' times in succession; suggest debugging.')
+            raise Exception('Photometry failed '+str(photom_limit)+' times in succession; suggest debugging.')
         else:
             return photom_attempts
 

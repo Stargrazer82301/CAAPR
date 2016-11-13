@@ -202,7 +202,7 @@ def Cutout(source_dict, band_dict, kwargs_dict):
 
     # Check whether cutout has been requested; if not, return band path unchanged
     if str(band_dict['make_cutout'])==True:
-        raise ValueError('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
+        raise Exception('If you want to produce a cutout, please set the \'make_cutout\' field of the band table to be your desired cutout width, in arcsec.')
     if not float(band_dict['make_cutout'])>0:
         return band_dict
 
@@ -237,7 +237,7 @@ def Cutout(source_dict, band_dict, kwargs_dict):
         elif os.path.exists(in_fitspath_error+'.gz'):
             in_fitspath_error = in_fitspath_error+'.gz'
         else:
-            raise ValueError('No appropriately-named error file found in target directroy (please ensure that error filesnames are in \"[NAME]_[BAND]_Error.fits\" format.')
+            raise Exception('No appropriately-named error file found in target directroy (please ensure that error filesnames are in \"[NAME]_[BAND]_Error.fits\" format.')
 
     # Construct output path (likewise for error map, if necessary)
     out_fitspath = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
@@ -305,7 +305,7 @@ def UnpaddingCutout(source_dict, band_dict, kwargs_dict):
         elif os.path.exists(in_fitspath_error+'.gz'):
             in_fitspath_error = in_fitspath_error+'.gz'
         else:
-            raise ValueError('No appropriately-named error file found in target directroy (please ensure that error filesnames are in \"[NAME]_[BAND]_Error.fits\" format.')
+            raise Exception('No appropriately-named error file found in target directroy (please ensure that error filesnames are in \"[NAME]_[BAND]_Error.fits\" format.')
 
     # Load in map and extract WCS
     in_fits, in_header = astropy.io.fits.getdata(in_fitspath, header=True)
@@ -726,7 +726,7 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
     aperture_table = np.genfromtxt(kwargs_dict['aperture_table_path'], delimiter=',', names=True, dtype=None)
     aperture_index = np.where( aperture_table['name']==source_dict['name'] )
     if aperture_index[0].shape[0]>1:
-        raise ValueError('Aperture value caontains more than one entry for current galaxy')
+        raise Exception('Aperture value caontains more than one entry for current galaxy')
     else:
         aperture_index = aperture_index[0][0]
 

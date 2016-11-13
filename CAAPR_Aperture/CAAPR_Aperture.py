@@ -431,7 +431,7 @@ def ApertureCheck(aperture_attempts, aperture_output_list, source_dict, bands_di
         if aperture_attempts>=aperture_limit:
             print '['+source_dict['name']+'] Aperture fitting failed '+str(aperture_limit)+' times in succession; suggest debugging.'
             pdb.set_trace()
-            raise ValueError('Aperture fitting failed '+str(aperture_limit)+' times in succession; suggest debugging.')
+            raise Exception('Aperture fitting failed '+str(aperture_limit)+' times in succession; suggest debugging.')
         else:
             return aperture_attempts
 

@@ -119,7 +119,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
         # Handle problem where the user hasn't provided an aperture file, but also hasn't told CAAPR to fit its own apertures.
         if kwargs_dict['aperture_table_path']==False and kwargs_dict['fit_apertures']==False:
-            raise ValueError('User has requested no aperture-fitting, and no photometry!')
+            raise Exception('User has requested no aperture-fitting, and no photometry!')
 
         # Process sources inside while loop, to catch 'missed' bands
         photom_attempts = 0
@@ -228,7 +228,7 @@ def BandInitiate(band_dict):
         try:
             band_dict['make_cutout'] = float(band_dict['make_cutout'])
         except:
-            raise ValueError('Cutout request not understood; should either be False, or width of cutout in arcseconds.')
+            raise Exception('Cutout request not understood; should either be False, or width of cutout in arcseconds.')
 
     # Reset band directory to inviolate value, to purge any holdovers from previous source
     band_dict['band_dir'] = band_dict['band_dir_inviolate']
@@ -263,7 +263,7 @@ def FilePrelim(source_dict, band_dict, kwargs_dict):
             in_fitspath = in_fitspath+'.fits.gz'
             file_found = True
     except:
-        raise ValueError('Path provided for band '+str(band_dict['band_name'])+' refers to neither a file nor a folder.')
+        raise Exception('Path provided for band '+str(band_dict['band_name'])+' refers to neither a file nor a folder.')
 
     # Return file values
     return in_fitspath, file_found
@@ -315,7 +315,7 @@ def MapPrelim(pod, source_dict, band_dict, verbose=False):
     # Check if x & y pixel sizes are meaningfully different. If so, panic; else, treat as same
     pix_size = 3600.0 * pod['in_wcs'].wcs.cdelt
     if float(abs(pix_size.max()))/float(abs(pix_size.min()))>(1+1E-3):
-        raise ValueError('The x pixel size if noticably different from the y pixel size.')
+        raise Exception('The x pixel size if noticably different from the y pixel size.')
     else:
         pod['pix_arcsec'] = float(np.mean(np.abs(pix_size)))
 
