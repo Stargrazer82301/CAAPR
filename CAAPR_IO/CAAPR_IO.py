@@ -683,9 +683,9 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
 
         # Plot combined background annulus
         band_ann_inner_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_inner']
-        band_ann_inner_semimin = comb_ap_semimin * 2.0 * bands_dict[band_name]['annulus_inner'] * comb_ap_axial_ratio**-1.0
+        band_ann_inner_semimin = comb_ap_semimin * 2.0 * bands_dict[band_name]['annulus_inner']
         band_ann_outer_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_outer']
-        band_ann_outer_semimin = comb_ap_semimin * 2.0 * bands_dict[band_name]['annulus_outer'] * comb_ap_axial_ratio**-1.0
+        band_ann_outer_semimin = comb_ap_semimin * 2.0 * bands_dict[band_name]['annulus_outer']
         vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_inner_semimaj, band_ann_inner_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
         vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_outer_semimaj,band_ann_outer_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
 
@@ -893,9 +893,9 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
 
         # Plot combined background annulus
         band_ann_inner_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_inner']
-        band_ann_inner_semimin = comb_ap_semimin * 2.0 * bands_dict[band_name]['annulus_inner'] * comb_ap_axial_ratio**-1.0
+        band_ann_inner_semimin = comb_ap_semimin * 2.0 * bands_dict[band_name]['annulus_inner']
         band_ann_outer_semimaj = comb_ap_semimaj * 2.0 * bands_dict[band_name]['annulus_outer']
-        band_ann_outer_semimin = comb_ap_semimin * 2.0 * bands_dict[band_name]['annulus_outer'] * comb_ap_axial_ratio**-1.0
+        band_ann_outer_semimin = comb_ap_semimin * 2.0 * bands_dict[band_name]['annulus_outer']
         vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_inner_semimaj, band_ann_inner_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
         vars()['subfig'+str(w)].show_ellipses(source_dict['ra'], source_dict['dec'], band_ann_outer_semimaj,band_ann_outer_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width/3.0, linestyle='dashed')
 
