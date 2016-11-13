@@ -196,7 +196,6 @@ def PhotomTablePrepare(kwargs_dict):
 
 # Function that produces a cutout of a given source in a given band
 def Cutout(source_dict, band_dict, kwargs_dict):
-    source_id = source_dict['name']+'_'+band_dict['band_name']
 
 
 
@@ -260,7 +259,6 @@ def Cutout(source_dict, band_dict, kwargs_dict):
 
 # Function that determines if there is unncessary 'padding' around the coverage region of a map, that can be removed
 def UnpaddingCutout(source_dict, band_dict, kwargs_dict):
-    source_id = source_dict['name']+'_'+band_dict['band_name']
 
 
 
@@ -581,6 +579,20 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
 
 
 
+    # Find largest beam size and outer annulus size
+    beam_arcsec_max = 0.0
+    outer_annulus_max = 0.0
+    for band_name in bands_dict:
+        if bands_dict[band_name]['beam_arcsec']>beam_arcsec_max:
+            beam_arcsec_max = bands_dict[band_name]['beam_arcsec']
+        if bands_dict[band_name]['annulus_outer']>outer_annulus_max:
+            outer_annulus_max = bands_dict[band_name]['annulus_outer']
+
+    # Work out thumbnail size that will contain the largest beam-convolved aperture
+    thumb_rad = np.ceil(1.1 * np.sqrt( aperture_combined[0]**2.0 + (0.5*beam_arcsec_max)**2.0 ) * outer_annulus_max )
+
+
+
     # Begin preliminary loop, to produce cutouts for thumbnails
     thumb_pool = mp.Pool()
     bands_list_present = []
@@ -594,7 +606,6 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
             bands_list_present.append(band_name)
 
         # Calculate desired size of thumbnail, based on fitted apertures, and size of map
-        thumb_rad = np.ceil(1.1 * aperture_combined[0] * bands_dict[band_name]['annulus_outer'] )
         img_header = astropy.io.fits.getheader(img_input)
         img_wcs = astropy.wcs.WCS(img_header)
         img_pix_arcsec = 3600.0 *np.mean(np.abs(np.diagonal(img_wcs.pixel_scale_matrix)))
@@ -792,6 +803,20 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
     x_title = 1.0 * x_margin #x_fig_margin + ( np.mod(0.0, x_grid) * x_fig_subdim ) + ( np.mod(0.0, x_grid) * x_fig_margin )
     y_title = y_dim - (0.65 * y_margin) #1.0 - ( y_fig_margin + y_fig_subdim + ( np.floor(float(counter)/x_grid) * y_fig_subdim ) + ( np.floor(float(counter)/x_grid) * y_fig_margin ) )
     plt.figtext(x_title/x_dim, y_title/y_dim, source_dict['name'], size=30, color='black', weight='bold', horizontalalignment='left', verticalalignment='top', figure=fig)
+
+
+
+    # Find largest beam size and outer annulus size
+    beam_arcsec_max = 0.0
+    outer_annulus_max = 0.0
+    for band_name in bands_dict:
+        if bands_dict[band_name]['beam_arcsec']>beam_arcsec_max:
+            beam_arcsec_max = bands_dict[band_name]['beam_arcsec']
+        if bands_dict[band_name]['annulus_outer']>outer_annulus_max:
+            outer_annulus_max = bands_dict[band_name]['annulus_outer']
+
+    # Work out thumbnail size that will contain the largest beam-convolved aperture
+    thumb_rad = np.ceil(1.1 * np.sqrt( opt_semimaj_arcsec**2.0 + (0.5*beam_arcsec_max)**2.0 ) * outer_annulus_max )
 
 
 
