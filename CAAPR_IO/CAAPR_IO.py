@@ -589,7 +589,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
             outer_annulus_max = bands_dict[band_name]['annulus_outer']
 
     # Work out thumbnail size that will contain the largest beam-convolved aperture
-    thumb_rad = np.ceil(1.1 * np.sqrt( aperture_combined[0]**2.0 + (0.5*beam_arcsec_max)**2.0 ) * outer_annulus_max )
+    thumb_rad = np.ceil(1.2 * np.sqrt( (outer_annulus_max * aperture_combined[0])**2.0 + (0.5*beam_arcsec_max)**2.0 ) )
 
 
 
@@ -818,7 +818,7 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
             outer_annulus_max = bands_dict[band_name]['annulus_outer']
 
     # Work out thumbnail size that will contain the largest beam-convolved aperture
-    thumb_rad = np.ceil(1.1 * np.sqrt( opt_semimaj_arcsec**2.0 + (0.5*beam_arcsec_max)**2.0 ) * outer_annulus_max )
+    thumb_rad = np.ceil(1.1 * np.sqrt( (outer_annulus_max*opt_semimaj_arcsec)**2.0 + (0.5*beam_arcsec_max)**2.0 ) )
 
 
 
