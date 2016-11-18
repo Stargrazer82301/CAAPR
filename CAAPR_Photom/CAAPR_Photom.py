@@ -1051,6 +1051,23 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict):
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Preparing thumbnail data for bands excluded from photometry.'
         random.shuffle(photom_bands_exclude)
 
+    # Find largest beam size and outer annulus size, for later usein thumbnail generation
+    beam_arcsec_max = 0.0
+    outer_annulus_max = 0.0
+    pix_arcsec_max = 0.0
+    for band_name in bands_dict:
+        band_pix_matrix = astropy.wcs.WCS(astropy.io.fits.getheader(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits'))).pixel_scale_matrix
+        band_pix_arcsec = 3600.0 * np.sqrt( np.min(np.abs(band_pix_matrix))**2.0 + np.max(np.abs(band_pix_matrix))**2.0 )
+        if band_pix_arcsec>pix_arcsec_max:
+            pix_arcsec_max = band_pix_arcsec
+        if bands_dict[band_name]['beam_arcsec']>beam_arcsec_max:
+            beam_arcsec_max = bands_dict[band_name]['beam_arcsec']
+        if bands_dict[band_name]['annulus_outer']>outer_annulus_max:
+            outer_annulus_max = bands_dict[band_name]['annulus_outer']
+    source_dict['beam_arcsec_max'] = beam_arcsec_max
+    source_dict['outer_annulus_max'] = outer_annulus_max
+    source_dict['pix_arcsec_max'] = pix_arcsec_max
+
     # In standard operation, process multiple sources in parallel
     if kwargs_dict['parallel']==True:
         ex_ap_pool = mp.Pool(processes=kwargs_dict['n_proc'])
@@ -1090,11 +1107,10 @@ def ExcludedSubpipelinePhotom(source_dict, band_dict, kwargs_dict_inviolate):
     CAAPR.CAAPR_IO.MemCheck(pod)
 
     # Use thumbnail cutout function to create a cutout that's only as large as it needs to be for the thumbnail grid
-    img_naxis_pix = np.max([ pod['in_header']['NAXIS1'], pod['in_header']['NAXIS1'] ])
-    img_naxis_arcsec = float(img_naxis_pix) * float(pod['pix_arcsec'])
-    img_rad_arcsec = img_naxis_arcsec / 2.0
-    thumb_rad_arcsec = 1.35 * pod['adj_semimaj_arcsec'] * band_dict['annulus_outer']
-    CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], img_rad_arcsec, thumb_rad_arcsec)
+    semimaj_arcsec = np.sqrt( pod['adj_semimaj_arcsec']**2.0 - band_dict['beam_arcsec']**2.0 )
+    thumb_rad_arcsec = np.ceil( 2.0 * pod['pix_arcsec'] ) + np.ceil( 1.2 * 0.5 * np.sqrt( (source_dict['outer_annulus_max']*2.0*semimaj_arcsec)**2.0 + (source_dict['beam_arcsec_max'])**2.0 ) )
+    source_dict['thumb_rad_arcsec'] = thumb_rad_arcsec
+    CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], thumb_rad_arcsec)
 
     # Rename thumbnail cutout, and make it the 'active' map by repeating necessary processing
     thumb_output = os.path.join( kwargs_dict['temp_dir_path'], 'Processed_Maps', source_id+'_Thumbnail.fits' )

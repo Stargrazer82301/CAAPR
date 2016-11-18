@@ -579,17 +579,22 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
 
 
 
-    # Find largest beam size and outer annulus size
+    # Find largest beam size and outer annulus size, and hence work out thumbnail size that will contain the largest beam-convolved aperture
     beam_arcsec_max = 0.0
     outer_annulus_max = 0.0
+    pix_arcsec_max = 0.0
     for band_name in bands_dict:
+        if not os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits')):
+            continue
+        band_pix_matrix = astropy.wcs.WCS(astropy.io.fits.getheader(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits'))).pixel_scale_matrix
+        band_pix_arcsec = 3600.0 * np.sqrt( np.min(np.abs(band_pix_matrix))**2.0 + np.max(np.abs(band_pix_matrix))**2.0 )
+        if band_pix_arcsec>pix_arcsec_max:
+            pix_arcsec_max = band_pix_arcsec
         if bands_dict[band_name]['beam_arcsec']>beam_arcsec_max:
             beam_arcsec_max = bands_dict[band_name]['beam_arcsec']
         if bands_dict[band_name]['annulus_outer']>outer_annulus_max:
             outer_annulus_max = bands_dict[band_name]['annulus_outer']
-
-    # Work out thumbnail size that will contain the largest beam-convolved aperture
-    thumb_rad = np.ceil(1.2 * np.sqrt( (outer_annulus_max * aperture_combined[0])**2.0 + (0.5*beam_arcsec_max)**2.0 ) )
+    thumb_rad = np.ceil( 2.0 * pix_arcsec_max ) + np.ceil( 1.2 * 0.5 * np.sqrt( (2.0*outer_annulus_max*aperture_combined[0])**2.0 + (beam_arcsec_max)**2.0 ) )
 
 
 
@@ -605,19 +610,11 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         else:
             bands_list_present.append(band_name)
 
-        # Calculate desired size of thumbnail, based on fitted apertures, and size of map
-        img_header = astropy.io.fits.getheader(img_input)
-        img_wcs = astropy.wcs.WCS(img_header)
-        img_pix_arcsec = 3600.0 *np.mean(np.abs(np.diagonal(img_wcs.pixel_scale_matrix)))
-        img_naxis_pix = np.max([img_header['NAXIS1'],img_header['NAXIS1']])
-        img_naxis_arcsec = float(img_naxis_pix) * float(img_pix_arcsec)
-        img_rad_arcsec = img_naxis_arcsec / 2.0
-
         # Produce cutouts, and end loop
         if kwargs_dict['parallel']==True:
-            thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad,) )
+            thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, thumb_rad,) )
         elif kwargs_dict['parallel']==False:
-            ThumbCutout(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad)
+            ThumbCutout(source_dict, bands_dict[band_name], kwargs_dict, img_input, thumb_rad)
     thumb_pool.close()
     thumb_pool.join()
 
@@ -675,8 +672,8 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         comb_ap_axial_ratio = aperture_combined[1]
         comb_ap_semimaj = aperture_combined[0]/3600.0
         comb_ap_semimin = comb_ap_semimaj / comb_ap_axial_ratio
-        comb_ap_semimaj = ( comb_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
-        comb_ap_semimin = ( comb_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
+        comb_ap_semimaj = 0.5 * ( (2.0*comb_ap_semimaj)**2.0 + band_beam_width**2.0 )**0.5
+        comb_ap_semimin = 0.5 * ( (2.0*comb_ap_semimin)**2.0 + band_beam_width**2.0 )**0.5
 
         # Plot combined aperture
         vars()['subfig'+str(b)].show_ellipses(source_dict['ra'], source_dict['dec'], 2.0*comb_ap_semimaj, 2.0*comb_ap_semimin, angle=comb_ap_angle, edgecolor='#00FF40', facecolor='none', linewidth=line_width)
@@ -808,17 +805,22 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
 
 
 
-    # Find largest beam size and outer annulus size
+    # Find largest beam size, outer annulus size, and pixel size - and hence work out thumbnail size that will contain the largest beam-convolved aperture
     beam_arcsec_max = 0.0
     outer_annulus_max = 0.0
+    pix_arcsec_max = 0.0
     for band_name in bands_dict:
+        if not os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits')):
+            continue
+        band_pix_matrix = astropy.wcs.WCS(astropy.io.fits.getheader(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits'))).pixel_scale_matrix
+        band_pix_arcsec = 3600.0 * np.sqrt( np.min(np.abs(band_pix_matrix))**2.0 + np.max(np.abs(band_pix_matrix))**2.0 )
+        if band_pix_arcsec>pix_arcsec_max:
+            pix_arcsec_max = band_pix_arcsec
         if bands_dict[band_name]['beam_arcsec']>beam_arcsec_max:
             beam_arcsec_max = bands_dict[band_name]['beam_arcsec']
         if bands_dict[band_name]['annulus_outer']>outer_annulus_max:
             outer_annulus_max = bands_dict[band_name]['annulus_outer']
-
-    # Work out thumbnail size that will contain the largest beam-convolved aperture
-    thumb_rad = np.ceil(1.1 * np.sqrt( (outer_annulus_max*opt_semimaj_arcsec)**2.0 + (0.5*beam_arcsec_max)**2.0 ) )
+    thumb_rad = np.ceil( 2.0 * pix_arcsec_max ) + np.ceil( 1.2 * 0.5 * np.sqrt( (2.0*outer_annulus_max*opt_semimaj_arcsec)**2.0 + (beam_arcsec_max)**2.0 ) )
 
 
 
@@ -834,20 +836,11 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
         else:
             bands_list_present.append(band_name)
 
-        # Calculate desired size of thumbnail, based on fitted apertures, and size of map
-        thumb_rad = np.ceil( 1.1 * opt_semimaj_arcsec * bands_dict[band_name]['annulus_outer'] )
-        img_header = astropy.io.fits.getheader(img_input)
-        img_wcs = astropy.wcs.WCS(img_header)
-        img_pix_arcsec = np.max(3600.0*img_wcs.wcs.cdelt)
-        img_naxis_pix = np.max([img_header['NAXIS1'],img_header['NAXIS1']])
-        img_naxis_arcsec = float(img_naxis_pix) * float(img_pix_arcsec)
-        img_rad_arcsec = img_naxis_arcsec / 2.0
-
         # Produce cutouts, and end loop
         if kwargs_dict['parallel']==True:
-            thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad,) )
+            thumb_pool.apply_async( ThumbCutout, args=(source_dict, bands_dict[band_name], kwargs_dict, img_input, thumb_rad,) )
         elif kwargs_dict['parallel']==False:
-            ThumbCutout(source_dict, bands_dict[band_name], kwargs_dict, img_input, img_rad_arcsec, thumb_rad)
+            ThumbCutout(source_dict, bands_dict[band_name], kwargs_dict, img_input, thumb_rad)
     thumb_pool.close()
     thumb_pool.join()
 
@@ -882,10 +875,10 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
         band_beam_width = bands_dict[band_name]['beam_arcsec'] / 3600.0
         comb_ap_angle = opt_angle
         comb_ap_axial_ratio = opt_axial_ratio
-        comb_ap_semimaj = opt_semimaj_arcsec/3600.0
+        comb_ap_semimaj = opt_semimaj_arcsec / 3600.0
         comb_ap_semimin = comb_ap_semimaj / comb_ap_axial_ratio
-        comb_ap_semimaj = ( comb_ap_semimaj**2.0 + band_beam_width**2.0 )**0.5
-        comb_ap_semimin = ( comb_ap_semimin**2.0 + band_beam_width**2.0 )**0.5
+        comb_ap_semimaj = 0.5 * ( (2.0*comb_ap_semimaj)**2.0 + band_beam_width**2.0 )**0.5
+        comb_ap_semimin = 0.5 * ( (2.0*comb_ap_semimin)**2.0 + band_beam_width**2.0 )**0.5
 
         # Plot combined aperture
         line_width = 4.0
@@ -921,7 +914,7 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
 
 
 # Define function for producing an appropriately-sized cutout in current band
-def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, img_rad_arcsec, thumb_rad):
+def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, thumb_rad):
 
 
 

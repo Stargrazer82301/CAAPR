@@ -303,7 +303,7 @@ def ApertureSize(pod, band_dict):
 
     # If more than 10% of the pixels in the aperture are NaNs, report default values for aperture dimensions
     if pix_good_frac<0.9:
-        opt_semimaj_pix = pod['beam_pix'] * 0.0
+        opt_semimaj_pix = pod['beam_pix'] * 1.0
         opt_semimaj_arcsec = opt_semimaj_pix * pod['pix_arcsec']
         if verbose: print '['+pod['id']+'] More than 10% of pixels in fitted aperture are NaNs; hence reverting to default minimum aperture size of one beam-width.' #+str(opt_semimaj_arcsec)[:7]+' arcseconds.'
         pod['opt_semimaj_arcsec'] = opt_semimaj_arcsec
@@ -312,16 +312,16 @@ def ApertureSize(pod, band_dict):
 
     # If dimensions are otherwise default, report to pod
     if abs( opt_semimaj_arcsec**2.0 - (0.5*band_dict['beam_arcsec'])**2.0 )**0.5<=0.0:
-        opt_semimaj_pix = pod['beam_pix'] * 0.0
+        opt_semimaj_pix = pod['beam_pix'] * 1.0
         pod['opt_semimaj_arcsec'] = opt_semimaj_pix * pod['pix_arcsec']
         pod['opt_axial_ratio'] = 1.0
         pod['opt_angle'] = 0.0
 
     # Else deconvolve aperture semi-major axis with beam, by subtracting in quadrature, and record dimensions to pod
     else:
-        adj_semimaj_arcsec = abs( opt_semimaj_arcsec**2.0 - (0.5*band_dict['beam_arcsec'])**2.0 )**0.5
+        adj_semimaj_arcsec = 0.5 * np.abs( (2.0*opt_semimaj_arcsec)**2.0 - band_dict['beam_arcsec']**2.0 )**0.5
         opt_semimin_arcsec = opt_semimaj_arcsec / pod['opt_axial_ratio']
-        adj_semimin_arcsec = abs( opt_semimin_arcsec**2.0 - (0.5*band_dict['beam_arcsec'])**2.0 )**0.5
+        adj_semimin_arcsec = 0.5 * np.abs( (2.0*opt_semimin_arcsec)**2.0 - band_dict['beam_arcsec']**2.0 )**0.5
         adj_ax_ratio = adj_semimaj_arcsec / adj_semimin_arcsec
         pod['opt_semimaj_arcsec'] = adj_semimaj_arcsec
         pod['opt_semimaj_pix'] = adj_semimaj_arcsec / pod['pix_arcsec']
@@ -508,6 +508,25 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Preparing thumbnail data for bands excluded from aperture-fitting.'
         random.shuffle(aperture_bands_exclude)
 
+    # Find largest beam size and outer annulus size, and hence work out thumbnail size that will contain the largest beam-convolved aperture
+    beam_arcsec_max = 0.0
+    outer_annulus_max = 0.0
+    pix_arcsec_max = 0.0
+    for band_name in bands_dict:
+        in_fitspath, file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, bands_dict[band_name], kwargs_dict)
+        if file_found!=True:
+            continue
+        band_pix_matrix = astropy.wcs.WCS(astropy.io.fits.getheader(in_fitspath)).pixel_scale_matrix
+        band_pix_arcsec = 3600.0 * np.sqrt( np.min(np.abs(band_pix_matrix))**2.0 + np.max(np.abs(band_pix_matrix))**2.0 )
+        if band_pix_arcsec>pix_arcsec_max:
+            pix_arcsec_max = band_pix_arcsec
+        if bands_dict[band_name]['beam_arcsec']>beam_arcsec_max:
+            beam_arcsec_max = bands_dict[band_name]['beam_arcsec']
+        if bands_dict[band_name]['annulus_outer']>outer_annulus_max:
+            outer_annulus_max = bands_dict[band_name]['annulus_outer']
+    thumb_rad_arcsec = np.ceil( 2.0 * pix_arcsec_max ) + np.ceil( 1.2 * 0.5 * np.sqrt( (outer_annulus_max*2.0*aperture_combined[0])**2.0 + (beam_arcsec_max)**2.0 ) )
+    source_dict['thumb_rad_arcsec'] = thumb_rad_arcsec
+
     # In standard operation, process multiple sources in parallel
     if kwargs_dict['parallel']==True:
         ex_ap_pool = mp.Pool(processes=kwargs_dict['n_proc'])
@@ -545,11 +564,7 @@ def ExcludedSubpipelineAperture(aperture_combined, source_dict, band_dict, kwarg
     CAAPR.CAAPR_IO.MemCheck(pod)
 
     # Use thumbnail cutout function to create a cutout that's only as large as it needs to be for the thumbnail grid
-    img_naxis_pix = np.max([ pod['in_header']['NAXIS1'], pod['in_header']['NAXIS1'] ])
-    img_naxis_arcsec = float(img_naxis_pix) * float(pod['pix_arcsec'])
-    img_rad_arcsec = img_naxis_arcsec / 2.0
-    thumb_rad_arcsec = 1.35 * aperture_combined[0] * band_dict['annulus_outer']
-    CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], img_rad_arcsec, thumb_rad_arcsec)
+    CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], source_dict['thumb_rad_arcsec'])
 
     # Rename thumbnail cutout, and make it the 'active' map by repeating necessary processing
     thumb_output = os.path.join( kwargs_dict['temp_dir_path'], 'Processed_Maps', source_id+'_Thumbnail.fits' )

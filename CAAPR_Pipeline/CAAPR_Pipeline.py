@@ -191,7 +191,7 @@ def SourcePrelim(source_dict, bands_dict, kwargs_dict):
 
     # Report to user if no data found
     if True not in bands_check:
-        print '['+source_id+'] No data found in target directory(/ies) for current source.'
+        print '['+source_id+'] No data found in target directory for current source.'
 
         # Make null entries in tables, as necessary
         if kwargs_dict['fit_apertures']==True:
