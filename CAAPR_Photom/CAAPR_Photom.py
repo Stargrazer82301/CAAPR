@@ -1056,6 +1056,8 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict):
     outer_annulus_max = 0.0
     pix_arcsec_max = 0.0
     for band_name in bands_dict:
+        if not os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits')):
+            continue
         band_pix_matrix = astropy.wcs.WCS(astropy.io.fits.getheader(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits'))).pixel_scale_matrix
         band_pix_arcsec = 3600.0 * np.sqrt( np.min(np.abs(band_pix_matrix))**2.0 + np.max(np.abs(band_pix_matrix))**2.0 )
         if band_pix_arcsec>pix_arcsec_max:
