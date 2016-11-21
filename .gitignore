@@ -19,6 +19,9 @@ $RECYCLE.BIN/
 
 # Note that git rm --cached -r *.extn will retroactively remove all instances of the given file extension
 
+# Dropbox attribute files
+*.dropbox.attr
+
 # Python binaries
 *.pyc
 
