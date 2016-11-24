@@ -266,7 +266,7 @@ def Photom(pod, band_dict):
         bg_clip = ChrisFuncs.SigmaClip(bg_calc[2], median=False, sigma_thresh=3.0)
         bg_avg = bg_clip[1] * float(band_dict['subpixel_factor'])**2.0
         ap_sum = ap_calc[0] - (ap_calc[1] * bg_avg)
-
+        pdb.set_trace()
         # Save values to pod, and return
         pod['ap_sum'] = ap_sum
         pod['bg_avg'] = bg_avg
@@ -1110,7 +1110,7 @@ def ExcludedSubpipelinePhotom(source_dict, band_dict, kwargs_dict_inviolate):
 
     # Use thumbnail cutout function to create a cutout that's only as large as it needs to be for the thumbnail grid
     semimaj_arcsec = np.sqrt( pod['adj_semimaj_arcsec']**2.0 - band_dict['beam_arcsec']**2.0 )
-    thumb_rad_arcsec = np.ceil( 2.0 * pod['pix_arcsec'] ) + np.ceil( 1.2 * 0.5 * np.sqrt( (source_dict['outer_annulus_max']*2.0*semimaj_arcsec)**2.0 + (source_dict['beam_arcsec_max'])**2.0 ) )
+    thumb_rad_arcsec = np.ceil( 1.0 * source_dict['pix_arcsec_max'] ) + np.ceil( 1.25 * 0.5 * np.sqrt( (source_dict['outer_annulus_max']*2.0*semimaj_arcsec)**2.0 + (source_dict['beam_arcsec_max'])**2.0 ) )
     source_dict['thumb_rad_arcsec'] = thumb_rad_arcsec
     CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], thumb_rad_arcsec)
 

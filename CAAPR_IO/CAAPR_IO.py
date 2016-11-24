@@ -596,7 +596,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
             beam_arcsec_max = bands_dict[band_name]['beam_arcsec']
         if bands_dict[band_name]['annulus_outer']>outer_annulus_max:
             outer_annulus_max = bands_dict[band_name]['annulus_outer']
-    thumb_rad = np.ceil( 2.0 * pix_arcsec_max ) + np.ceil( 1.2 * 0.5 * np.sqrt( (2.0*outer_annulus_max*aperture_combined[0])**2.0 + (beam_arcsec_max)**2.0 ) )
+    thumb_rad = np.ceil( 1.0 * pix_arcsec_max ) + np.ceil( 1.2 * 0.5 * np.sqrt( (2.0*outer_annulus_max*aperture_combined[0])**2.0 + (beam_arcsec_max)**2.0 ) )
 
 
 
@@ -822,7 +822,7 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
             beam_arcsec_max = bands_dict[band_name]['beam_arcsec']
         if bands_dict[band_name]['annulus_outer']>outer_annulus_max:
             outer_annulus_max = bands_dict[band_name]['annulus_outer']
-    thumb_rad = np.ceil( 2.0 * pix_arcsec_max ) + np.ceil( 1.2 * 0.5 * np.sqrt( (2.0*outer_annulus_max*opt_semimaj_arcsec)**2.0 + (beam_arcsec_max)**2.0 ) )
+    thumb_rad = np.ceil( 1.0 * pix_arcsec_max ) + np.ceil( 1.2 * 0.5 * np.sqrt( (2.0*outer_annulus_max*opt_semimaj_arcsec)**2.0 + (beam_arcsec_max)**2.0 ) )
 
 
 
