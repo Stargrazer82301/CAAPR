@@ -48,6 +48,8 @@ def SourcesDictFromCSV(sources_table_path):
             # Loop over each field in the current row
             for field in sources_table.dtype.names:
                 sources_dict[ sources_table['name'][row] ][field] = sources_table[field][row]
+                if field=='name':
+                    sources_dict[ sources_table['name'][row] ][field] = str(sources_table[field][row])
 
     # Return dictionary
     return sources_dict
