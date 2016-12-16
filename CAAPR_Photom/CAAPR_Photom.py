@@ -266,7 +266,7 @@ def Photom(pod, band_dict):
         bg_clip = ChrisFuncs.SigmaClip(bg_calc[2], median=False, sigma_thresh=3.0)
         bg_avg = bg_clip[1] * float(band_dict['subpixel_factor'])**2.0
         ap_sum = ap_calc[0] - (ap_calc[1] * bg_avg)
-        pdb.set_trace()
+
         # Save values to pod, and return
         pod['ap_sum'] = ap_sum
         pod['bg_avg'] = bg_avg
@@ -353,8 +353,8 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
 
 
     # Define how many random aperture are desired/required/permitted
-    sky_success_target = 50
-    sky_success_min = 20
+    sky_success_target = 100
+    sky_success_min = 25
     sky_gen_max = 200
 
     # Generate random polar coordinates to draw from
@@ -1056,9 +1056,10 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict):
     outer_annulus_max = 0.0
     pix_arcsec_max = 0.0
     for band_name in bands_dict:
-        if not os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits')):
+        band_fitspath, band_file_found = CAAPR.CAAPR_Pipeline.FilePrelim(source_dict, bands_dict[band_name], kwargs_dict)
+        if not band_file_found:#os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits')):
             continue
-        band_pix_matrix = astropy.wcs.WCS(astropy.io.fits.getheader(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_dict['name']+'_'+band_name+'.fits'))).pixel_scale_matrix
+        band_pix_matrix = astropy.wcs.WCS(astropy.io.fits.getheader(band_fitspath)).pixel_scale_matrix
         band_pix_arcsec = 3600.0 * np.sqrt( np.min(np.abs(band_pix_matrix))**2.0 + np.max(np.abs(band_pix_matrix))**2.0 )
         if band_pix_arcsec>pix_arcsec_max:
             pix_arcsec_max = band_pix_arcsec
