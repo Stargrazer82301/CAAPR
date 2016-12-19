@@ -352,17 +352,6 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
 
 
 
-    # Define Keflavich function to downsample an array
-    def Downsample(myarr,factor,estimator=np.nanmean):
-        ys,xs = myarr.shape
-        crarr = myarr[:ys-(ys % int(factor)),:xs-(xs % int(factor))]
-        dsarr = estimator( np.concatenate([[crarr[i::factor,j::factor]
-            for i in range(factor)]
-            for j in range(factor)]), axis=0)
-        return dsarr
-
-
-
     # If polynomial background subraction not wanted, immediately return everything unchanged
     if instant_quit:
          pod['sky_poly'] = False
@@ -377,7 +366,7 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
         downsample_factor = int(np.ceil(pix_size_limit/pix_size))
     else:
         downsample_factor = 1
-    image_ds = Downsample(pod['cutout'], downsample_factor)
+    image_ds = ChrisFuncs.Downsample(pod['cutout'], downsample_factor)
 
     # Downsample related values accordingly
     mask_semimaj_pix = mask_semimaj_pix / downsample_factor
