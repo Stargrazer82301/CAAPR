@@ -200,7 +200,7 @@ def ApertureSize(pod, band_dict):
 
 
 
-    # Construct kernel with FWHM equal to 3 beam-widths, by which to smooth map
+    # Construct kernel with FWHM equal to 2 beam-widths, by which to smooth map
     if verbose: print '['+pod['id']+'] Convolving map to lower resolution (twice the beam width) for radial analysis.'
     pix_size = pod['pix_arcsec']
     res_in = band_dict['beam_arcsec']
@@ -397,14 +397,14 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
     else:
         expansion_facor = 1.0
     cont_semimaj_arcsec = cont_semimaj_pix * ap_array_pix_size * expansion_facor
-
+    """
     # If final aperture is smaller than defined minimum aperture, switch to defined minimum
     if cont_semimaj_arcsec<source_dict['fitting_min_semimaj_arcsec']:
         if kwargs_dict['verbose']: print '['+source_dict['name']+'] Fitted aperture is smaller than minimum permitted aperture size; reverting to minimum permitted aperture size.'
         cont_semimaj_arcsec = source_dict['fitting_min_semimaj_arcsec']
         cont_axial_ratio = 1.0
         cont_angle = 0.0
-
+    """
     # Clean garbage and return results
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Final ellipse semi-major axis: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_semimaj_arcsec,4))+' arcsec; final ellipse angle: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_angle,4))+' '+' degrees; final ellipse axial ratio: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(cont_axial_ratio,4))+'.'
     gc.collect()
