@@ -667,7 +667,12 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
         # Define straight-line function, and fit it to points
         def Line(x,m,c):
             return (m*x)+c
-        line_fit = scipy.optimize.curve_fit(Line, log_mini_ap_area, log_mini_ap_noise, sigma=log_mini_ap_noise_err)
+        try:
+            line_fit = scipy.optimize.curve_fit(Line, log_mini_ap_area, log_mini_ap_noise, sigma=log_mini_ap_noise_err)
+        except:
+            ap_noise_dict = {'fail':True, 'ap_noise':np.NaN}
+            gc.collect()
+            return ap_noise_dict
         line_m, line_c = line_fit[0][0], line_fit[0][1]
 
         # Determine projected aperture noise value
