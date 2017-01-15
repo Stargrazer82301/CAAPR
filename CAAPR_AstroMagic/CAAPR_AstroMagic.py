@@ -591,11 +591,18 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
         if file_found==False:
             continue
 
+        # Check if a cutout has been requested; if so, no need to open map
+        if band_dict['make_cutout']>0:
+            diam = float(band_dict['make_cutout']) / 3600.0
+
         # Work out map size
-        band_header = astropy.io.fits.getheader(in_fitspath)
-        band_wcs = astropy.wcs.WCS(band_header)
-        band_cdelt = band_wcs.wcs.cdelt.max()
-        diam = np.max([ band_cdelt*float(band_header['NAXIS1']), band_cdelt*float(band_header['NAXIS2']) ])
+        else:
+            band_header = astropy.io.fits.getheader(in_fitspath)
+            band_wcs = astropy.wcs.WCS(band_header)
+            band_cdelt = band_wcs.wcs.cdelt.max()
+            diam = np.max([ band_cdelt*float(band_header['NAXIS1']), band_cdelt*float(band_header['NAXIS2']) ])
+
+        # If diameter established for this band exceeds previous maximum, record
         if diam>diam_max:
             file_max = in_fitspath
             diam_max = diam
