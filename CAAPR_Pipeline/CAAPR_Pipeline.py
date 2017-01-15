@@ -391,7 +391,7 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
     # Mask all image pixels identified as being high SNR
     image_masked[ np.where( image_masked>cutoff ) ] = np.nan
 
-    # Use astropy to fit 2-dimensional polynomial to the image
+    # Use astropy to set up 2-dimensional polynomial to the image
     image_masked[ np.where( np.isnan(image_masked)==True ) ] = field_value
     poly_model = astropy.modeling.models.Polynomial2D(degree=poly_order)
     i_coords, j_coords = np.mgrid[:image_masked.shape[0], :image_masked.shape[1]]
@@ -402,8 +402,15 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
     good = np.where(np.isnan(image_flattened)==False)
     i_coords = i_coords[good]
     j_coords = j_coords[good]
+
+    # Attempt polynomial fit; if insufficient data then skip onwards
     image_flattened = image_flattened[good]
-    fit = fitter(poly_model, i_coords, j_coords, image_flattened)
+    try:
+        fit = fitter(poly_model, i_coords, j_coords, image_flattened)
+    except:
+        if pod['verbose']: print '['+pod['id']+'] Background is not significnatly variable; leaving image unaltered.'
+        pod['sky_poly'] = False
+        return pod
 
     # Create final polynomial filter (undoing downsampling using lorenzoriano GitHub script)
     i_coords, j_coords = np.mgrid[:image_ds.shape[0], :image_ds.shape[1]]
