@@ -524,7 +524,7 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_
             beam_arcsec_max = bands_dict[band_name]['beam_arcsec']
         if bands_dict[band_name]['annulus_outer']>outer_annulus_max:
             outer_annulus_max = bands_dict[band_name]['annulus_outer']
-    thumb_rad_arcsec = np.ceil( 1.0 * pix_arcsec_max ) + np.ceil( 1.5 * 0.5 * np.sqrt( (outer_annulus_max*2.0*aperture_combined[0])**2.0 + (beam_arcsec_max)**2.0 ) )
+    thumb_rad_arcsec = np.ceil( 1.0 * pix_arcsec_max ) + np.ceil( 1.75 * 0.5 * np.sqrt( (outer_annulus_max*2.0*aperture_combined[0])**2.0 + (beam_arcsec_max)**2.0 ) )
     source_dict['thumb_rad_arcsec'] = thumb_rad_arcsec
 
     # In standard operation, process multiple sources in parallel

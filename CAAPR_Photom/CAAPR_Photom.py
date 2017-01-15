@@ -1111,7 +1111,7 @@ def ExcludedSubpipelinePhotom(source_dict, band_dict, kwargs_dict_inviolate):
 
     # Use thumbnail cutout function to create a cutout that's only as large as it needs to be for the thumbnail grid
     semimaj_arcsec = np.sqrt( pod['adj_semimaj_arcsec']**2.0 - band_dict['beam_arcsec']**2.0 )
-    thumb_rad_arcsec = np.ceil( 1.0 * source_dict['pix_arcsec_max'] ) + np.ceil( 1.25 * 0.5 * np.sqrt( (source_dict['outer_annulus_max']*2.0*semimaj_arcsec)**2.0 + (source_dict['beam_arcsec_max'])**2.0 ) )
+    thumb_rad_arcsec = np.ceil( 1.0 * source_dict['pix_arcsec_max'] ) + np.ceil( 1.75 * 0.5 * np.sqrt( (source_dict['outer_annulus_max']*2.0*semimaj_arcsec)**2.0 + (source_dict['beam_arcsec_max'])**2.0 ) )
     source_dict['thumb_rad_arcsec'] = thumb_rad_arcsec
     CAAPR.CAAPR_IO.ThumbCutout(source_dict, band_dict, kwargs_dict, pod['in_fitspath'], thumb_rad_arcsec)
 
