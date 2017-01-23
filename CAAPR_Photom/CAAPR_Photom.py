@@ -613,7 +613,7 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
     sky_ap_rad_pix = ( ap_area / np.pi )**0.5
 
     # Generate list of mini-aperture sizes to use, and declare result lists
-    mini_ap_rad_base = 2.0
+    mini_ap_rad_base = 1.2
     mini_ap_rad_pix_input = mini_ap_rad_base**np.arange( 1.0, np.ceil( math.log( sky_ap_rad_pix, mini_ap_rad_base ) ) )[::-1]
     min_ap_rad_pix_output = []
     mini_ap_noise_output = []
