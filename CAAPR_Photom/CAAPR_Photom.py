@@ -22,11 +22,12 @@ import astropy.io.fits
 import astropy.wcs
 import astropy.convolution
 import astropy.modeling
-import astroquery.irsa_dust
 import skimage.restoration
 import lmfit
 import skimage
 import ChrisFuncs
+import ChrisFuncs.Photom
+import ChrisFuncs.FromGitHub
 import CAAPR
 plt.ioff()
 
@@ -118,7 +119,6 @@ def SubpipelinePhotom(source_dict, band_dict, kwargs_dict):
             CAAPR.CAAPR_IO.MemCheck(pod)
             ap_noise_dict = ApNoiseExtrap(pod['cutout'].copy(), source_dict, band_dict, kwargs_dict, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j'])
             pod['ap_noise'] = ap_noise_dict['ap_noise']
-
 
 
 

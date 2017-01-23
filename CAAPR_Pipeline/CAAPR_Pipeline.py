@@ -2,7 +2,7 @@
 import os
 import sys
 sys.path.insert(0, '../')
-sys.path.append( str( os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR.CAAPR_AstroMagic', 'PTS') ) )
+sys.path.append( str( os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR', 'CAAPR_AstroMagic', 'PTS') ) )
 import gc
 import pdb
 import time
@@ -20,6 +20,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import astropy.io.fits
 import ChrisFuncs
+import ChrisFuncs.Photom
+import ChrisFuncs.FromGitHub
 import CAAPR
 
 

@@ -18,6 +18,8 @@ import astropy.io.fits
 import astropy.wcs
 import astropy.convolution
 import ChrisFuncs
+import ChrisFuncs.Photom
+import ChrisFuncs.FromGitHub
 import CAAPR
 
 
