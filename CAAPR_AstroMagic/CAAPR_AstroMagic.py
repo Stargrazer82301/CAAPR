@@ -646,6 +646,11 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
                 if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
                 try_counter += 1
                 pytime.sleep(10)
+        except Exception as e:
+            if 'Read timed out' in str(e.message):
+                if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
+                try_counter += 1
+                pytime.sleep(100)
     if try_counter>=10:
         return
 
