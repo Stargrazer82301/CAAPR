@@ -16,7 +16,7 @@ import ChrisFuncs
 
 
 
-
+# Define the function that runs the CAAPR pipeline
 def CAAPR(bands_table_path = 'CAAPR_Band_Table.csv',
           sources_table_path = 'CAAPR_Source_Table.csv',
           output_dir_path = 'CAAPR_Output',
@@ -115,15 +115,15 @@ if __name__ == "__main__":
 
     # Run function
     testing = True
-    parallel = True
+    parallel = False
     starsub = True
     fit_apertures = False
     if fit_apertures==True:
         aperture_table_path = None
     elif fit_apertures==False:
-        aperture_table_path = '/home/herdata/spx7cjc/Dropbox/Work/Scripts/Figure Scripts/DustPedia/Photometry_Paper/Validation/CAAPR_2MASS-LGA_Photometry/CAAPR_Aperture_Table_2MASS-LGA.csv'#'CAAPR_Aperture_Table_2MASS-LGA.csv'
+        aperture_table_path = 'CAAPR_Aperture_Table_Test.csv'
     if testing:
-        CAAPR(bands_table_path='/home/herdata/spx7cjc/Dropbox/Work/Scripts/Figure Scripts/DustPedia/Photometry_Paper/Validation/CAAPR_2MASS-LGA_Photometry/CAAPR_Band_Table_2MASS-LGA.csv', temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=3, sources_table_path='/home/herdata/spx7cjc/Dropbox/Work/Scripts/Figure Scripts/DustPedia/Photometry_Paper/Validation/CAAPR_2MASS-LGA_Photometry/CAAPR_Source_Table_2MASS-LGA.csv', starsub=starsub, fit_apertures=fit_apertures, do_photom=True, aperture_table_path=aperture_table_path, parallel=parallel, debug=False, thumbnails=True)
+        CAAPR(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp', n_proc=3, sources_table_path='CAAPR_Source_Table.csv', starsub=starsub, fit_apertures=fit_apertures, do_photom=True, aperture_table_path=aperture_table_path, parallel=parallel, debug=False, thumbnails=True)
 
         # Jubilate
         print 'All done!'

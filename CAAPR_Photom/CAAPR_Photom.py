@@ -613,7 +613,7 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
     sky_ap_rad_pix = ( ap_area / np.pi )**0.5
 
     # Generate list of mini-aperture sizes to use, and declare result lists
-    mini_ap_rad_base = 1.2
+    mini_ap_rad_base = 1.1
     mini_ap_rad_pix_input = mini_ap_rad_base**np.arange( 1.0, np.ceil( math.log( sky_ap_rad_pix, mini_ap_rad_base ) ) )[::-1]
     min_ap_rad_pix_output = []
     mini_ap_noise_output = []
@@ -631,7 +631,7 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
             mini_ap_num_output.append(mini_ap_noise_dict['ap_num'])
         elif mini_ap_noise_dict['fail']==True:
             if kwargs_dict['verbose']:print '['+source_id+'] Unable to place sufficient number of mini-apertures at this radius.'
-        if len(mini_ap_noise_output)>=6:
+        if len(mini_ap_noise_output)>=8:
             break
 
     # Convert output lists into arrays
@@ -659,7 +659,7 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
         mini_ap_noise_err = np.abs( mini_ap_noise_output * mini_ap_noise_err_rel )
 
         # Weight points according to distance in log space from true aperture area
-        mini_ap_noise_err = mini_ap_noise_err * (1.0 + ( np.log10(ap_area) - log_mini_ap_area ) )
+        mini_ap_noise_err = mini_ap_noise_err * (1.0 + ( ap_area / 10.0**log_mini_ap_area ) )
 
         # Translate uncertainties into log space
         log_mini_ap_noise_err = ChrisFuncs.LogError(mini_ap_noise_output, mini_ap_noise_err)
@@ -956,7 +956,13 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
 
 
     # Run source details through function
-    irsa_band_excorr = ChrisFuncs.ExtCorrrct(source_dict['ra'], source_dict['dec'], band_dict['band_name'], verbose=kwargs_dict['verbose'], verbose_prefix='['+pod['id']+'] ')
+    try:
+        irsa_band_excorr = ChrisFuncs.ExtCorrrct(source_dict['ra'], source_dict['dec'], band_dict['band_name'], verbose=kwargs_dict['verbose'], verbose_prefix='['+pod['id']+'] ')
+    except:
+        if kwargs_dict['debug']:
+            pdb.set_trace()
+        else:
+            irsa_band_excorr = np.NaN
 
     # Update photometry with extinction corrections
     pod['ap_sum'] *= irsa_band_excorr

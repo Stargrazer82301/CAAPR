@@ -10,6 +10,7 @@ import shutil
 import pts
 import pdb
 import pickle
+import signal
 import time as pytime
 import astropy.io.fits
 import astropy.wcs
@@ -609,6 +610,11 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
 
 
 
+    # Register signal hander, to catch timeouts
+    def Handler(signum, frame):
+        raise Exception("Timout!")
+    signal.signal(signal.SIGALRM, Handler)
+
     # Run catalogue-prefetching in a try statement, to catch a pernicious error
     try_counter = 0
     try_success = False
@@ -616,6 +622,7 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
         if try_success==True:
             break
         try:
+            signal.alarm(900)
 
             # Get AstroMagic catalogue object reference fits
             logging.setup_log(level="ERROR")
@@ -633,6 +640,7 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
 
             # Record success and break
             try_success = True
+            signal.alarm(0)
             break
 
         # Handle errors
