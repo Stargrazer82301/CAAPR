@@ -354,8 +354,8 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
 
     # Define how many random aperture are desired/required/permitted
     sky_success_target = 100
-    sky_success_min = 25
-    sky_gen_max = 200
+    sky_success_min = 50
+    sky_gen_max = 250
 
     # Generate random polar coordinates to draw from
     if ap_debug: print 'Setup: Generating pool of random polar coordinates'
@@ -613,7 +613,7 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
     sky_ap_rad_pix = ( ap_area / np.pi )**0.5
 
     # Generate list of mini-aperture sizes to use, and declare result lists
-    mini_ap_rad_base = 1.1
+    mini_ap_rad_base = 1.2
     mini_ap_rad_pix_input = mini_ap_rad_base**np.arange( 1.0, np.ceil( math.log( sky_ap_rad_pix, mini_ap_rad_base ) ) )[::-1]
     min_ap_rad_pix_output = []
     mini_ap_noise_output = []
@@ -631,7 +631,7 @@ def ApNoiseExtrap(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, 
             mini_ap_num_output.append(mini_ap_noise_dict['ap_num'])
         elif mini_ap_noise_dict['fail']==True:
             if kwargs_dict['verbose']:print '['+source_id+'] Unable to place sufficient number of mini-apertures at this radius.'
-        if len(mini_ap_noise_output)>=8:
+        if len(mini_ap_noise_output)>=10:
             break
 
     # Convert output lists into arrays
@@ -959,7 +959,8 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
     try:
         irsa_band_excorr = ChrisFuncs.ExtCorrrct(source_dict['ra'], source_dict['dec'], band_dict['band_name'], verbose=kwargs_dict['verbose'], verbose_prefix='['+pod['id']+'] ')
     except:
-        if kwargs_dict['debug']:
+        if kwargs_dict['debug']==True:
+            if kwargs_dict['verbose']: print '['+pod['id']+'] Extinction correction failed; entering debug mode.'
             pdb.set_trace()
         else:
             irsa_band_excorr = np.NaN
@@ -1016,21 +1017,37 @@ def PhotomCheck(photom_attempts, photom_output_list, source_dict, bands_dict, kw
 
 
     # Compare number of bands with photometry returned to number of bands for which photometry was requested
-    photom_limit = 5
+    photom_limit = 3
     if len(photom_output_list)==len(bands_dict.keys()):
-        photom_attempts = 'Success'
-        return photom_attempts
+        photom_attempts = 'Complete'
+        return photom_attempts, photom_output_list
 
     # Check how many attempts have been made so far, and proceed accordingly
     else:
         photom_attempts += 1
         time.sleep(30.0)
         if photom_attempts>=photom_limit:
-            print '['+source_dict['name']+'] Photometry failed '+str(photom_limit)+' times in succession; suggest debugging.'
-            pdb.set_trace()
-            raise Exception('Photometry failed '+str(photom_limit)+' times in succession; suggest debugging.')
+            print '['+source_dict['name']+'] Photometry failed '+str(photom_limit)+' times in succession; suggest debugging.' #raise Exception('Photometry failed '+str(photom_limit)+' times in succession; suggest debugging.')
+            if kwargs_dict['debug']:
+                pdb.set_trace()
+    
+            # If debugging not enabled, record null photometry for missing bands
+            else:
+                photom_attempts = 'Complete'
+                photom_output_list_revised = copy.deepcopy(photom_output_list)
+                good_bands = []
+                [ good_bands.append(photom_output['band_name']) for photom_output in photom_output_list ]
+                all_bands = []
+                for band in bands_dict.keys():
+                    all_bands.append(bands_dict[band]['band_name'])
+                for all_band in all_bands:
+                    if all_band not in good_bands:
+                        photom_output_list_revised.append( {'band_name':all_band, 'ap_sum':np.NaN, 'ap_error':np.NaN} )
+                return photom_attempts, photom_output_list_revised
+    
+        # Increment up check and try again
         else:
-            return photom_attempts
+            return photom_attempts, photom_output_list
 
 
 
