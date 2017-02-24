@@ -125,7 +125,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
         # Process sources inside while loop, to catch 'missed' bands
         photom_attempts = 0
-        while photom_attempts!='Success':
+        while photom_attempts!='Complete':
 
                 # In standard operation, process multiple sources in parallel
                 photom_start = time.time()
@@ -149,7 +149,9 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
                         photom_list = [photom for photom in photom_output_list if photom!=None]
 
                 # Check that all photometry completed
-                photom_attempts = CAAPR.CAAPR_Photom.PhotomCheck(photom_attempts, photom_output_list, source_dict, bands_dict, kwargs_dict)
+                photom_attempts, photom_output_list = CAAPR.CAAPR_Photom.PhotomCheck(photom_attempts, photom_output_list, source_dict, bands_dict, kwargs_dict)
+
+
 
         # Record photometry results to file
         CAAPR.CAAPR_IO.RecordPhotom(photom_list, source_dict, bands_dict, kwargs_dict)
