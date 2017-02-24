@@ -128,7 +128,6 @@ def ApertureShape(pod):
     if verbose: print '['+pod['id']+'] Finding contiguous significant pixels around target.'
     semimaj_initial = int(round(pod['beam_pix']*1.0))
     cutoff = field_value + (4.0*noise_value)
-    #ChrisFuncs.Cutout(cont_array_binary, '/home/saruman/spx7cjc/DustPedia/Cont.fits')
     #cont_structure = np.array([[1]*(2*semimaj_initial)]*(2*semimaj_initial))
     cont_array_prelim = ChrisFuncs.Photom.ContiguousPixels(pod['cutout'], semimaj_initial, pod['centre_i'], pod['centre_j'], cutoff)#, custom_structure=cont_structure)
 
@@ -137,7 +136,6 @@ def ApertureShape(pod):
     erode_centre = (0.5*float(erode_size))-0.5
     erode_structure = ChrisFuncs.Photom.EllipseMask(np.zeros([erode_size,erode_size]), pod['beam_pix'], 1.0, 0.0, erode_centre, erode_centre)
     erode_array = scipy.ndimage.morphology.binary_erosion(cont_array_prelim, structure=erode_structure).astype(int)
-    #cont_array = scipy.ndimage.measurements.label(erode_array)[0]
     cont_array = ChrisFuncs.Photom.ContiguousPixels(erode_array, semimaj_initial, pod['centre_i'], pod['centre_j'], 1E-50)
 
     # If remainging contiguous pixel region has same or fewer number of pixels than erosion structure, replace with erosion sturcture
