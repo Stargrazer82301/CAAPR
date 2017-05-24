@@ -66,7 +66,7 @@ def SubpipelineAperture(source_dict, band_dict, kwargs_dict):
 
     # If star-removal is required, run pod through AstroMagic
     pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
-
+    
 
 
     # Run pod through function that determines aperture shape, to provide preliminary estimate to facilitate removal of large-scale sky
@@ -76,7 +76,7 @@ def SubpipelineAperture(source_dict, band_dict, kwargs_dict):
 
     # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter
     pod = CAAPR.CAAPR_Pipeline.PolySub( pod, 2.0*pod['semimaj_initial_pix'], pod['opt_axial_ratio'], pod['opt_angle'], instant_quit=max([not kwargs_dict['polysub'],pod['band_exclude']]) )
-
+    
 
 
     # If sky polynomial removed, run pod through function that determines aperture shape, to provide final estiamte

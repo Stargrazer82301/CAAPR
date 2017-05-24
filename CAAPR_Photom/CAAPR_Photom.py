@@ -82,12 +82,12 @@ def SubpipelinePhotom(source_dict, band_dict, kwargs_dict):
 
     # If star-removal is required, run pod through AstroMagic
     pod = CAAPR.CAAPR_AstroMagic.Magic(pod, source_dict, band_dict, kwargs_dict)
-
+    
 
 
     # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter, with source aperture masked
     pod = CAAPR.CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], instant_quit=max([not kwargs_dict['polysub'],pod['band_exclude']]))
-
+    
 
 
     # Run pod through function that (finally) performs the actual photometry
@@ -355,7 +355,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
     # Define how many random aperture are desired/required/permitted
     sky_success_target = 100
     sky_success_min = 50
-    sky_gen_max = 250
+    sky_gen_max = 250 
 
     # Generate random polar coordinates to draw from
     if ap_debug: print 'Setup: Generating pool of random polar coordinates'
@@ -431,9 +431,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
         if ap_debug: print 'Status: Pruning removed all generated coordinates'
         ap_noise_dict = {'fail':True, 'prior_mask':prior_mask, 'flag_mask':flag_mask, 'sky_success_counter':0}
         cutout = cutout_inviolate
-        return ap_noise_dict
-
-
+        return ap_noise_dict    
 
     # Commence creation of random sky apertures
     sky_success_counter = 0
@@ -452,8 +450,8 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
                 sky_gen_fail = True
                 if ap_debug: print 'Status: Unable to generate suitable random sky aperture after '+str(sky_gen_max)+' attempts'
                 break
-
-
+            
+            
 
             # Select random coordinate set for this iteration; if no un-used random coordinates can be found, reject
             #if ap_debug: print 'Checking: Selecting random coordinates'
@@ -516,8 +514,8 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
             bg_inner_semimaj_pix = adj_semimaj_pix * band_dict['annulus_inner']
             bg_width = (adj_semimaj_pix * band_dict['annulus_outer']) - bg_inner_semimaj_pix
             bg_calc = ChrisFuncs.Photom.AnnulusSum(cutout, bg_inner_semimaj_pix, bg_width, 1.0, 0.0, random_i, random_j)
-
-            # Check if more than a givn fraction of the pixels inside the source aperture are NaN; if so, reject
+            
+            # Check if more than a given fraction of the pixels inside the source aperture are NaN; if so, reject
             if ap_calc[3][0].shape[0]==0 or ap_calc[1]==0:
                 ap_nan_frac = 0.0
             if ap_calc[1]==0:
@@ -560,7 +558,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
             else:
                 if ap_debug: print 'Status: However, sufficient number of successful random apertures ('+str(int(sky_success_counter))+') already generated; proceeding'
                 break
-
+        
         # Calculate actual flux in sky aperture, and record
         #if ap_debug: print 'Checking: Performing photometry with random sky aperture and annulus'
         bg_clip = ChrisFuncs.SigmaClip(bg_calc[2], median=False, sigma_thresh=3.0)
@@ -569,7 +567,7 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
         sky_sum_list.append(ap_sum)
         if np.isnan(ap_sum):
             pdb.set_trace()
-
+        
         # Add this aperture to the prior mask and flag mask
         if not ap_debug: ap_mask = ChrisFuncs.Photom.EllipseMask(cutout, sky_ap_rad_pix, 1.0, 0.0, random_i, random_j)
         prior_mask += ap_mask
@@ -580,14 +578,12 @@ def ApNoise(cutout, source_dict, band_dict, kwargs_dict, adj_semimaj_pix, adj_ax
             if ap_debug: print 'Status: Target number of successful random apertures ('+str(int(sky_success_target))+') generated; proceeding'
             break
 
-
-
     # If total failure was encountered, end process and report now
     if sky_total_fail:
         ap_noise_dict = {'fail':True, 'prior_mask':prior_mask, 'flag_mask':flag_mask, 'sky_success_counter':sky_success_counter}
         cutout = cutout_inviolate
         return ap_noise_dict
-
+    
     # Otherwise, calculate aperture noise using returned aperture values, and return
     else:
         sky_sum_list = np.array(sky_sum_list)
