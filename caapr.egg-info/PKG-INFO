@@ -1,0 +1,12 @@
+Metadata-Version: 1.1
+Name: caapr
+Version: 1.0
+Summary: CAAPR: the Comprehensive & Adaptable Aperture Photometry Routine. A highly-customisable astronomical aperture photometry pipeline.
+Home-page: https://github.com/Stargrazer82301/CAAPR
+Author: Chris Clark (github.com/Stargrazer82301)
+Author-email: cjrc88@gmail.com
+License: MIT
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 2.7
+Classifier: License :: OSI Approved :: MIT License
