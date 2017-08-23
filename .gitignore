@@ -26,13 +26,13 @@ $RECYCLE.BIN/
 *.pyc
 
 # Sub-repositories
-/Old
-/CAAPR_Output
-/CAAPR_Temp
+/Old/
+/Test/CAAPR_Output/
+/Test/CAAPR_Temp/
 
 # Data tables & FITS files
-*.csv
 *.fits
+#*.csv
 
 # Image files
 *.png
