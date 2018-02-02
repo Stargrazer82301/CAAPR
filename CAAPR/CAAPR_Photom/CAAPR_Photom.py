@@ -784,11 +784,11 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
     mask = ChrisFuncs.Photom.EllipseMask(cutout, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], pod['centre_i'], pod['centre_j']) #*band_dict['annulus_outer']
 
     # Produce guess values
-    initial_sersic_amplitide = cutout[ pod['centre_i'], pod['centre_j'] ]
+    initial_sersic_amplitide = cutout[ int(round(pod['centre_i'])), int(round(pod['centre_j'])) ]
     initial_sersic_r_eff = pod['adj_semimaj_pix'] / 10.0
     initial_sersic_n = 1.0
-    initial_sersic_x_0 = pod['centre_j']
-    initial_sersic_y_0 = pod['centre_i']
+    initial_sersic_x_0 = int(round(pod['centre_j']))
+    initial_sersic_y_0 = int(round(pod['centre_i']))
     initial_sersic_ellip = ( pod['adj_axial_ratio'] - 1.0 ) / pod['adj_axial_ratio']
     initial_sersic_theta = np.deg2rad( pod['adj_angle'] )
 
