@@ -32,7 +32,7 @@ $RECYCLE.BIN/
 
 # Data tables & FITS files
 *.fits
-#*.csv
+*.csv
 
 # Image files
 *.png
