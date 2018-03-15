@@ -30,9 +30,11 @@ $RECYCLE.BIN/
 /Test/CAAPR_Output/
 /Test/CAAPR_Temp/
 
-# Data tables & FITS files
-*.fits
-*.csv
+## Data tables & FITS files
+#*.fits
+#*.csv
+*CAAPR_Aperture_Table_*.csv
+*CAAPR_Photom_Table_*.csv
 
 # Image files
 *.png

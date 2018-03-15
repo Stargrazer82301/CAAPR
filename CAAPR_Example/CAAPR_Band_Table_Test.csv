@@ -1,0 +1,2 @@
+band_name,band_dir,use_error_map,make_cutout,calib_error,beam_arcsec,colour_map,annulus_inner,annulus_outer,subpixel_factor,gain_factor,consider_aperture,remove_stars,downsample_factor,beam_correction
+GALEX_NUV,../CAAPR_Example/,False,False,0.027,5.3,bone,1.25,1.601,1,1,True,True,False,False
