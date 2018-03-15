@@ -83,7 +83,7 @@ def SubpipelineAperture(source_dict, band_dict, kwargs_dict):
         pod = ApertureShape(pod)
 
 
-
+    pdb.set_trace()
     # Run pod through function that determines aperture size
     pod = ApertureSize(pod, band_dict)
 

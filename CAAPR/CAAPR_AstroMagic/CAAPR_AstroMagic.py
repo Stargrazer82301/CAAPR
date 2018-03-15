@@ -1,12 +1,12 @@
 # Import the relevant PTS classes and modules
 import sys
 import os
-sys.path.append( str( os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR_AstroMagic', 'PTS') ) )
 import numpy as np
 import signal
 import shutil
 import pdb
 import signal
+import config
 import time as pytime
 import astropy.io.fits
 import astropy.wcs
@@ -14,6 +14,7 @@ from astropy.units import Unit
 import pyregion
 import ChrisFuncs
 import CAAPR
+sys.path.append( str( os.path.join( os.path.split( os.path.dirname(os.path.abspath(__file__)) )[0], 'CAAPR_AstroMagic', 'PTS') ) )
 import pts
 from pts.magic.core.image import Image
 from pts.magic.misc.imageimporter import ImageImporter

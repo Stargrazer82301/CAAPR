@@ -185,7 +185,7 @@ def SourcePrelim(source_dict, bands_dict, kwargs_dict):
 
     # Check that any of the bands actually have data for this source
     kwargs_dict_copy = copy.deepcopy(kwargs_dict)
-    kwargs_dict_copy['verbose'] = False
+    kwargs_dict_copy['verbose'] = False    
     bands_check = []
     for band in bands_dict.keys():
         source_id = source_dict['name']+'_'+bands_dict[band]['band_name']
@@ -255,7 +255,7 @@ def FilePrelim(source_dict, band_dict, kwargs_dict):
             in_fitspath = os.path.join( band_dict['band_dir'] )
     except:
         pdb.set_trace()
-
+        
     # Work out whether the file extension for FITS file in question is .fits or .fits.gz
     file_found = False
     try:
@@ -267,7 +267,7 @@ def FilePrelim(source_dict, band_dict, kwargs_dict):
             file_found = True
     except:
         raise Exception('Path provided for band '+str(band_dict['band_name'])+' refers to neither a file nor a folder.')
-
+    
     # Return file values
     return in_fitspath, file_found
 

@@ -17,8 +17,8 @@ import pdb
 
 
 # Define the function that runs the CAAPR pipeline
-def Run(bands_table_path = '../Test/CAAPR_Band_Table.csv',
-          sources_table_path = '../Test/CAAPR_Source_Table.csv',
+def Run(bands_table_path = '../DustPedia/CAAPR_Band_Table.csv',
+          sources_table_path = '../DustPedia/CAAPR_Source_Table.csv',
           output_dir_path = '../CAAPR_Output',
           temp_dir_path = 'CAAPR_Temp',
           fit_apertures = True,
@@ -70,7 +70,7 @@ def Run(bands_table_path = '../Test/CAAPR_Band_Table.csv',
 
     # Prepare temp directory, deleting any pre-existing directory at the specified location
     CAAPR.CAAPR_IO.TempDirPrepare(kwargs_dict)
-    pdb.set_trace()
+
 
 
     # Make inviolate copy of original band directories, to insure against over-writing when temp cutout directories are handled later
@@ -97,7 +97,7 @@ def Run(bands_table_path = '../Test/CAAPR_Band_Table.csv',
 
     # Loop over each target source, processing in turn
     time_list = [time.time()]
-    if verbose: print '[CAAPR] '+str(len(source_dict_keys))+' target objects to be processed.'
+    if verbose: print('[CAAPR] '+str(len(source_dict_keys))+' target objects to be processed.')
     for source in source_dict_keys:
         source_dict = sources_dict[source]
         CAAPR.CAAPR_Pipeline.PipelineMain(source_dict, bands_dict, kwargs_dict)
@@ -117,22 +117,22 @@ if __name__ == "__main__":
     testing = True
     parallel = False
     starsub = True
-    fit_apertures = False
+    fit_apertures = True
     if fit_apertures==True:
         aperture_table_path = None
     elif fit_apertures==False:
-        aperture_table_path = '../Test/CAAPR_Aperture_Table_Test.csv'
+        aperture_table_path = '../DustPedia/CAAPR_Aperture_Table_Test.csv'
     if testing:
         Run(temp_dir_path='/home/saruman/spx7cjc/DustPedia/CAAPR_Temp',
-            n_proc=3,
-            sources_table_path='../Test/CAAPR_Source_Table_Test.csv',
+            n_proc=4,
+            sources_table_path='../DustPedia/CAAPR_Source_Table_Test.csv',
             starsub=starsub,
             fit_apertures=fit_apertures,
-            do_photom=True,
+            do_photom=False,
             aperture_table_path=aperture_table_path,
             parallel=parallel,
             debug=False,
             thumbnails=True)
 
         # Jubilate
-        print 'All done!'
+        print('All done!')

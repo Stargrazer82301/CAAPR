@@ -893,7 +893,6 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
     # Find difference between flux measued on convoled and unconvoled sersic maps
     ap_correction = np.nanmax([ 1.0, (sersic_ap_sum/conv_ap_sum) ])
 
-
     # Apply aperture correction to pod, and return
     if kwargs_dict['verbose']: print '['+pod['id']+'] Applying aperture correction factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_correction,5))+'.'
     pod['ap_sum'] *= ap_correction

@@ -1,5 +1,4 @@
-setup.py
-CAAPR/CAAPR_Aperture.py
+README.md
 CAAPR/CAAPR_Main.py
 CAAPR/__init__.py
 CAAPR/CAAPR_Aperture/CAAPR_Aperture.py
