@@ -83,7 +83,7 @@ def SubpipelineAperture(source_dict, band_dict, kwargs_dict):
         pod = ApertureShape(pod)
 
 
-    pdb.set_trace()
+    
     # Run pod through function that determines aperture size
     pod = ApertureSize(pod, band_dict)
 
@@ -358,7 +358,7 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
     semimaj_max = np.nanmax(semimaj_arcsec_list) #semimaj_min = np.nanmin(semimaj_arcsec_list)
     ap_array_pix_size = 0.005 * semimaj_max
     ap_array_scale = int( np.round( semimaj_max / ap_array_pix_size ) )
-    ap_array = np.zeros([ 1+(2.2*ap_array_scale), 1+(2.2*ap_array_scale) ])
+    ap_array = np.zeros([ int(1+(2.2*ap_array_scale)), int(1+(2.2*ap_array_scale)) ])
     centre_i, centre_j = 1+(1.1*ap_array_scale), 1+(1.1*ap_array_scale)
     semimaj_pix_list = np.array(semimaj_arcsec_list) / ap_array_pix_size
 
