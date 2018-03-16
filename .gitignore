@@ -35,6 +35,7 @@ $RECYCLE.BIN/
 #*.csv
 *CAAPR_Aperture_Table_*.csv
 *CAAPR_Photom_Table_*.csv
+*Estimated_Completion_Time.txt
 
 # Image files
 *.png

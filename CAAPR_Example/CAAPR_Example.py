@@ -16,7 +16,7 @@ CAAPR.CAAPR_Main.Run(bands_table_path = '../CAAPR_Example/CAAPR_Band_Table_Test.
                      do_photom = True, # If this is False and fit_apertures is True, CAAPR will just fit apertures, and not bother doing any actual photometry
                      extinction_corr = True, # Whether or not CAAPR should correct fluxes for foregound Galactic extinction (see Section 3.6 of CJR Clark et al, 2018)
                      parallel = True, # Whether CAAPR should operate in paralle, processing multiple bands simultaneously
-                     n_proc = mp.cpu_count()-2, # If parallel is set to True, CAAPR will use this many CPU threads
+                     n_proc = mp.cpu_count-2, # If parallel is set to True, CAAPR will use this many CPU threads
                      thumbnails = True, # If True, CAAPR will produce thumbnail images to illustrate the results of the photometry (see Figure 6 of CJR Clark et al, 2018)
                      verbose = True, # If True, CAAPR will print a lot of text to the console to update the user on its progress; if False, it won't
                      )
