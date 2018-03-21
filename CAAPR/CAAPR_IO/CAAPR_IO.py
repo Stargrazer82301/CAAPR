@@ -31,7 +31,7 @@ def SourcesDictFromCSV(sources_table_path):
 
 
     # Initially read in CSV file as a numpy structured array, and prepare output dictionary
-    sources_table = np.genfromtxt(sources_table_path, names=True, delimiter=',', dtype=None, comments='#')
+    sources_table = np.genfromtxt(sources_table_path, names=True, delimiter=',', dtype=None, comments='#', encoding=None)
     sources_dict = {}
 
     # Deal with special case of CSV having only 1 line (where looping through lines doesn't work), otherwise do things properly
@@ -64,7 +64,7 @@ def BandsDictFromCSV(bands_table_path):
 
 
     # Initially read in CSV file as a numpy structured array, and prepare output dictionary
-    bands_table = np.genfromtxt(bands_table_path, names=True, delimiter=',', dtype=None, comments='#')
+    bands_table = np.genfromtxt(bands_table_path, names=True, delimiter=',', dtype=None, comments='#', encoding=None)
     bands_dict = {}
 
     # Deal with special case of CSV having only 1 line (where looping through lines doesn't work), otherwise do things properly
@@ -173,7 +173,7 @@ def PhotomTablePrepare(kwargs_dict):
         kwargs_dict['photom_table_path'] = os.path.join( kwargs_dict['output_dir_path'], 'CAAPR_Photom_Table_'+kwargs_dict['timestamp']+'.csv' )
 
     # Use band input table to establish order in which to put bands in header
-    bands_table = np.genfromtxt(kwargs_dict['bands_table_path'], delimiter=',', names=True, dtype=None)
+    bands_table = np.genfromtxt(kwargs_dict['bands_table_path'], delimiter=',', names=True, dtype=None, encoding=None)
     bands_list = bands_table['band_name']
 
     # Create header, handling special case of a single band
@@ -345,7 +345,7 @@ def UnpaddingCutout(source_dict, band_dict, kwargs_dict):
     out_fitspath = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'.fits' )
     out_cutout_hdu = astropy.io.fits.PrimaryHDU(data=out_fits, header=out_header)
     out_cutout_hdulist = astropy.io.fits.HDUList([out_cutout_hdu])
-    out_cutout_hdulist.writeto(out_fitspath, clobber=True)
+    out_cutout_hdulist.writeto(out_fitspath, overwrite=True)
 
     # Repeat process for error map, if necessary
     if band_dict['use_error_map']==True:
@@ -364,7 +364,7 @@ def UnpaddingCutout(source_dict, band_dict, kwargs_dict):
         out_fitspath_error = os.path.join( kwargs_dict['temp_dir_path'], 'Cutouts', source_dict['name'], source_dict['name']+'_'+band_dict['band_name']+'_Error.fits' )
         out_cutout_hdu_error = astropy.io.fits.PrimaryHDU(data=out_fits_error, header=out_header)
         out_cutout_hdulist_error = astropy.io.fits.HDUList([out_cutout_hdu_error])
-        out_cutout_hdulist_error.writeto(out_fitspath_error, clobber=True)
+        out_cutout_hdulist_error.writeto(out_fitspath_error, overwrite=True)
 
     # Return the directory of the newly-created cutout
     out_fitsdir = os.path.split(out_fitspath)[0]
@@ -662,7 +662,7 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
         band_ap_axial_ratio = band_ap_semimaj / band_ap_semimaj
 
         # Plot band-specific aperture (if one was provided)
-        if isinstance(source_dict['aperture_bands_exclude'], str):
+        if isinstance(source_dict['aperture_bands_exclude'], basestring):
             aperture_bands_exclude = source_dict['aperture_bands_exclude'].split(';')
         else:
             aperture_bands_exclude = []
@@ -932,4 +932,4 @@ def ThumbCutout(source_dict, band_dict, kwargs_dict, img_input, thumb_rad):
     cutout_header['EPOCH'] = 2000.0
 
     # Write thumbnail cutout to file, and end output supression
-    astropy.io.fits.writeto(img_output, cutout_data, header=cutout_header, clobber=True)
+    astropy.io.fits.writeto(img_output, cutout_data, header=cutout_header, overwrite=True)

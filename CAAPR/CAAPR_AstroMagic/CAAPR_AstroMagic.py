@@ -672,7 +672,7 @@ try:
     dummy_cdelt_arcsec = (diam_max/dummy_pix)*3600.0
     url = 'http://irsa.ipac.caltech.edu/cgi-bin/HdrTemplate/nph-hdr?location='+str(source_dict['ra'])+'%2C+'+str(source_dict['dec'])+'&system=Equatorial&equinox=2000.&width='+str(diam_max)+'&height='+str(diam_max)+'&resolution='+str(dummy_cdelt_arcsec)+'&rotation=0.0'
     sys.stdout = open(os.devnull, "w")
-    ChrisFuncs.wgetURL(url, os.path.join(kwargs_dict['temp_dir_path'],'Header_Template.txt'), clobber=True, auto_retry=False)
+    ChrisFuncs.wgetURL(url, os.path.join(kwargs_dict['temp_dir_path'],'Header_Template.txt'), overwrite=True, auto_retry=False)
     sys.stdout = sys.__stdout__
 
 # Produce dummy header

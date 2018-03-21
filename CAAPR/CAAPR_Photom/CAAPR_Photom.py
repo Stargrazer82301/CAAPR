@@ -897,14 +897,14 @@ def ApCorrect(pod, source_dict, band_dict, kwargs_dict):
     if kwargs_dict['verbose']: print '['+pod['id']+'] Applying aperture correction factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(ap_correction,5))+'.'
     pod['ap_sum'] *= ap_correction
     pod['ap_error'] *= ap_correction
-    return pod #astropy.io.fits.writeto('/home/saruman/spx7cjc/DustPedia/Conv.fits', conv_map, header=pod['in_header'], clobber=True)
+    return pod #astropy.io.fits.writeto('/home/saruman/spx7cjc/DustPedia/Conv.fits', conv_map, header=pod['in_header'], overwrite=True)
 
 
 
 
 
 # Defie LMfit convolved-sersic function
-def Sersic_LMfit(params, pod, cutout, psf, mask, use_fft, lmfit=True): #astropy.io.fits.writeto('/home/saruman/spx7cjc/DustPedia/Sersic.fits', sersic_map, clobber=True)
+def Sersic_LMfit(params, pod, cutout, psf, mask, use_fft, lmfit=True): #astropy.io.fits.writeto('/home/saruman/spx7cjc/DustPedia/Sersic.fits', sersic_map, overwrite=True)
 
 
 
@@ -979,7 +979,7 @@ def ExcludePhotom(pod, source_dict, band_dict, kwargs_dict):
 
 
     # Check if the photometry exclusion field actually contains characters; if so, make list of entries, and if not, record an empty list
-    if isinstance(source_dict['photom_bands_exclude'], str):
+    if isinstance(source_dict['photom_bands_exclude'], basestring):
         aperture_bands_exclude = source_dict['photom_bands_exclude'].split(';')
     elif source_dict['photom_bands_exclude']==False:
         aperture_bands_exclude = []
@@ -1058,7 +1058,7 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict):
         return
 
     # Check if the photometry exclusion field for this source actually contains characters; if so make list of entries, else produce empty list
-    if isinstance(source_dict['photom_bands_exclude'], str):
+    if isinstance(source_dict['photom_bands_exclude'], basestring):
         photom_bands_exclude = source_dict['photom_bands_exclude'].split(';')
     else:
         photom_bands_exclude = []
@@ -1166,4 +1166,4 @@ def ExcludedSubpipelinePhotom(source_dict, band_dict, kwargs_dict_inviolate):
         os.remove(thumb_output)
 
     # Save resulting cutout
-    astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], clobber=True)
+    astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], overwrite=True)

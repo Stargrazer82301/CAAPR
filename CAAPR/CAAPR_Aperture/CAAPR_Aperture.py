@@ -83,7 +83,7 @@ def SubpipelineAperture(source_dict, band_dict, kwargs_dict):
         pod = ApertureShape(pod)
 
 
-    
+
     # Run pod through function that determines aperture size
     pod = ApertureSize(pod, band_dict)
 
@@ -444,7 +444,7 @@ def ExcludeAperture(pod, source_dict, band_dict, kwargs_dict):
 
 
     # Check if the aperture exclusion field actually contains characters; if so, make list of entries, and if not, record an empty list
-    if isinstance(source_dict['aperture_bands_exclude'], str):
+    if isinstance(source_dict['aperture_bands_exclude'], basestring):
         aperture_bands_exclude = source_dict['aperture_bands_exclude'].split(';')
     elif source_dict['aperture_bands_exclude']==False:
         aperture_bands_exclude = []
@@ -490,7 +490,7 @@ def ExcludedThumb(source_dict, bands_dict, kwargs_dict, aperture_list, aperture_
         return
 
     # Check if the aperture exclusion field for this source actually contains characters; if so make list of entries, else produce empty list
-    if isinstance(source_dict['aperture_bands_exclude'], str):
+    if isinstance(source_dict['aperture_bands_exclude'], basestring):
         aperture_bands_exclude = source_dict['aperture_bands_exclude'].split(';')
     else:
         aperture_bands_exclude = []
@@ -591,7 +591,7 @@ def ExcludedSubpipelineAperture(aperture_combined, source_dict, band_dict, kwarg
         os.remove(thumb_output)
 
     # Save resulting cutout
-    astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], clobber=True)
+    astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], overwrite=True)
 
 
 
