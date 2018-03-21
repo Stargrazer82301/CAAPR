@@ -225,7 +225,7 @@ def ApertureSize(pod, band_dict):
         if verbose: print '['+pod['id']+'] NaN pixels within coverage area; convolving using slower NaN-compatible method.'
         CAAPR.CAAPR_IO.MemCheck(pod, thresh_factor=20.0)
         kernel = astropy.convolution.kernels.Gaussian2DKernel(kernel_fwhm)
-        pod['cutout'] = astropy.convolution.convolve_fft(pod['cutout'], kernel, interpolate_nan=False, normalize_kernel=True, ignore_edge_zeros=False, allow_huge=True)
+        pod['cutout'] = astropy.convolution.convolve_fft(pod['cutout'], kernel, nan_treatment='interpolate', normalize_kernel=True, allow_huge=True)
         pod['cutout'][ np.where( np.isnan(cutout_unconv)==True ) ] = np.NaN
 
 
