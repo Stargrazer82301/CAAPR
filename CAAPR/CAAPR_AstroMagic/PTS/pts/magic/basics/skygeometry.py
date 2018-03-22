@@ -366,7 +366,7 @@ class SkyLine(object):
         :param wcs:
         :return:
         """
-
+        
         start = line.start.to_sky(wcs)
         end = line.end.to_sky(wcs)
         return cls(start, end, meta=line.meta)

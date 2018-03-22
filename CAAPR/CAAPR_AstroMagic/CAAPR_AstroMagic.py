@@ -54,40 +54,40 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
                 print '['+pod['id']+'] User explicitly requested no star subtraction for this source.'
                 return pod
             if pod['verbose']: print '['+pod['id']+'] Removing foreground stars and background galaxies with PTS AstroMagic.'
-
-
-
+        
+        
+        
             # The paths to the image and output (absolute or relative to the current working directory)
             in_fitspath = pod['in_fitspath']
             temp_dir_path = pod['temp_dir_path']
             output_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'])
             image_path = in_fitspath
-
-
-
+        
+        
+        
             # Setting the log level to "ERROR" disables all output from PTS except error messages (probably want to see those); full options are "DEBUG", "INFO", "WARNING", "ERROR", "SUCCESS"
             logging.setup_log(level="ERROR")
-
-
-
+        
+        
+        
             # The path to the bad region (as explained in the previous script that I sent you)
             bad_region_path = None
-
+        
             # The FWHM of the image (if known)
             fwhm = band_dict['beam_arcsec'] * Unit("arcsec")
-
+        
             # Import the image
             importer = ImageImporter()
             importer.run(image_path, bad_region_path=bad_region_path, fwhm=fwhm, find_error_frame=False)
-
+        
             # Get the imported image
             image = importer.image
-
+        
             # Get the mask of bad pixels
             bad_mask = image.masks.bad if "bad" in image.masks else None
-
-
-
+        
+        
+        
             # If version of cutout alrady processed by AstroMagic is present, use it; else, commence regular processing
             if os.path.exists( os.path.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits') ):
                 if pod['verbose']: print '['+pod['id']+'] AstroMagic accessing pre-processed data for this map.'
@@ -95,28 +95,28 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
                 pod['cutout'] = am_output
                 pod['pre_reg'] = True
                 return pod
-
-
-
+        
+        
+        
             # Check that pre-fetched catalogue files exist; if not, return pod
             if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat')) and os.path.exists(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat')):
                 pass
             else:
                 return pod
-
+        
             # The path to the directory where all the output will be placed
             if os.path.exists(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'])):
                 shutil.rmtree(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
                 os.mkdir(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
             else:
                 os.mkdir(os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name']))
-
+        
             # Make copies of pre-fetched catalogues, to prevent simultaneous access conflicts
             shutil.copy(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat'), os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Stars.cat'))
             shutil.copy(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat'), os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Galaxies.cat'))
-
-
-
+        
+        
+        
             # Create a CatalogImporter instance, and run it to import catalogues
             catalog_importer = CatalogImporter()
             catalog_importer.config.stars.use_catalog_file = True
@@ -124,26 +124,26 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
             catalog_importer.config.stars.catalog_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Stars.cat')
             catalog_importer.config.galaxies.catalog_path = os.path.join(temp_dir_path, 'AstroMagic', band_dict['band_name'], 'Galaxies.cat')
             catalog_importer.run(image.frames.primary)
-
+        
             # If currently handling cut-down thumbnail, only use relevant portion of catalogues
-#            if 'starsub_thumbnail' in pod.keys():
-#                if pod['starsub_thumbnail']==True:
+        #            if 'starsub_thumbnail' in pod.keys():
+        #                if pod['starsub_thumbnail']==True:
             galaxy_catalog_thumb = ThumbCatalogue(pod, source_dict, band_dict, kwargs_dict, catalog_importer)
             catalog_importer.galactic_catalog = galaxy_catalog_thumb
-
-
-
+        
+        
+        
             # Create a SourceFinder instance
             finder = SourceFinder()
-
+        
             # If you don't want to do the 'find_other_sources' step, comment-out the line below
             finder.config.find_other_sources = False # default is True
-
+        
             # Downsample map for faster run time
             if int(band_dict['downsample_factor'])>1:
                 if pod['verbose']: print '['+pod['id']+'] AstroMagic will run on copy of map downsampled by factor of '+str(int(band_dict['downsample_factor']))+', to improve speed.'
                 finder.config.downsample_factor = int( band_dict['downsample_factor'] )
-
+        
             # Run the source finder
             if pod['verbose']: print '['+pod['id']+'] AstroMagic locating online catalogue sources in map.'
             special_region = None # Not important except for debugging
@@ -158,46 +158,46 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
                     return pod
                 else:
                     pdb.set_trace()
-
-
-
+        
+        
+        
             # Save the galaxy region
             galaxy_region = finder.galaxy_region
             galaxy_region_path = filesystem.join(output_path, "galaxies.reg")
             galaxy_region.save(galaxy_region_path)
-
+        
             # Save the star region
             star_region = finder.star_region
             star_region_path = filesystem.join(output_path, "stars.reg")
             if star_region is not None: star_region.save(star_region_path)
-
+        
             # Save the saturation region
             saturation_region = finder.saturation_region
             saturation_region_path = filesystem.join(output_path, "saturation.reg")
             if saturation_region is not None: saturation_region.save(saturation_region_path)
-
+        
             # Save the region of other sources
             other_region = finder.other_region
             other_region_path = filesystem.join(output_path, "other_sources.reg")
             if other_region is not None: other_region.save(other_region_path)
-
-
-
+        
+        
+        
             # Get the segmentation maps (galaxies, stars and other sources) from the SourceFinder
             galaxy_segments = finder.galaxy_segments
             star_segments = finder.star_segments
             other_segments = finder.other_segments
-
+        
             # Make sure target galaxy isn't identified as star segment
-            target_segment = star_segments[ pod['centre_i'], pod['centre_j'] ]
+            target_segment = star_segments[ int(round(pod['centre_i'])), int(round(pod['centre_j'])) ]
             star_segments[ np.where( star_segments==target_segment ) ] = 0.0
-
-
-
-
+        
+        
+        
+        
             # Handle stars that have been conflated with the target galaxy
             star_segments = OverlargeStars(pod, star_segments, saturation_region_path, star_region_path, galaxy_region_path, image, source_dict, band_dict, temp_dir_path)
-
+        
             # Region files can be adjusted by the user; if this is done, they have to be reloaded
             star_region = Region.from_file(star_region_path.replace('.reg','_revised.reg'))
             saturation_region = Region.from_file(saturation_region_path.replace('.reg','_revised.reg'))
@@ -213,44 +213,44 @@ def Magic(pod, source_dict, band_dict, kwargs_dict):
             gal_file_new.write(gal_header)
             gal_file_new.close()
             galaxy_region = Region.from_file(galaxy_region_path.replace('.reg','_revised.reg'))
-
-
-
+        
+        
+        
             # Create a map of the the segmentation maps
             segments = Image("segments")
-
+        
             # Add the segmentation map of the galaxies
             segments.add_frame(galaxy_segments, "galaxies")
-
+        
             # Add the segmentation map of the saturated stars
             if star_segments is not None: segments.add_frame(star_segments, "stars")
-
+        
             # Add the segmentation map of the other sources
             if other_segments is not None: segments.add_frame(other_segments, "other_sources")
-
+        
             # Save the FITS file with the segmentation maps
             path = filesystem.join(output_path, "segments.fits")
             segments.save(path)
-
-
-
+        
+        
+        
             # Create an SourceExtractor instance
             if pod['verbose']: print '['+pod['id']+'] AstroMagic extracting background sources.'
             extractor = SourceExtractor()
-
+        
             # Run the source extractor
             extractor.run(image.frames.primary, galaxy_region, star_region, saturation_region, other_region, galaxy_segments, star_segments, other_segments)
-
-
-
+        
+        
+        
             # Determine the path to the result
             result_path = filesystem.join( temp_dir_path, 'AstroMagic', band_dict['band_name'], source_dict['name']+'_'+band_dict['band_name']+'_StarSub.fits' )
-
+        
             # Save the resulting image as a FITS file
             image.frames.primary.save(result_path, header=image.original_header)
-
-
-
+        
+        
+        
             # Grab AstroMagic output and return in pod
             am_output = astropy.io.fits.getdata( result_path )
             pod['cutout'] = am_output
@@ -619,45 +619,45 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
     while try_counter<10:
         if try_success==True:
             break
-        try:
-            signal.alarm(900)
+#        try:
+#            signal.alarm(900)
 
-            # Get AstroMagic catalogue object reference fits
-            logging.setup_log(level="ERROR")
-            importer = ImageImporter()
-            importer.run(file_max, find_error_frame=False)
-            image = importer.image
+        # Get AstroMagic catalogue object reference fits
+        logging.setup_log(level="ERROR")
+        importer = ImageImporter()
+        importer.run(file_max, find_error_frame=False)
+        image = importer.image
+        
+        # Run catalogue importer on dummy fits, and save results
+        catalog_importer = CatalogImporter()
+        catalog_importer.config.writing.galactic_catalog_path = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat')
+        catalog_importer.config.writing.stellar_catalog_path = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat')
+        catalog_importer.run(image.frames.primary)
+        catalog_importer.write_galactic_catalog()
+        catalog_importer.write_stellar_catalog()
 
-            # Run catalogue importer on dummy fits, and save results
-            catalog_importer = CatalogImporter()
-            catalog_importer.config.writing.galactic_catalog_path = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Galaxies.cat')
-            catalog_importer.config.writing.stellar_catalog_path = os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic', 'Stars.cat')
-            catalog_importer.run(image.frames.primary)
-            catalog_importer.write_galactic_catalog()
-            catalog_importer.write_stellar_catalog()
+        # Record success and break
+        try_success = True
+        signal.alarm(0)
+        break
 
-            # Record success and break
-            try_success = True
-            signal.alarm(0)
-            break
-
-        # Handle errors
-        except ValueError as e:
-            if 'rebin' in e.message:
-                if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
-                try_counter += 1
-                pytime.sleep(10)
-        except IndexError as e:
-            if 'out of range' in e.message:
-                if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
-                try_counter += 1
-                pytime.sleep(10)
-        except Exception as e:
-            if 'Read timed out' in str(e.message):
-                if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
-                try_counter += 1
-                pytime.sleep(10)
-    signal.alarm(0)
+#        # Handle errors
+#        except ValueError as e:
+#            if 'rebin' in e.message:
+#                if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
+#                try_counter += 1
+#                pytime.sleep(10)
+#        except IndexError as e:
+#            if 'out of range' in e.message:
+#                if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
+#                try_counter += 1
+#                pytime.sleep(10)
+#        except Exception as e:
+#            if 'Read timed out' in str(e.message):
+#                if kwargs_dict['verbose']: print '['+source_dict['name']+'] PTS AstroMagic encountered an error whilst pre-fetching stellar catalogues; re-attemping.'
+#                try_counter += 1
+#                pytime.sleep(10)
+#    signal.alarm(0)
     return
 
 

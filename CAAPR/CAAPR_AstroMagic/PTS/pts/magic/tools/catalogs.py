@@ -24,6 +24,7 @@ from astroquery.simbad import Simbad
 from astroquery.ned import Ned
 import astroquery.exceptions
 from astropy.coordinates import Angle
+import astropy.units
 
 # Import the relevant PTS classes and modules
 from ...core.tools import tables
@@ -280,7 +281,7 @@ def create_star_catalog(frame, catalogs=None):
     center, ra_span, dec_span = frame.coordinate_range
 
     # Create a new Vizier object and set the row limit to -1 (unlimited)
-    viz = Vizier(keywords=["stars", "optical"])
+    viz = Vizier(columns=['*','errMaj','errMin','errPA'], keywords=["stars", "optical"])
     viz.ROW_LIMIT = -1
 
     # Loop over the different catalogs
@@ -334,12 +335,20 @@ def create_star_catalog(frame, catalogs=None):
             # -- Positional information --
 
             # Get the position of the star as a SkyCoord object and as pixel coordinate
-            position = SkyCoordinate(ra=table["_RAJ2000"][i], dec=table["_DEJ2000"][i], unit="deg", frame="fk5")
+            if ('_RAJ2000' in table.colnames) and ('_DEJ2000' in table.colnames):
+                ra_key, dec_key = '_RAJ2000', '_DEJ2000'
+            elif ('RAJ2000' in table.colnames) and ('DEJ2000' in table.colnames):
+                ra_key, dec_key = 'RAJ2000', 'DEJ2000'
+            position = SkyCoordinate(ra=table[ra_key][i], dec=table[dec_key][i], unit="deg", frame="fk5")
             pixel_position = position.to_pixel(frame.wcs)
 
             # Get the right ascension and declination for the current star
-            star_ra = table["_RAJ2000"][i]
-            star_dec = table["_DEJ2000"][i]
+            if ('_RAJ2000' in table.colnames) and ('_DEJ2000' in table.colnames):
+                ra_key, dec_key = '_RAJ2000', '_DEJ2000'
+            elif ('RAJ2000' in table.colnames) and ('DEJ2000' in table.colnames):
+                ra_key, dec_key = 'RAJ2000', 'DEJ2000'
+            star_ra = table[ra_key][i]
+            star_dec = table[dec_key][i]
 
             number_of_stars += 1
 
@@ -355,7 +364,6 @@ def create_star_catalog(frame, catalogs=None):
                 dec_error = table["e_DEJ2000"][i] * Unit("mas")
 
             elif catalog == "II/246":
-
                 error_maj = table["errMaj"][i] * Unit("arcsec")
                 error_min = table["errMin"][i] * Unit("arcsec")
                 error_theta = Angle(table["errPA"][i], "deg")
@@ -693,7 +701,11 @@ def get_galaxy_info(name, position):
         # If no matches are found, look for the table entry for which the coordinate matches the given position (if any)
         if entry is None and position is not None:
             for row in table:
-                if np.isclose(row["_RAJ2000"], position.ra.value) and np.isclose(row["_DEJ2000"], position.dec.value):
+                if ('_RAJ2000' in row.colnames) and ('_DEJ2000' in row.colnames):
+                    ra_key, dec_key = '_RAJ2000', '_DEJ2000'
+                elif ('RAJ2000' in row.colnames) and ('DEJ2000' in row.colnames):
+                    ra_key, dec_key = 'RAJ2000', 'DEJ2000'
+                if np.isclose(astropy.coordinates.Angle(row[ra_key]+' hours').deg, position.ra.value) and np.isclose(astropy.coordinates.Angle(row[dec_key]+' degrees').deg, position.dec.value):
                     entry = row
                     break
 
@@ -701,7 +713,11 @@ def get_galaxy_info(name, position):
     if entry is None: return name, position, None, None, [], None, None, None, None, None, None
 
     # Get the right ascension and the declination
-    position = SkyCoordinate(ra=entry["_RAJ2000"], dec=entry["_DEJ2000"], unit="deg", frame="fk5")
+    if ('_RAJ2000' in entry.colnames) and ('_DEJ2000' in entry.colnames):
+        ra_key, dec_key = '_RAJ2000', '_DEJ2000'
+    elif ('RAJ2000' in entry.colnames) and ('DEJ2000' in entry.colnames):
+        ra_key, dec_key = 'RAJ2000', 'DEJ2000'
+    position = SkyCoordinate(ra=entry[ra_key], dec=entry[dec_key], unit="deg", frame="fk5")
 
     # Get the names given to this galaxy
     gal_names = entry["ANames"].split() if entry["ANames"] else []
@@ -789,7 +805,10 @@ def galaxies_in_box(center, ra_span, dec_span):
     # Loop over the rows in the table
     for entry in table:
         name = "PGC " + str(entry["PGC"])
-        coordinate = SkyCoordinate(ra=entry["_RAJ2000"], dec=entry["_DEJ2000"], unit="deg", frame="fk5")
+        if ('_RAJ2000' in entry.colnames) and ('_DEJ2000' in entry.colnames):
+            coordinate = SkyCoordinate(ra=entry["_RAJ2000"], dec=entry["_DEJ2000"], unit="deg", frame="fk5")
+        elif ('RAJ2000' in entry.colnames) and ('DEJ2000' in entry.colnames):
+            coordinate = SkyCoordinate(ra=entry["RAJ2000"], dec=entry["DEJ2000"], unit="deg", frame="fk5")
         namepluscoordinate = (name, coordinate)
         names.append(namepluscoordinate)
 

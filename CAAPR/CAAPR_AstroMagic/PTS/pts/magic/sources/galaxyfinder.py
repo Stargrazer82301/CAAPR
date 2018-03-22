@@ -15,6 +15,8 @@ from __future__ import absolute_import, division, print_function
 # Import astronomical modules
 from astropy.units import Unit
 from astropy.coordinates import Angle
+import pdb
+import numbers
 
 # Import the relevant PTS classes and modules
 from ..basics.mask import Mask
@@ -313,20 +315,20 @@ class GalaxyFinder(OldConfigurable):
 
             # Get the galaxy properties
             name = self.catalog["Name"][i]
-            redshift = self.catalog["Redshift"][i] if not self.catalog["Redshift"].mask[i] else None
-            galaxy_type = self.catalog["Type"][i] if not self.catalog["Type"].mask[i] else None
-            distance = self.catalog["Distance"][i] * Unit("Mpc") if not self.catalog["Distance"].mask[i] else None
-            inclination = Angle(self.catalog["Inclination"][i], Unit("deg")) if not self.catalog["Inclination"].mask[i] else None
-            d25 = self.catalog["D25"][i] * Unit("arcmin") if not self.catalog["D25"].mask[i] else None
-            major = self.catalog["Major axis length"][i] * Unit("arcmin") if not self.catalog["Major axis length"].mask[i] else None
-            minor = self.catalog["Minor axis length"][i] * Unit("arcmin") if not self.catalog["Minor axis length"].mask[i] else None
-            position_angle = Angle(self.catalog["Position angle"][i], Unit("deg")) if not self.catalog["Position angle"].mask[i] else None
-            ra = self.catalog["Right ascension"][i]
+            redshift = self.catalog["Redshift"][i] if isinstance(self.catalog["Redshift"][i], numbers.Number) else None
+            galaxy_type = self.catalog["Type"][i] if bool(len(self.catalog["Type"][i])) else None
+            distance = self.catalog["Distance"][i] * Unit("Mpc") if isinstance(self.catalog["Distance"][i], str) else None
+            inclination = Angle(self.catalog["Inclination"][i], Unit("deg")) if isinstance(self.catalog["Inclination"][i], numbers.Number) else None
+            d25 = self.catalog["D25"][i] * Unit("arcmin") if isinstance(self.catalog["D25"][i], numbers.Number) else None
+            major = self.catalog["Major axis length"][i] * Unit("arcmin") if isinstance(self.catalog["Major axis length"][i], numbers.Number) else None
+            minor = self.catalog["Minor axis length"][i] * Unit("arcmin")  if isinstance(self.catalog["Minor axis length"][i], numbers.Number) else None
+            position_angle = Angle(self.catalog["Position angle"][i], Unit("deg")) if isinstance(self.catalog["Position angle"][i], numbers.Number) else None
+            ra = Angle(str(self.catalog["Right ascension"][i])+' hours').deg
             dec = self.catalog["Declination"][i]
-            names = self.catalog["Alternative names"][i].split(", ") if not self.catalog["Alternative names"].mask[i] else []
+            names = self.catalog["Alternative names"][i].split(", ") if bool(len(self.catalog["Type"][i])) else []
             principal = self.catalog["Principal"][i]
-            companions = self.catalog["Companion galaxies"][i].split(", ") if not self.catalog["Companion galaxies"].mask[i] else []
-            parent = self.catalog["Parent galaxy"][i] if not self.catalog["Parent galaxy"].mask[i] else None
+            companions = self.catalog["Companion galaxies"][i].split(", ") if bool(len((self.catalog["Companion galaxies"][i].split(", "))[0])) else []
+            parent = self.catalog["Parent galaxy"][i] if bool(len(self.catalog["Parent galaxy"][i])) else None
 
             # Create a SkyCoordinate for the galaxy center position
             position = SkyCoordinate(ra=ra, dec=dec, unit="deg", frame="fk5")
@@ -353,10 +355,10 @@ class GalaxyFinder(OldConfigurable):
             if self.special_mask is not None: galaxy.special = self.special_mask.masks(pixel_position)
             if self.ignore_mask is not None: galaxy.ignore = self.ignore_mask.masks(pixel_position)
 
-            # If the input mask masks this galaxy's position, skip it (don't add it to the list of galaxies)
+            # If the input mask masks this galaxy's position, skip it (don't add it to the list of galaxies)            
             if self.bad_mask is not None and self.bad_mask.masks(pixel_position) and not galaxy.principal: continue
 
-            # Add the new galaxy to the list
+            # Add the new galaxy to the list            
             self.galaxies.append(galaxy)
 
         # Debug messages

@@ -382,7 +382,7 @@ def RecordAperture(aperture_combined, source_dict, kwargs_dict):
 
 
     # Consturct string of line to be written
-    aperture_string = str([ source_dict['name'], aperture_combined[0], aperture_combined[1], aperture_combined[2] ])#'name','semimaj_arcsec,axial_ratio,pos_angle\n'
+    aperture_string = str([ source_dict['name'].encode('utf-8'), aperture_combined[0], aperture_combined[1], aperture_combined[2] ])#'name','semimaj_arcsec,axial_ratio,pos_angle\n'
     aperture_string = aperture_string.replace('[','').replace(']','').replace(' ','').replace('\'','')+'\n'
 
     # Write line to file
