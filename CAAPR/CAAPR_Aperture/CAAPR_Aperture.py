@@ -91,7 +91,7 @@ def SubpipelineAperture(source_dict, band_dict, kwargs_dict):
 
     # If thumbnail images have been requested, save a copy of the current image (ie, with any star and/or background subtaction)
     if kwargs_dict['thumbnails']==True:
-        astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'])
+        astropy.io.fits.writeto(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], overwrite=True)
 
 
 

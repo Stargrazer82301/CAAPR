@@ -172,7 +172,8 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
     # Report time taken for source, and tidy up garbage
     gc.collect()
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Total time taken for souce: '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(time.time()-source_start,4))+' seconds.'
-    if kwargs_dict['thumbnails']==True: [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
+    if kwargs_dict['thumbnails']==True and kwargs_dict['messy']==False:
+        [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
 
 
 
@@ -185,7 +186,7 @@ def SourcePrelim(source_dict, bands_dict, kwargs_dict):
 
     # Check that any of the bands actually have data for this source
     kwargs_dict_copy = copy.deepcopy(kwargs_dict)
-    kwargs_dict_copy['verbose'] = False    
+    kwargs_dict_copy['verbose'] = False
     bands_check = []
     for band in bands_dict.keys():
         source_id = source_dict['name']+'_'+bands_dict[band]['band_name']
@@ -255,7 +256,7 @@ def FilePrelim(source_dict, band_dict, kwargs_dict):
             in_fitspath = os.path.join( band_dict['band_dir'] )
     except:
         pdb.set_trace()
-        
+
     # Work out whether the file extension for FITS file in question is .fits or .fits.gz
     file_found = False
     try:
@@ -267,7 +268,7 @@ def FilePrelim(source_dict, band_dict, kwargs_dict):
             file_found = True
     except:
         raise Exception('Path provided for band '+str(band_dict['band_name'])+' refers to neither a file nor a folder.')
-    
+
     # Return file values
     return in_fitspath, file_found
 
@@ -452,10 +453,12 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
 # Define function that tidies up folders and paths after completed processing a source
 def PathTidy(source_dict, bands_dict, kwargs_dict):
 
-    if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name'])):
-        shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name']))
-    if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic')):
-        shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic'))
+    # If we're not in messy mode, delete temporary directories
+    if not kwargs_dict['messy']:
+        if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name'])):
+            shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'Cutouts',source_dict['name']))
+        if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic')):
+            shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'],'AstroMagic'))
 
     # Set band directories to standard, not whatever temporary cutout directories may have been used for this source
     for band in bands_dict.keys():

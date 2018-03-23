@@ -34,6 +34,7 @@ def Run(bands_table_path = '../DustPedia/CAAPR_Band_Table.csv',
           thumbnails = True,
           debug = False,
           verbose = True,
+          messy = False
           ):
 
 
@@ -55,7 +56,8 @@ def Run(bands_table_path = '../DustPedia/CAAPR_Band_Table.csv',
                    'n_proc':n_proc,
                    'thumbnails':thumbnails,
                    'debug':debug,
-                   'verbose':verbose}
+                   'verbose':verbose,
+                   'messy':messy}
 
 
 

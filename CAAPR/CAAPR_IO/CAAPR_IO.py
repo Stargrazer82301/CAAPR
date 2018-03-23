@@ -118,16 +118,19 @@ def TempDirPrepare(kwargs_dict):
 
     # Create temporary directory; if temporary directory already exists, delete it and make a new one
     if os.path.exists( kwargs_dict['temp_dir_path'] ):
-        shutil.rmtree( kwargs_dict['temp_dir_path'] )
-    os.mkdir( kwargs_dict['temp_dir_path'] )
+        if kwargs_dict['messy'] == False:
+            shutil.rmtree( kwargs_dict['temp_dir_path'] )
+            os.mkdir( kwargs_dict['temp_dir_path'] )
 
     # If star-subtraction requested, make temporary sub-directory to hold AstroMagic products
-    if kwargs_dict['starsub']==True:
-        os.mkdir( os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic' ) )
+    if not os.path.exists(os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic' )):
+        if kwargs_dict['starsub']==True:
+            os.mkdir( os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic' ) )
 
     # If thumbnails requested, make temporary sub-directory for thumbnail cutouts
-    if kwargs_dict['thumbnails']==True:
-        os.mkdir( os.path.join( kwargs_dict['temp_dir_path'],'Processed_Maps' ) )
+    if not os.path.exists(os.path.join( kwargs_dict['temp_dir_path'], 'Processed_Maps' )):
+        if kwargs_dict['thumbnails']==True:
+            os.mkdir( os.path.join( kwargs_dict['temp_dir_path'],'Processed_Maps' ) )
 
 
 
@@ -700,7 +703,8 @@ def ApertureThumbGrid(source_dict, bands_dict, kwargs_dict, aperture_list, apert
 
     # Save figure, and remove temporary files
     fig.savefig( os.path.join(kwargs_dict['output_dir_path'],'Aperture_Fitting_Thumbnails',source_dict['name']+'_Thumbnail_Grid.png'), facecolor='white', dpi=100.0)
-    [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
+    if kwargs_dict['messy'] == False:
+        [os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map]
     fig.clear()
     plt.close('all')
     gc.collect()
@@ -906,7 +910,8 @@ def PhotomThumbGrid(source_dict, bands_dict, kwargs_dict):
 
     # Save figure, and remove temporary files
     fig.savefig( os.path.join(kwargs_dict['output_dir_path'],'Photometry_Thumbnails',source_dict['name']+'_Thumbnail_Grid.png'), facecolor='white', dpi=100.0)
-    [ os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map ]
+    if kwargs_dict['messy'] == False:
+        [ os.remove(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps',processed_map)) for processed_map in os.listdir(os.path.join(kwargs_dict['temp_dir_path'],'Processed_Maps')) if '.fits' in processed_map ]
     fig.clear()
     plt.close('all')
     gc.collect()

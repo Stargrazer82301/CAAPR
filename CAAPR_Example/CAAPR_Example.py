@@ -19,6 +19,7 @@ CAAPR.CAAPR_Main.Run(bands_table_path = '../CAAPR_Example/CAAPR_Band_Table_Test.
                      n_proc = mp.cpu_count()-2, # If parallel is set to True, CAAPR will use this many CPU threads
                      thumbnails = True, # If True, CAAPR will produce thumbnail images to illustrate the results of the photometry (see Figure 6 of CJR Clark et al, 2018)
                      verbose = True, # If True, CAAPR will print a lot of text to the console to update the user on its progress; if False, it won't
+                     messy = True # If True, contents of temporary folder will not be deleted
                      )
 
 # Jubilate
