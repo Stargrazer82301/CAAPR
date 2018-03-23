@@ -46,6 +46,10 @@ $RECYCLE.BIN/
 *.jpg
 *.jpeg
 
+# Install files
+/build
+/dist
+
 
 
 

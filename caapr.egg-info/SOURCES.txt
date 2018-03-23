@@ -1,4 +1,5 @@
 README.md
+setup.py
 CAAPR/CAAPR_Main.py
 CAAPR/__init__.py
 CAAPR/CAAPR_Aperture/CAAPR_Aperture.py
@@ -16,4 +17,5 @@ caapr.egg-info/PKG-INFO
 caapr.egg-info/SOURCES.txt
 caapr.egg-info/dependency_links.txt
 caapr.egg-info/not-zip-safe
+caapr.egg-info/requires.txt
 caapr.egg-info/top_level.txt
