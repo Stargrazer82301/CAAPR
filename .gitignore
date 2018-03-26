@@ -29,8 +29,8 @@ $RECYCLE.BIN/
 /Old/
 /Test/CAAPR_Output/
 /Test/CAAPR_Temp/
-/CAAPR_Example/CAAPR_Output/
-/CAAPR_Example/CAAPR_Temp/
+/CAAPR_Example/CAAPR_Output/*
+/CAAPR_Example/CAAPR_Temp/*
 
 ## Data tables & FITS files
 #*.fits
