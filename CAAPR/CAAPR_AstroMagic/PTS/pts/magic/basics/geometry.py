@@ -1219,7 +1219,10 @@ class Ellipse(object):
         y_max = y_size - rel_center.y
 
         # Calculate the mask
-        fraction = elliptical_overlap_grid(x_min, x_max, y_min, y_max, x_size, y_size, a, b, theta, use_exact=0, subpixels=1)
+        if a * b * x_size * y_size == 0:
+            fraction = 0
+        else:
+            fraction = elliptical_overlap_grid(x_min, x_max, y_min, y_max, x_size, y_size, a, b, theta, use_exact=0, subpixels=1)
 
         #xmin, xmax, ymin, ymax : float
         #    Extent of the grid in the x and y direction.

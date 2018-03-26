@@ -13,6 +13,7 @@
 from __future__ import absolute_import, division, print_function
 
 # Import astronomical modules
+import numpy as np
 from astropy.units import Unit
 from astropy.coordinates import Angle
 import pdb
@@ -309,6 +310,14 @@ class GalaxyFinder(OldConfigurable):
 
         # Inform the user
         log.info("Loading the galaxies from the catalog ...")
+        
+        # Set to be strings columns that should be strings
+        for colname in self.catalog.colnames:
+            if colname in ["Name","Type","Alternative names","Companion galaxies","Parent galaxy"]: 
+                self.catalog[colname] = self.catalog[colname].astype(str)
+            if colname in ["Principal"]: 
+                self.catalog[colname] = self.catalog[colname].astype(bool)
+
 
         # Create the list of galaxies
         for i in range(len(self.catalog)):
@@ -334,7 +343,8 @@ class GalaxyFinder(OldConfigurable):
             position = SkyCoordinate(ra=ra, dec=dec, unit="deg", frame="fk5")
 
             # If the galaxy falls outside of the frame, skip it
-            if not self.frame.contains(position): continue
+            if len(self.catalog) > 1:
+                if not self.frame.contains(position): continue
 
             # Create a new Galaxy instance
             galaxy = Galaxy(i, name, position, redshift, galaxy_type, names, distance, inclination, d25, major, minor, position_angle)
@@ -355,11 +365,30 @@ class GalaxyFinder(OldConfigurable):
             if self.special_mask is not None: galaxy.special = self.special_mask.masks(pixel_position)
             if self.ignore_mask is not None: galaxy.ignore = self.ignore_mask.masks(pixel_position)
 
-            # If the input mask masks this galaxy's position, skip it (don't add it to the list of galaxies)            
-            if self.bad_mask is not None and self.bad_mask.masks(pixel_position) and not galaxy.principal: continue
+            # If the input mask masks this galaxy's position, skip it (don't add it to the list of galaxies)   
+            if len(self.catalog) > 1:
+                if self.bad_mask is not None and self.bad_mask.masks(pixel_position) and not galaxy.principal: continue
 
             # Add the new galaxy to the list            
             self.galaxies.append(galaxy)
+            
+        # If we're having the problem where no principal galaxy have been set, do it explicitly here
+        if not hasattr(self, "principal"):
+            if len(self.catalog) == 1:
+                self.principal = self.galaxies[0]
+            """index = np.where(self.catalog["Major axis length"] == max(self.catalog["Major axis length"]))[0][0]            
+            self.principal = Galaxy(index, 
+                                    self.catalog[index]["Name"], 
+                                    SkyCoordinate(ra=Angle(str(self.catalog["Right ascension"][index])+' hours').deg, dec=self.catalog["Declination"][index], unit="deg", frame="fk5"), 
+                                    self.catalog["Redshift"][index] if isinstance(self.catalog["Redshift"][index], numbers.Number) else None, 
+                                    self.catalog["Type"][index] if bool(len(self.catalog["Type"][i])) else None, 
+                                    self.catalog["Alternative names"][index].split(", ") if bool(len(self.catalog["Type"][index])) else [], 
+                                    self.catalog["Distance"][index] * Unit("Mpc") if isinstance(self.catalog["Distance"][index], str) else None, 
+                                    Angle(self.catalog["Inclination"][index], Unit("deg")) if isinstance(self.catalog["Inclination"][index], numbers.Number) else None, 
+                                    self.catalog["D25"][index] * Unit("arcmin") if isinstance(self.catalog["D25"][index], numbers.Number) else None, 
+                                    self.catalog["Major axis length"][index] * Unit("arcmin") if isinstance(self.catalog["Major axis length"][index], numbers.Number) else None, 
+                                    self.catalog["Minor axis length"][index] * Unit("arcmin")  if isinstance(self.catalog["Minor axis length"][index], numbers.Number) else None, 
+                                    Angle(self.catalog["Position angle"][index], Unit("deg")) if isinstance(self.catalog["Position angle"][index], numbers.Number) else None)"""
 
         # Debug messages
         log.debug(self.principal.name + " is the principal galaxy in the frame")
@@ -384,7 +413,10 @@ class GalaxyFinder(OldConfigurable):
             if galaxy.ignore: continue
 
             # If the galaxy does not have a source, continue
-            if galaxy.has_source: galaxy.find_contour(self.frame, self.config.apertures)
+            try:
+                if galaxy.has_source: galaxy.find_contour(self.frame, self.config.apertures)
+            except:
+                continue
 
     # -----------------------------------------------------------------
 

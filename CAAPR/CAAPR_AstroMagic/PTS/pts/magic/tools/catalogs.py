@@ -554,8 +554,9 @@ def create_galaxy_catalog(frame):
 
     # Indicate which galaxy is the principal galaxy
     principal_column = [False] * number_of_galaxies
-    principal_index = max(range(number_of_galaxies), key=lambda index: major_column[index])
-    principal_column[principal_index] = True
+    if number_of_galaxies > 0:
+        principal_index = max(range(number_of_galaxies), key=lambda index: major_column[index])
+        principal_column[principal_index] = True
 
     # Loop over the other galaxies, check if they are companion galaxies of the principal galax
     companions_list_list = [[] for _ in range(number_of_galaxies)]
