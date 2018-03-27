@@ -121,6 +121,8 @@ def TempDirPrepare(kwargs_dict):
         if kwargs_dict['messy'] == False:
             shutil.rmtree( kwargs_dict['temp_dir_path'] )
             os.mkdir( kwargs_dict['temp_dir_path'] )
+    else:
+        os.mkdir( kwargs_dict['temp_dir_path'] )
 
     # If star-subtraction requested, make temporary sub-directory to hold AstroMagic products
     if not os.path.exists(os.path.join( kwargs_dict['temp_dir_path'], 'AstroMagic' )):

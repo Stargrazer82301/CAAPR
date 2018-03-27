@@ -566,6 +566,11 @@ def PreCatalogue(source_dict, bands_dict, kwargs_dict):
     if os.path.exists(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic')):
         shutil.rmtree(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
     os.mkdir(os.path.join(kwargs_dict['temp_dir_path'], 'AstroMagic'))
+    
+    # If weird PTS user directory not present, create it
+    pts_user_dir = os.path.join( os.path.dirname(os.path.abspath(__file__)), 'PTS', 'user', 'magic', 'catalogs' )
+    if not os.path.exists(pts_user_dir):
+        os.makedirs(pts_user_dir)
 
 
 

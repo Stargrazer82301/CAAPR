@@ -43,7 +43,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
     # Check if any data actually exists for this source
     if SourcePrelim(source_dict, bands_dict, kwargs_dict)==False:
         return
-
+    
 
 
     # Loop over bands for initial processing
