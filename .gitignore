@@ -25,10 +25,14 @@ $RECYCLE.BIN/
 # Python binaries
 *.pyc
 
-# Sub-repositories
+# Entire sub-directories
 /Old/
+
+# Contents of certain sub-directories
 /Test/CAAPR_Output/*
 /Test/CAAPR_Temp/*
+/CAAPR_Example/CAAPR_Output/*
+/CAAPR_Temp/CAAPR_Temp/*
 
 ## Data tables & FITS files
 #*.fits
