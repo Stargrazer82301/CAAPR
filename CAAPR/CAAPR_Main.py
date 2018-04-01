@@ -17,25 +17,25 @@ import pdb
 
 
 # Define the function that runs the CAAPR pipeline
-def Run(bands_table_path = '../DustPedia/CAAPR_Band_Table.csv',
-          sources_table_path = '../DustPedia/CAAPR_Source_Table.csv',
-          output_dir_path = '../CAAPR_Output',
-          temp_dir_path = 'CAAPR_Temp',
-          fit_apertures = True,
-          aperture_table_path = None,#'CAAPR_Aperture_Table.csv',
-          photom_table_path = None,
-          expansion_factor = 1.25,
-          polysub = True,
-          starsub = True,
-          do_photom = True,
-          extinction_corr = True,
-          parallel = True,
-          n_proc = mp.cpu_count()-2,
-          thumbnails = True,
-          debug = False,
-          verbose = True,
-          messy = False
-          ):
+def Run(bands_table_path = '../CAAPR_Example/CAAPR_Band_Table.csv',
+        sources_table_path = '../CAAPR_Example/CAAPR_Source_Table.csv',
+        output_dir_path = '../CAAPR_Output',
+        temp_dir_path = 'CAAPR_Temp',
+        fit_apertures = True,
+        aperture_table_path = None,#'CAAPR_Aperture_Table.csv',
+        photom_table_path = None,
+        expansion_factor = 1.25,
+        polysub = True,
+        starsub = True,
+        do_photom = True,
+        extinction_corr = True,
+        parallel = True,
+        n_proc = mp.cpu_count()-2,
+        thumbnails = True,
+        debug = False,
+        verbose = True,
+        messy = False
+        ):
 
 
 
