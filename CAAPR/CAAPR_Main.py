@@ -1,5 +1,6 @@
 # Import smorgasbord
 import sys
+import os
 import gc
 import time
 import random
@@ -19,8 +20,8 @@ import pdb
 # Define the function that runs the CAAPR pipeline
 def Run(bands_table_path = '../CAAPR_Example/CAAPR_Band_Table.csv',
         sources_table_path = '../CAAPR_Example/CAAPR_Source_Table.csv',
-        output_dir_path = '../CAAPR_Output',
-        temp_dir_path = 'CAAPR_Temp',
+        output_dir_path = os.path.join(os.getcwd(),'CAAPR_Output'),
+        temp_dir_path = os.path.join(os.getcwd(),'CAAPR_Temp'),
         fit_apertures = True,
         aperture_table_path = None,#'CAAPR_Aperture_Table.csv',
         photom_table_path = None,
