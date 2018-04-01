@@ -39,7 +39,23 @@ The CAAPR repository has a folder called CAAPR_Example. This contains an example
 - `verbose` [**bool**, default = True] Whether CAAPR should print verbose output to the console, to update the user on its progress.
 - `messy` [**bool**, default = False] If this is set to True, CAAPR will not delete the contents of the temporary folder (defined by `temp_dir_path`) after each source has been processed. This is useful if the user wishes to inspect the star- and background-subtracted maps. Note that if this is set to True, the thumbnail images produced when `thumbnails ==True` may look a bit ugly, with too much whitespace.
  
- 
+### Sources Table
+
+CAAPR requires a source table, which should be in CSV format (with a one-line header of the column names, described below), in order to operature. When calling CAAPR, the source table is pointed to using the `sources_table_path` kwarg, described above. An example of a sources table can be found in the CAAPR_Example folder of the CAAPR respository. The columns in the table should be as follows:
+ - `name` The name of the source.
+ - `ra` The right ascension of the source, in decimal degrees.
+ - `dec` The declination of the source, in decimal degrees.
+ - `aperture_bands_exclude` A semicolon-separated list of bands which should not be used for aperture fitting in the case of this source. For example, if know there is a bright SMG right next to a particular source, you might exclude the 350um and 500um bands from aperture fitting; this would be done by entering `SPIRE_250;SPIRE_500` here. This column can be left blank for any source.
+ - `photom_bands_exclude` A semicolon-separated list of bands which should not be used for photometry in the case of this source. For example, you might have an old optical photographic plate scan image of this source that you want to use for aperture-fitting, but which is no use for photometry. This column can be left blank for any source.
+ - `starsub_bands_exclude` A semicolon-separated list of bands for which CAAPR should not attempt star subtraction. For example, the star subtraction sometimes performs badly, and does more harm than good in a particular band, for a particular source. This column can be left blank for any source.
+ - `fitting_min_semimaj_arcsec` A float describing the minimum semimajor axis of the photometric aperture that should be fitted for a given source. This is in case you have an *a priori* reason to want CAAPR to fit a photometric aperture of at least a certain size for a given soruce. This column can be left blank for any source.
+
+
+### Bands Table
+
+
+
+### Aperture Table
  
  
  
