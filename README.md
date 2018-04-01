@@ -26,7 +26,7 @@ The CAAPR repository has a folder called CAAPR_Example. This contains an example
  - `output_dir_path` [**str**, default = current working directory] The path to a directory where the output tables and thumbnail images produced by CAAPR will be saved. If the directory does not already exist, it will be created.
  - `temp_dir_path` [**str**, default = current working directory] The path to a directory that CAAPR will use for storing temporary working files whilst it is running. If the directory does not already exist, it will be created.
  - `fit_apertures` [**bool**, default = True] If True, CAAPR will fit apertures, and save the apertures to the file named in the `aperture_table_path` kwarg (see below). If False, CAAPR will assume the `aperture_table_path` file is a pre-existing table containing an aperture for each source, and will skip aperture-fitting and progress straight to the photometry phase (assuming the `do_photom` is set to True; see below). 
- - `aperture_table_path` [**str/None**, default = within `output_dir_path`] The path to a CSV file that will contain the apertures for each source (see details for fit_apertures kwarg above); if None, a file will be created automatically in the directory given by `output_dir_path`. For column details see subsection below.
+ - `aperture_table_path` [**str/None**, default = within `output_dir_path`] The path to a CSV file that will contain the apertures for each source (see details for fit_apertures kwarg above); if None, a file will be created automatically in the directory given by `output_dir_path`. Alternatively, if you have a set of pre-defined apertures you want CAAPR to do photometry with, this kwarg is used to point to it. For column details see subsection below.
  - `do_photom` [**bool**, default = True] If this is set to False and the `fit_apertures` kwarg is set to True, CAAPR will just fit apertures, and not bother doing any actual photometry.
  - `photom_table_path` [**str/None**, default = within `output_dir_path`] The path to a CSV file where CAAPR will save the measured photometry for each source; if None, a file will be created automatically in the directory given by `output_dir_path`. For column details see subsection below.
  - `expansion_factor` [**float**, default = 1.25] When `fit_apertures = True`, CAAPR's aperture-fitting process will automatically expand the best-fit aperture by this factor, in order to encompass low-SNR emission at the periphery of each target source (see Section 3.4 of C J R Clark et al, 2018).
@@ -70,7 +70,10 @@ CAAPR requires a bands table, in CSV format (with a one-line header of the colum
  - `downsample_factor` [**float**] The factor by which CAAPR should downsample maps in this band before processing. For example, you may have some Hubble data at a *much* higher resolution than the rest of your maps (like GALEX, SDSS, WISE, Herschel, etc). You have no use for all that extra resolution, and the Hubble maps will take very long to process. But if you enter a value of 5 here for that Hubble band, the data will be downsampled by a factor of 5 (ie, 25 pixels will be combined into 1 during processing), making everything a lot faster. If you don't want to downsample this band, just enter a value of 1.0 here.
  - `beam_correction` [**bool/str**] If False, CAAPR will not attempt to correct fluxes measured in this band for the effect of the instrumental PSF (which will spread some flux out of the source aperture). If set to True, CAAPR will correct the measured fluxes using the beam FWHM provided by the `beam_arcsec` column (see above), and assume that the PSF in this band follows an Airy disc profile. Or, you can enter a file path here, pointing towards a FITS file which contrains this band's PSF (see Section 3.6 of C J R Clark et al, 2018).
 
-### Aperture Table
- 
- 
- 
+### Apertures Table
+
+As CAAPR is an aperture photometry pipeline, it unsurprisingly involves apertures. When the `fit_apertures = True` (see above), CAAPR will output a CSV table describing the aperture it determined for each source. Alternativly, if you already have a bunch of apertures you want to do photometry with using CAAPR, you can provide it to the pipeline using the `aperture_table_path` kwarg (see above). Either way, the CSV table should have the following columns (an example table is provided in the CAAPR_Example folder of the repository.  
+ - `name` [**str**] Name of the source in question.
+ - `semimaj_arcsec` [**float**] Semi-major axis of the source aperture, in arcseconds.
+ - `axial_ratio` [**float**] Axial ratio of the source aperture (ie, a/b).
+ - `pos_angle` [**float**] Position angle of the source aperture, in degrees.
