@@ -32,8 +32,8 @@ The CAAPR repository has a folder called CAAPR_Example. This contains an example
  - `expansion_factor` [**float**, default = 1.25] When `fit_apertures = True`, CAAPR's aperture-fitting process will automatically expand the best-fit aperture by this factor, in order to encompass low-SNR emission at the periphery of each target source (see Section 3.4 of C J R Clark et al, 2018).
  - `polysub` [**bool**, default = True] Whether or not CAAPR will attempt to fit and subtract a sky polynomial to remove large-scale background from maps (see Section 3.3 of C J R Clark et al, 2018).
  - `starsub` [**bool**, default = True] Whether or not CAAPR will attempt to remove stars from the input maps (see Section 3.2 of C J R Clark et al, 2018). This can be enabled/disabled for particular bands/sources `bands_table_path` and `sources_table_path` tables.
-- `extinction_corr` [**bool**, default = True], Whether or not CAAPR should correct fluxes for foreground Galactic extinction (see Section 3.6 of C J R Clark et al, 2018),
-- `parallel` [**bool**, default = True], # Whether CAAPR should operate in parallel, processing multiple bands simultaneously for each source. The number of parallel threads employed is given by the `n_proc` kwarg.
+- `extinction_corr` [**bool**, default = True] Whether or not CAAPR should correct fluxes for foreground Galactic extinction (see Section 3.6 of C J R Clark et al, 2018),
+- `parallel` [**bool**, default = True] Whether CAAPR should operate in parallel, processing multiple bands simultaneously for each source. The number of parallel threads employed is given by the `n_proc` kwarg.
 - `n_proc` [**int**, default = number of available threads, minus 2] If `parallel = True`, CAAPR will use this many CPU threads when processing each source.
 - `thumbnails` [**bool**, default = true] Whether CAAPR should produce thumbnail images to illustrate the photometric apertures used (see Figure 6 of C J R Clark et al, 2018); these images will be placed in the output directory defined by `output_dir_path`.
 - `verbose` [**bool**, default = True] Whether CAAPR should print verbose output to the console, to update the user on its progress.
