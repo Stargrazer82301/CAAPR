@@ -6,7 +6,7 @@ CAAPR was created to be able to generate aperture-matched photometry that is tru
 
 CAAPR is designed to be an end-to-end photometry pipeline; the user sets it running, and it outputs a couple of CSV tables describing the results, along with some thumbnail images illustrating the apertures. Of course, astronomers tend to distrust "black box" code, so CAAPR is designed with a host of options and switches that the user can adjust, if they want. This makes CAAPR more of a "grey box" pipeline.
 
-CAAPR is described in detail in [C J R Clark et al (2018)](http://adsabs.harvard.edu/abs/2018A%26A...609A..37C), and is a development of the pipeline first used in [C J R Clark et al (2015)](http://adsabs.harvard.edu/abs/2015MNRAS.452..397C). Photometry produced using CAAPR has also been presented in [De Vis et al (2017a)](http://adsabs.harvard.edu/cgi-bin/bib_query?arXiv:1705.02340), [Keenan (2017)](http://adsabs.harvard.edu/abs/2017PhDT........54K), and Saintonge et al (*in prep.*).
+CAAPR is described in detail in [C J R Clark et al (2018)](http://adsabs.harvard.edu/abs/2018A%26A...609A..37C), and is a development of the pipeline first used in [C J R Clark et al (2015)](http://adsabs.harvard.edu/abs/2015MNRAS.452..397C). Photometry produced using CAAPR has also been presented in [De Vis et al (2017a)](http://adsabs.harvard.edu/cgi-bin/bib_query?arXiv:1705.02340), [Keenan (2017)](http://adsabs.harvard.edu/abs/2017PhDT........54K), and [Saintonge et al (2018)](http://adsabs.harvard.edu/abs/2018arXiv180907336S).
 
 ## Installation
 
