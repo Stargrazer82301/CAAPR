@@ -114,6 +114,7 @@ class Filter:
                 if os.path.isdir(filterdir):
 
                     filterfiles = filter(lambda fn: fn.endswith(".xml") and filterspec in fn, os.listdir(filterdir))
+                    filterfiles = [thing for thing in filterfiles if '._' not in thing[:2]]
                     if len(filterfiles) > 1: raise ValueError("filter spec " + filterspec + " is ambiguous")
                     if len(filterfiles) < 1: raise ValueError("no filter found with spec " + filterspec)
 
