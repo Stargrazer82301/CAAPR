@@ -51,6 +51,8 @@ $RECYCLE.BIN/
 # Install files
 /build
 /dist
+/caapr.egg-info
+*.egg-info
 
 
 

@@ -1,7 +1,0 @@
-astropy>=2.0
-aplpy>=1.0
-colorpy>=0.1.1
-lmfit>=0.9.9
-config>=0.3.9
-pyregion>=2.0
-photutils>=0.4
