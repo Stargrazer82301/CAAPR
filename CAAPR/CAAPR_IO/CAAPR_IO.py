@@ -446,7 +446,7 @@ def RecordPhotom(photom_list, source_dict, bands_dict, kwargs_dict):
 
 
 # Define function that checks whether a decent amount of RAM is free before allowing things to progress
-def MemCheck(pod, thresh_fraction=0.75, thresh_factor=20.0, swap_thresh_fraction=0.5, return_status=False):
+def MemCheck(pod, thresh_fraction=0.90, thresh_factor=20.0, swap_thresh_fraction=0.90, return_status=False):
 
 
 
