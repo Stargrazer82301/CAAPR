@@ -18,5 +18,7 @@ setuptools.setup(name = 'caapr',
                                      'lmfit>=0.9.9',
                                      'config>=0.3.9',
                                      'pyregion>=2.0',
+                                     'scikit-image>=0.14',
+                                     'lxml>=4.2'
                                      'photutils>=0.4'],
                  zip_safe = False)
