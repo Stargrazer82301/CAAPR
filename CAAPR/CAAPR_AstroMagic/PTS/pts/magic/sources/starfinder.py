@@ -274,7 +274,8 @@ class StarFinder(OldConfigurable):
             else:
 
                 # Check whether this star is on top of the galaxy, and label it so (by default, star.on_galaxy is False)
-                if self.galaxy_finder is not None: star_on_galaxy = self.galaxy_finder.principal.contains(pixel_position)
+                if (self.galaxy_finder is not None) and (self.galaxy_finder.principal.source != None):
+                    star_on_galaxy = self.galaxy_finder.principal.contains(pixel_position)
                 else: star_on_galaxy = False
                 on_galaxy_column[i] = star_on_galaxy
 
