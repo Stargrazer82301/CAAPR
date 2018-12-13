@@ -22,5 +22,6 @@ setuptools.setup(name = 'caapr',
                                      'scikit-learn>=0.20',
                                      'lxml>=4.2',
                                      'psutil>=5.4',
-                                     'photutils>=0.4'],
+                                     'photutils>=0.4',
+                                     'chardet>=3.0'],
                  zip_safe = False)
