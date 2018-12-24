@@ -32,7 +32,7 @@ $RECYCLE.BIN/
 /Test/CAAPR_Output/*
 /Test/CAAPR_Temp/*
 /CAAPR_Example/CAAPR_Output/*
-/CAAPR_Temp/CAAPR_Temp/*
+/CAAPR_Example/CAAPR_Temp/*
 
 ## Data tables & FITS files
 #*.fits
