@@ -354,6 +354,10 @@ def CombineAperture(aperture_output_list, source_dict, kwargs_dict):
         except:
             pdb.set_trace()
 
+    # Check to see if any bands have been designated for aperture consideration
+    if np.nanmax(np.array(axial_ratio_list)) == 0.0:
+        raise Exception('No usable apertures found; probably because no bands have consider_aperture set to True in the bands table')
+
     # Find largest semi-major axis, and use to define size of enclosisity array (which will have pixels some fraction the size of the smallest semi-major axis)
     semimaj_max = np.nanmax(semimaj_arcsec_list) #semimaj_min = np.nanmin(semimaj_arcsec_list)
     ap_array_pix_size = 0.005 * semimaj_max
