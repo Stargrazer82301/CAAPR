@@ -35,9 +35,10 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
     # Start timer, and check that the user has actually asked CAAPR to do something; if they haven't asked CAAPR to do anything at all, tell them that they're being a bit odd!
     source_start = time.time()
     if kwargs_dict['verbose']: print '['+source_dict['name']+'] Processing target '+source_dict['name']+'.'
-    if kwargs_dict['fit_apertures']==False and kwargs_dict['do_photom']==False:
-        print '['+source_dict['name']+'] So you don\'t want aperture fitting, nor do you want actual photometry to happen? Erm, okay.'
-
+    if not kwargs_dict['fit_apertures'] and not kwargs_dict['do_photom']:
+        if not kwargs_dict['save_images']:
+            raise ValueError("None of fit_apertures, do_photom, and save_images is set to True. ")
+        print('Skipping photometry and aperture fitting, but will save processed images.')
 
 
     # Check if any data actually exists for this source
@@ -116,7 +117,7 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
 
 
     # Commence actual photometry sub-pipeline
-    if kwargs_dict['do_photom']==True:
+    if kwargs_dict['do_photom'] or kwargs_dict['save_images']:
 
         # Handle problem where the user hasn't provided an aperture file, but also hasn't told CAAPR to fit its own apertures.
         if kwargs_dict['aperture_table_path']==False and kwargs_dict['fit_apertures']==False:
@@ -147,6 +148,12 @@ def PipelineMain(source_dict, bands_dict, kwargs_dict):
                         photom_output_list.append( CAAPR.CAAPR_Photom.SubpipelinePhotom(source_dict, bands_dict[band], kwargs_dict) )
                         photom_list = [photom for photom in photom_output_list if photom!=None]
 
+                # Shortcut if no photometry is done
+                if not kwargs_dict['do_photom']:
+                    photom_attempts = 'Complete'
+                    gc.collect()
+                    return
+                    
                 # Check that all photometry completed
                 photom_attempts, photom_output_list = CAAPR.CAAPR_Photom.PhotomCheck(photom_attempts, photom_output_list, source_dict, bands_dict, kwargs_dict)
 

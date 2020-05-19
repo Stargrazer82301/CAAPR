@@ -88,7 +88,16 @@ def SubpipelinePhotom(source_dict, band_dict, kwargs_dict):
     # Run pod through function that removes large-scale sky using a 2-dimensional polynomial filter, with source aperture masked
     pod = CAAPR.CAAPR_Pipeline.PolySub(pod, pod['adj_semimaj_pix'], pod['adj_axial_ratio'], pod['adj_angle'], instant_quit=max([not kwargs_dict['polysub'],pod['band_exclude']]))
 
+    # Processed images as final product: do extinction correction, then save to output_dir
+    if kwargs_dict['save_images']:
+        # Use IRSA dust extinction service to correction images for extinction
+        pod = ExtCorrrct(pod, source_dict, band_dict, kwargs_dict)
 
+        astropy.io.fits.writeto(os.path.join(kwargs_dict['output_dir_path'],'Processed_Maps',source_id+'.fits'), pod['cutout'], header=pod['in_header'], overwrite=True)
+
+    # If no photometry is done, we can return early
+    if not kwargs_dict['do_photom']:
+        return
 
     # Run pod through function that (finally) performs the actual photometry
     pod = Photom(pod, band_dict)
@@ -961,8 +970,11 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
             irsa_band_excorr = np.NaN
 
     # Update photometry with extinction corrections
-    pod['ap_sum'] *= irsa_band_excorr
-    pod['ap_error'] *= irsa_band_excorr
+    if kwargs_dict['save_images']:  # images as final product: modify cutout
+        pod['cutout'] *= irsa_band_excorr
+    if 'ap_sum' in pod:  # photometry already done
+        pod['ap_sum'] *= irsa_band_excorr
+        pod['ap_error'] *= irsa_band_excorr
 
     # Report and return extinction-correced photometry
     irsa_band_excorr_mag = 2.51*np.log10(irsa_band_excorr)
