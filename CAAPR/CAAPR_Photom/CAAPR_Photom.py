@@ -970,11 +970,11 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
             irsa_band_excorr = np.NaN
 
     # Update photometry with extinction corrections
-    if kwargs_dict['save_images']:  # images as final product: modify cutout
-        pod['cutout'] *= irsa_band_excorr
     if 'ap_sum' in pod:  # photometry already done
         pod['ap_sum'] *= irsa_band_excorr
         pod['ap_error'] *= irsa_band_excorr
+    elif kwargs_dict['save_images']:  # images as final product: modify cutout
+        pod['cutout'] *= irsa_band_excorr
 
     # Report and return extinction-correced photometry
     irsa_band_excorr_mag = 2.51*np.log10(irsa_band_excorr)
