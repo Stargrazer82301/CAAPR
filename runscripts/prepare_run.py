@@ -97,18 +97,28 @@ def fetch_galaxies(basedir, galaxies, verbose=False):
             tele_name = os.path.dirname(banddir).split('/')[-1]
             source_url = ('http://dustpedia.astro.noa.gr/Data/GetImage?imageName={}_{}.fits&instrument={}'
                                 .format(galaxy, band, tele_name))
+            should_download = True
             if os.path.exists(target_filename):
                 # file exists: check if it is readable
                 try:
                     astropy.io.fits.getdata(target_filename, header=True)
+                    should_download = False
                     log('{} - {} already found.'.format(galaxy, band))
                 except IOError:
                     log('{} - {} was found but can not be read. Redownloading...'.format(galaxy, band))
                     os.remove(target_filename)
-                    urllib.urlretrieve(source_url, target_filename)
-            else:
-                log('{} - downloading {}...'.format(galaxy, band))
-                urllib.urlretrieve(source_url, target_filename)
+            if should_download:
+                response = urllib.urlopen(source_url)
+                code = response.getcode()
+                if code == 500:
+                    log('{} - {} not in database.'.format(galaxy, band))
+                elif code != 200:
+                    raise IOError("Can not download {} of {}, but it should be there.".format(band, galaxy))
+                else:
+                    log('{} - downloading {}...'.format(galaxy, band))
+                    content = response.read()
+                    with open(target_filename, 'wb') as target_file:
+                        target_file.write(content)
 
 
 if __name__ == '__main__':
