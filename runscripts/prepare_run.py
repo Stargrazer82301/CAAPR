@@ -104,7 +104,7 @@ def fetch_galaxies(basedir, galaxies, verbose=False):
                     astropy.io.fits.getdata(target_filename, header=True)
                     should_download = False
                     log('{} - {} already found.'.format(galaxy, band))
-                except IOError:
+                except (IOError, TypeError):
                     log('{} - {} was found but can not be read. Redownloading...'.format(galaxy, band))
                     os.remove(target_filename)
             if should_download:
