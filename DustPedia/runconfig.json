@@ -1,7 +1,7 @@
 {
     "bands_table_path": "./tables/CAAPR_Band_Table.csv",
     "sources_table_path": "./tables/CAAPR_Source_Table.csv",
-    "output_dir_path": "../CAAPR_Output",
+    "output_dir_path": "./CAAPR_Output",
     "temp_dir_path": "./CAAPR_Temp",
     "fit_apertures": false,
     "aperture_table_path": "./tables/CAAPR_Aperture_Table.csv",
