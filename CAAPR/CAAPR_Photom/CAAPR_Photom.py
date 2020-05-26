@@ -967,7 +967,8 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
             if kwargs_dict['verbose']: print '['+pod['id']+'] Extinction correction failed; entering debug mode.'
             pdb.set_trace()
         else:
-            irsa_band_excorr = np.NaN
+            if kwargs_dict['verbose']: print '['+pod['id']+'] Extinction correction failed; skipping extinction correction.'
+            irsa_band_excorr = 1
 
     # Update photometry with extinction corrections
     if 'ap_sum' in pod:  # photometry already done
@@ -978,7 +979,11 @@ def ExtCorrrct(pod, source_dict, band_dict, kwargs_dict):
 
     # Report and return extinction-correced photometry
     irsa_band_excorr_mag = 2.51*np.log10(irsa_band_excorr)
-    if kwargs_dict['verbose']: print '['+pod['id']+'] Applying Galactic extinction correction of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr_mag,4))+' mag (ie, factor of '+str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr,4))+').'
+    mag_str = 'NaN' if np.isnan(irsa_band_excorr_mag) else str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr_mag,4))
+    fac_str = 'NaN' if np.isnan(irsa_band_excorr) else str(ChrisFuncs.FromGitHub.randlet.ToPrecision(irsa_band_excorr,4))
+    if np.isnan(irsa_band_excorr_mag): irsa_band_excorr_mag = 'NaN'
+    if np.isnan(irsa_band_excorr): irsa_band_excorr = 'NaN'
+    if kwargs_dict['verbose']: print '['+pod['id']+'] Applying Galactic extinction correction of '+mag_str+' mag (ie, factor of '+fac_str+').'
     return pod
 
 
