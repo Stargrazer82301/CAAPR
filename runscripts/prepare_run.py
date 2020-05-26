@@ -10,6 +10,8 @@ import argparse
 import os
 import shutil
 import urllib
+from functools import partial
+import astropy.io.fits
 import numpy as np
 
 def verify_exists(path):
@@ -66,8 +68,16 @@ def subset_configfiles(basedir, galaxies):
     subset_configfile('Aperture')
     subset_configfile('Source')
 
+def log_verbose(msg, verbose):
+    """Log message, only if verbose is True."""
+
+    if verbose:
+        print(msg)
+
 def fetch_galaxies(basedir, galaxies, verbose=False):
     """Check if the data for each galaxy is present. If not: download from dustpedia archive."""
+
+    log = partial(log_verbose, verbose=verbose)
 
     # Get bands from band table
     bands_filename = os.path.join(basedir, 'tables/CAAPR_Band_Table.csv')
@@ -88,11 +98,16 @@ def fetch_galaxies(basedir, galaxies, verbose=False):
             source_url = ('http://dustpedia.astro.noa.gr/Data/GetImage?imageName={}_{}.fits&instrument={}'
                                 .format(galaxy, band, tele_name))
             if os.path.exists(target_filename):
-                if verbose:
-                    print('{} - {} already found.'.format(galaxy, band))
+                # file exists: check if it is readable
+                try:
+                    astropy.io.fits.getdata(target_filename, header=True)
+                    log('{} - {} already found.'.format(galaxy, band))
+                except IOError:
+                    log('{} - {} was found but can not be read. Redownloading...')
+                    os.remove(target_filename)
+                    urllib.urlretrieve(source_url, target_filename)
             else:
-                if verbose:
-                    print('{} - downloading {}...'.format(galaxy, band))
+                log('{} - downloading {}...'.format(galaxy, band))
                 urllib.urlretrieve(source_url, target_filename)
 
 

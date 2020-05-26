@@ -4,7 +4,7 @@ import json
 import CAAPR
 
 if len(sys.argv) <= 1:  # No config file given as argument: use default
-    config_filename = './caapr_config.json'
+    config_filename = './runconfig.json'
 else:
     config_filename = sys.argv[1]
 if not os.path.exists(config_filename):
