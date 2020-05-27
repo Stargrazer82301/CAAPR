@@ -450,8 +450,10 @@ def PolySub(pod, mask_semimaj_pix, mask_axial_ratio, mask_angle, poly_order=5, c
         pod['cutout'] = image_sub
         pod['sky_poly'] = poly_model
     else:
-        if pod['verbose']: print '['+pod['id']+'] Background is not significnatly variable; leaving image unaltered.'
-        pod['sky_poly'] = False
+        if pod['verbose']: print '['+pod['id']+'] Background is not significnatly variable; subtracting median background.'
+        pod['cutout_nopoly'] = pod['cutout'].copy()
+        pod['cutout'] = pod['cutout'] - np.median(poly_full)
+        # pod['sky_poly'] = False
     return pod
 
 
