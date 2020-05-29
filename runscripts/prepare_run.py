@@ -94,6 +94,7 @@ def fetch_galaxies(basedir, galaxies, verbose=False):
         for band in bands:
             banddir = band_dirmap[band]
             target_filename = os.path.join(banddir, '{}_{}.fits'.format(galaxy, band))
+            missing_filename = os.path.join(banddir, '{}_{}_missing'.format(galaxy, band))
             tele_name = os.path.dirname(banddir).split('/')[-1]
             source_url = ('http://dustpedia.astro.noa.gr/Data/GetImage?imageName={}_{}.fits&instrument={}'
                                 .format(galaxy, band, tele_name))
@@ -107,11 +108,15 @@ def fetch_galaxies(basedir, galaxies, verbose=False):
                 except (IOError, TypeError):
                     log('{} - {} was found but can not be read. Redownloading...'.format(galaxy, band))
                     os.remove(target_filename)
+            elif os.path.exists(missing_filename):  # Band previously found to be missing
+                log('{} - {} previously found to not be in database.'.format(galaxy, band))
+                should_download = False
             if should_download:
                 response = urllib.urlopen(source_url)
                 code = response.getcode()
                 if code == 500:
                     log('{} - {} not in database.'.format(galaxy, band))
+                    open(missing_filename, 'w').close()  # Create empty file to signal missing band
                 elif code != 200:
                     raise IOError("Can not download {} of {}, but it should be there.".format(band, galaxy))
                 else:
