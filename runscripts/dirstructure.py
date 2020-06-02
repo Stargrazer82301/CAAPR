@@ -1,6 +1,7 @@
 '''
 Hard link the processed CAAPR maps to a more standardized directory structure,
-where each galaxy has its own directory.
+where each galaxy has its own directory. Does not relink target files that are
+already present.
 '''
 
 import argparse
@@ -33,4 +34,5 @@ for imgname in image_names:
     if not os.path.exists(target_dirpath):
         os.makedirs(target_dirpath)
     targetpath = os.path.join(target_dirpath, bandname)
-    os.link(srcpath, targetpath)
+    if not os.path.exists(targetpath):
+        os.link(srcpath, targetpath)
