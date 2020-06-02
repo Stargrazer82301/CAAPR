@@ -30,6 +30,7 @@ for imgname in image_names:
     galname, bandname = imgname.split('_', 1)
     srcpath = os.path.join(caapr_mapsdir, imgname)
     target_dirpath = os.path.join(data_basedir, galname, target_dir)
-    os.makedirs(target_dirpath)
+    if not os.path.exists(target_dirpath):
+        os.makedirs(target_dirpath)
     targetpath = os.path.join(target_dirpath, bandname)
     os.link(srcpath, targetpath)
