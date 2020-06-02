@@ -11,9 +11,9 @@ parser = argparse.ArgumentParser(description='Link processed CAAPR maps to a per
 parser.add_argument('--runname', type=str, default='dustpedia_1')
 # Place in data_basedir/galname/target_dir/bandname.fits
 # E.g. if data_basedir is ./dustpedia/ (but probably should run from within dustpedia):
-# ./dustpedia/NGC1365/native/GALEX_NUV.fits
+# ./dustpedia/NGC1365/caapr/GALEX_NUV.fits
 parser.add_argument('--data_basedir', type=str, default=os.path.abspath('./'))
-parser.add_argument('--target_dir', type=str, default='native')
+parser.add_argument('--target_dir', type=str, default='caapr')
 args = parser.parse_args()
 
 caapr_mapsdir = os.path.join(os.path.expanduser('~/CAAPR_run/'), args.runname, 'CAAPR_Output/Processed_Maps/')
