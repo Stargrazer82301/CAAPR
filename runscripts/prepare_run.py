@@ -8,6 +8,7 @@ Arguments:
 
 import argparse
 import os
+import time
 import shutil
 import urllib
 from functools import partial
@@ -112,19 +113,36 @@ def fetch_galaxies(basedir, galaxies, verbose=False):
                 log('{} - {} previously found to not be in database.'.format(galaxy, band))
                 should_download = False
             if should_download:
-                response = urllib.urlopen(source_url)
-                code = response.getcode()
+                log('{} - downloading {}...'.format(galaxy, band))
+                code, content = download_retry(source_url, verbose=verbose)
                 if code == 500:
                     log('{} - {} not in database.'.format(galaxy, band))
                     open(missing_filename, 'w').close()  # Create empty file to signal missing band
                 elif code != 200:
-                    raise IOError("Can not download {} of {}, but it should be there.".format(band, galaxy))
+                    raise IOError("Can not download {} of {}, but it should be there (HTTP code {}).".format(band, galaxy, code))
                 else:
-                    log('{} - downloading {}...'.format(galaxy, band))
-                    content = response.read()
                     with open(target_filename, 'wb') as target_file:
                         target_file.write(content)
 
+def download_retry(source_url, max_retries=100, verbose=False):
+    log = partial(log_verbose, verbose=verbose)
+
+    i = 1
+    while i <= max_retries:
+        try:
+            response = urllib.urlopen(source_url)
+            code = response.getcode()
+            if code == 200:
+                content = response.read()
+            else:
+                content = None
+            return code, content
+        except IOError as e:
+            log('Connection failed ({}): '.format(i) + str(e))
+
+        i += 1
+        time.sleep(1)
+    raise IOError("Can not establish database connection after {} tries.".format(max_retries))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Prepare for CAAPR run: create directory structure and fetch galaxies.')

@@ -29,10 +29,12 @@ print('Linking {} galaxies from {} to {}...'.format(n_images, caapr_mapsdir, dat
 for imgname in image_names:
     # 1 split: ESO123-455_GALEX_NUV.fits -> ESO123-455, GALEX_NUV.fits
     galname, bandname = imgname.split('_', 1)
+    # WISE_3.4.fits -> WISE3_4
+    bandname = bandname[:-5].replace('_', '').replace('.', '_')
     srcpath = os.path.join(caapr_mapsdir, imgname)
     target_dirpath = os.path.join(data_basedir, galname, target_dir)
     if not os.path.exists(target_dirpath):
         os.makedirs(target_dirpath)
-    targetpath = os.path.join(target_dirpath, bandname)
+    targetpath = os.path.join(target_dirpath, bandname + '.fits')
     if not os.path.exists(targetpath):
         os.link(srcpath, targetpath)
