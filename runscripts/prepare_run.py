@@ -94,11 +94,13 @@ def fetch_galaxies(basedir, galaxies, verbose=False):
     for galaxy in galaxies:
         for band in bands:
             banddir = band_dirmap[band]
-            target_filename = os.path.join(banddir, '{}_{}.fits'.format(galaxy, band))
-            missing_filename = os.path.join(banddir, '{}_{}_missing'.format(galaxy, band))
             tele_name = os.path.dirname(banddir).split('/')[-1]
-            source_url = ('http://dustpedia.astro.noa.gr/Data/GetImage?imageName={}_{}.fits&instrument={}'
-                                .format(galaxy, band, tele_name))
+
+            suffix = '.gz' if tele_name == 'Spitzer' else ''  # Spitzer is gzipped
+            target_filename = os.path.join(banddir, '{}_{}.fits{}'.format(galaxy, band, suffix))
+            missing_filename = os.path.join(banddir, '{}_{}_missing'.format(galaxy, band))
+            source_url = ('http://dustpedia.astro.noa.gr/Data/GetImage?imageName={}_{}.fits{}&instrument={}'
+                                .format(galaxy, band, suffix, tele_name))
             should_download = True
             if os.path.exists(target_filename):
                 # file exists: check if it is readable
