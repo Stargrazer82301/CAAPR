@@ -22,15 +22,43 @@ target_dir = args.target_dir
 image_names = list(filter(lambda x: x.endswith('.fits'), os.listdir(caapr_mapsdir)))
 n_images = len(image_names)
 
+def rename_band(bandpath):
+    """
+    Bring bandname from CAAPR convention to Williams convention.
+    """
+
+    def _any_in(candidate_parts, string):
+        for part in candidate_parts:
+            if part in string:
+                return True
+        return False
+
+    # GALEX_NUV.fits -> GALEX_NUV
+    bandname = bandpath[:-5]
+    # WISE_3.4.fits -> WISE3_4
+    bandname = bandname.replace('_', '').replace('.', '_')
+    if 'Spitzer' not in bandname:
+        return bandname
+
+    # Spitzer -> IRAC or MIPS
+    if _any_in(['3_6', '4_5', '5_8'], bandname):
+        # Spitzer3_6 -> IRAC3_6
+        return bandname.replace('Spitzer', 'IRAC')
+    elif '8_0' in bandname:
+        # IRAC8_0 -> IRAC8
+        return 'IRAC8'
+    # Spitzer24 -> MIPS24
+    return bandname.replace('Spitzer', 'MIPS')
+
 if n_images == 0:
     raise ValueError("No images found in " + caapr_mapsdir + "!")
-print('Linking {} galaxies from {} to {}...'.format(n_images, caapr_mapsdir, data_basedir))
+print('Linking {} images from {} to {}...'.format(n_images, caapr_mapsdir, data_basedir))
 
 for imgname in image_names:
     # 1 split: ESO123-455_GALEX_NUV.fits -> ESO123-455, GALEX_NUV.fits
-    galname, bandname = imgname.split('_', 1)
-    # WISE_3.4.fits -> WISE3_4
-    bandname = bandname[:-5].replace('_', '').replace('.', '_')
+    galname, bandpath = imgname.split('_', 1)
+    
+    bandname = rename_band(bandpath)
     srcpath = os.path.join(caapr_mapsdir, imgname)
     target_dirpath = os.path.join(data_basedir, galname, target_dir)
     if not os.path.exists(target_dirpath):
