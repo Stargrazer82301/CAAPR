@@ -1,0 +1,19 @@
+{
+    "bands_table_path": "./tables/CAAPR_Band_Table.csv",
+    "sources_table_path": "./tables/CAAPR_Source_Table.csv",
+    "output_dir_path": "./CAAPR_Output",
+    "temp_dir_path": "./CAAPR_Temp",
+    "fit_apertures": false,
+    "aperture_table_path": "./tables/CAAPR_Aperture_Table.csv",
+    "photom_table_path": null,
+    "polysub": true,
+    "starsub": false,
+    "do_photom": false,
+    "extinction_corr": true,
+    "parallel": false,
+    "n_proc": 2,
+    "thumbnails": true,
+    "save_images": true,
+    "verbose": true,
+    "messy": false
+}

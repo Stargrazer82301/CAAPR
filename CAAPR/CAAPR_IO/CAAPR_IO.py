@@ -108,6 +108,10 @@ def OutputDirPrepare(kwargs_dict):
     if kwargs_dict['do_photom'] and kwargs_dict['thumbnails'] and not os.path.exists( os.path.join( kwargs_dict['output_dir_path'], 'Photometry_Thumbnails' ) ):
         os.mkdir( os.path.join( kwargs_dict['output_dir_path'],'Photometry_Thumbnails' ) )
 
+    # If saving images, make corresponding sub-directory
+    if kwargs_dict['save_images'] and not os.path.exists(os.path.join(kwargs_dict['output_dir_path'], 'Processed_Maps')):
+        os.mkdir( os.path.join(kwargs_dict['output_dir_path'], 'Processed_Maps') )
+
 
 
 
